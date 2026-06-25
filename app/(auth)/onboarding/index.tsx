@@ -9,6 +9,8 @@ import { AmpelKomponente } from "@/components/ui/Ampel";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { apiRequest } from "@/lib/api/client";
+import { supabase } from "@/lib/supabase/client";
 import { useSessionStore } from "@/lib/store/session";
 
 const features = [
@@ -20,25 +22,68 @@ const features = [
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
   const [domainOrEmail, setDomainOrEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const setPractice = useSessionStore((store) => store.setPractice);
   const normalizedDomain = useMemo(() => extractDomain(domainOrEmail), [domainOrEmail]);
   const canStart = normalizedDomain.length > 3 && normalizedDomain.includes(".");
 
-  function next() {
+  async function next() {
     if (step < 2) {
       setStep((current) => current + 1);
       return;
     }
 
-    if (!canStart) return;
+    if (!canStart || loading) return;
 
-    setPractice({
-      id: `practice-${Date.now()}`,
-      name: practiceNameFromDomain(normalizedDomain),
-      domain: normalizedDomain,
-      plan: "free"
-    });
-    router.replace("/(tabs)/check");
+    setLoading(true);
+    setError(null);
+
+    try {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error("Nicht eingeloggt. Bitte melden Sie sich erneut an.");
+
+      const { data: practice, error: insertError } = await supabase
+        .from("practices")
+        .insert({
+          owner_id: user.id,
+          name: practiceNameFromDomain(normalizedDomain),
+          domain: normalizedDomain,
+          email: extractEmail(domainOrEmail),
+          plan: "free"
+        })
+        .select("id,name,domain,email,plan,white_label_partner_id")
+        .single();
+
+      if (insertError) throw insertError;
+
+      setPractice({
+        id: practice.id,
+        name: practice.name,
+        domain: practice.domain ?? undefined,
+        email: practice.email ?? undefined,
+        plan: "free",
+        whiteLabelPartnerId: practice.white_label_partner_id ?? undefined
+      });
+
+      await apiRequest("/api/legal/avv/accept", {
+        method: "POST",
+        body: {
+          practiceId: practice.id,
+          version: "1.0",
+          consentTypes: ["avv", "privacy_policy"]
+        }
+      });
+
+      router.replace("/(tabs)/dashboard");
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Onboarding konnte nicht abgeschlossen werden.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -66,11 +111,19 @@ export default function OnboardingScreen() {
         ) : null}
 
         <View style={styles.actions}>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
           {step > 0 ? (
-            <AnimatedButton label="Zurück" variant="ghost" onPress={() => setStep((current) => current - 1)} style={styles.secondaryAction} />
+            <AnimatedButton
+              disabled={loading}
+              label="Zurück"
+              variant="ghost"
+              onPress={() => setStep((current) => current - 1)}
+              style={styles.secondaryAction}
+            />
           ) : null}
           <AnimatedButton
-            label={step === 2 ? "Kostenlosen ersten Check starten" : "Weiter"}
+            disabled={loading || (step === 2 && !canStart)}
+            label={loading ? "Praxis wird angelegt..." : step === 2 ? "Kostenlosen ersten Check starten" : "Weiter"}
             onPress={next}
             style={[styles.primaryAction, step === 2 && !canStart ? styles.disabled : null]}
             icon={<Ionicons name={step === 2 ? "scan" : "arrow-forward"} size={18} color={colors.ink} />}
@@ -208,6 +261,11 @@ function extractDomain(value: string) {
   const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
   const domain = withoutProtocol.includes("@") ? withoutProtocol.split("@").pop() ?? "" : withoutProtocol;
   return domain.replace(/\/.*$/, "");
+}
+
+function extractEmail(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.includes("@") ? trimmed : undefined;
 }
 
 function practiceNameFromDomain(domain: string) {
@@ -432,5 +490,11 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.44
+  },
+  error: {
+    color: colors.critical,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19
   }
 });

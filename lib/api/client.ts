@@ -1,6 +1,5 @@
 import { supabase } from "@/lib/api/supabase";
-
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8787";
+import { AppConfig } from "@/lib/config/environment";
 
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -10,7 +9,7 @@ type RequestOptions = {
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? (await getSupabaseAccessToken());
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${AppConfig.apiBaseUrl}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",

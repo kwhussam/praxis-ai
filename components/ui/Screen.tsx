@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { ReactNode } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 
+import { DemoBanner } from "@/components/ui/DemoBanner";
 import { colors } from "@/constants/colors";
 
 type ScreenProps = {
@@ -14,6 +15,7 @@ export function Screen({ children, scroll = true }: ScreenProps) {
 
   return (
     <LinearGradient colors={[colors.navy, "#07101F", "#050A14"]} style={styles.gradient}>
+      <DemoBanner />
       {scroll ? (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {content}

@@ -11,19 +11,21 @@ type AnimatedButtonProps = {
   icon?: ReactNode;
   variant?: "primary" | "danger" | "ghost";
   style?: StyleProp<ViewStyle>;
+  disabled?: boolean;
 };
 
-export function AnimatedButton({ label, onPress, icon, variant = "primary", style }: AnimatedButtonProps) {
+export function AnimatedButton({ label, onPress, icon, variant = "primary", style, disabled = false }: AnimatedButtonProps) {
   const isDanger = variant === "danger";
   const isGhost = variant === "ghost";
 
   async function handlePress() {
+    if (disabled) return;
     await Haptics.impactAsync(isDanger ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
     onPress();
   }
 
   return (
-    <Pressable onPress={handlePress}>
+    <Pressable accessibilityState={{ disabled }} disabled={disabled} onPress={handlePress}>
       {({ pressed }) => (
         <MotiView
           animate={{ scale: pressed ? 0.97 : 1, opacity: pressed ? 0.86 : 1 }}
@@ -31,6 +33,7 @@ export function AnimatedButton({ label, onPress, icon, variant = "primary", styl
           style={[
             styles.button,
             isGhost ? styles.ghost : isDanger ? styles.danger : styles.primary,
+            disabled ? styles.disabled : null,
             style
           ]}
         >
@@ -75,5 +78,8 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 16,
     fontWeight: "800"
+  },
+  disabled: {
+    opacity: 0.48
   }
 });

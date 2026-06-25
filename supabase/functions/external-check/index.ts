@@ -5,7 +5,14 @@ serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const { domain } = await req.json();
+  let payload: unknown;
+  try {
+    payload = await req.json();
+  } catch {
+    return Response.json({ error: "invalid_json" }, { status: 400 });
+  }
+
+  const domain = isRecord(payload) && typeof payload.domain === "string" ? payload.domain : "";
 
   if (!domain) {
     return Response.json({ error: "domain is required" }, { status: 400 });
@@ -24,3 +31,7 @@ serve(async (req) => {
     ]
   });
 });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

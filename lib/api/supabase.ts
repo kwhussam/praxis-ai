@@ -1,16 +1,15 @@
 import { MMKV } from "react-native-mmkv";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+import { AppConfig } from "@/lib/config/environment";
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!AppConfig.supabaseUrl || !AppConfig.supabaseAnonKey) {
   console.warn("Missing Supabase environment variables. Using client will fail until .env is configured.");
 }
 
 const authStorage = new MMKV({ id: "praxisshield-auth" });
 
-export const supabase = createClient(supabaseUrl ?? "", supabaseAnonKey ?? "", {
+export const supabase = createClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, {
   auth: {
     storage: {
       getItem: (key) => authStorage.getString(key) ?? null,

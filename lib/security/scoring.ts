@@ -1,4 +1,8 @@
+export const SCORING_VERSION = "1.0.0";
+
 export type FindingSeverity = "critical" | "warning" | "info";
+export type AmpelColor = "rot" | "gelb" | "grün";
+export type SecurityCategory = "access_control" | "backup" | "email_security" | "network" | "dsgvo" | "updates";
 
 export type SecurityFinding = {
   id: string;
@@ -12,30 +16,289 @@ export type ScoreInput = {
   wlanFindings: SecurityFinding[];
 };
 
-const weights: Record<string, number> = {
-  backups: 14,
-  mfa: 18,
-  staffTraining: 12,
-  patching: 16,
-  dmarc: 14
+export type CheckData = {
+  mfa_enabled?: boolean;
+  backup_tested?: boolean;
+  backup_frequency?: "none" | "weekly" | "daily";
+  dmarc_exists?: boolean;
+  updates_current?: boolean;
+  staff_training?: boolean;
+  privacy_documents_current?: boolean;
+  encryption?: "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
+  external?: {
+    email_security?: {
+      dmarc?: {
+        policy?: "none" | "quarantine" | "reject" | null;
+      };
+    };
+  };
+  externalFindings?: SecurityFinding[];
+  wlanFindings?: SecurityFinding[];
 };
 
+export interface RuleEvaluation {
+  rule_id: string;
+  category: SecurityCategory;
+  points_earned: number;
+  points_max: number;
+  passed: boolean;
+  finding: string;
+  evidence: string;
+  recommendation?: string;
+}
+
+export interface ScoringRule {
+  id: string;
+  category: SecurityCategory;
+  weight: number;
+  max_points: number;
+  evaluate: (data: CheckData) => RuleEvaluation;
+}
+
+export type ScoreReport = {
+  score: number;
+  scoring_version: string;
+  calculated_at: string;
+  ampel: AmpelColor;
+  rule_results: RuleEvaluation[];
+  scores_by_category: Record<SecurityCategory, number>;
+  total_points: number;
+  max_points: number;
+};
+
+export const SCORING_RULES: ScoringRule[] = [
+  {
+    id: "MFA_ENABLED",
+    category: "access_control",
+    weight: 15,
+    max_points: 15,
+    evaluate: (data) => buildResult({
+      data,
+      ruleId: "MFA_ENABLED",
+      category: "access_control",
+      earned: data.mfa_enabled ? 15 : 0,
+      max: 15,
+      passed: data.mfa_enabled === true,
+      finding: data.mfa_enabled ? "MFA ist aktiviert." : "MFA ist nicht aktiv.",
+      evidence: `questionnaire.mfa_enabled=${String(data.mfa_enabled)}`,
+      recommendation: "Microsoft Authenticator oder FIDO2-Schlüssel für alle Praxiszugänge aktivieren."
+    })
+  },
+  {
+    id: "BACKUP_TESTED",
+    category: "backup",
+    weight: 20,
+    max_points: 20,
+    evaluate: (data) => {
+      const frequency = data.backup_frequency ?? "none";
+      const earned = frequency === "daily" && data.backup_tested ? 20 : frequency === "daily" ? 12 : frequency === "weekly" ? 8 : 0;
+      return buildResult({
+        data,
+        ruleId: "BACKUP_TESTED",
+        category: "backup",
+        earned,
+        max: 20,
+        passed: frequency === "daily" && data.backup_tested === true,
+        finding: `Backup-Frequenz: ${frequency}, Restore-Test: ${String(data.backup_tested)}.`,
+        evidence: `questionnaire.backup_frequency=${frequency}; questionnaire.backup_tested=${String(data.backup_tested)}`,
+        recommendation: "Tägliche Backups mit quartalsweisem Restore-Test dokumentieren."
+      });
+    }
+  },
+  {
+    id: "DMARC_POLICY",
+    category: "email_security",
+    weight: 10,
+    max_points: 10,
+    evaluate: (data) => {
+      const policy = data.external?.email_security?.dmarc?.policy ?? (data.dmarc_exists ? "none" : null);
+      const earned = policy === "reject" ? 10 : policy === "quarantine" ? 7 : policy === "none" ? 3 : 0;
+      return buildResult({
+        data,
+        ruleId: "DMARC_POLICY",
+        category: "email_security",
+        earned,
+        max: 10,
+        passed: policy === "reject" || policy === "quarantine",
+        finding: `DMARC Policy: ${policy ?? "fehlt"}.`,
+        evidence: `external.email_security.dmarc.policy=${policy ?? "null"}`,
+        recommendation: "DMARC mit Reporting veröffentlichen und auf quarantine oder reject härten."
+      });
+    }
+  },
+  {
+    id: "PATCHING_CURRENT",
+    category: "updates",
+    weight: 15,
+    max_points: 15,
+    evaluate: (data) => buildResult({
+      data,
+      ruleId: "PATCHING_CURRENT",
+      category: "updates",
+      earned: data.updates_current ? 15 : 0,
+      max: 15,
+      passed: data.updates_current === true,
+      finding: data.updates_current ? "Updates sind aktuell." : "Updates sind nicht nachweislich aktuell.",
+      evidence: `questionnaire.updates_current=${String(data.updates_current)}`,
+      recommendation: "Patch-Fenster und Verantwortliche dokumentieren."
+    })
+  },
+  {
+    id: "WLAN_ENCRYPTION",
+    category: "network",
+    weight: 15,
+    max_points: 15,
+    evaluate: (data) => {
+      const protocol = data.encryption ?? "UNKNOWN";
+      const earned = protocol === "WPA3" ? 15 : protocol === "WPA2" ? 12 : protocol === "WPA" ? 5 : 0;
+      return buildResult({
+        data,
+        ruleId: "WLAN_ENCRYPTION",
+        category: "network",
+        earned,
+        max: 15,
+        passed: protocol === "WPA2" || protocol === "WPA3",
+        finding: `WLAN-Verschlüsselung: ${protocol}.`,
+        evidence: `wlan.security_protocol=${protocol}`,
+        recommendation: "WPA3 oder mindestens WPA2-AES aktivieren; WEP und offene WLANs sofort ersetzen."
+      });
+    }
+  },
+  {
+    id: "STAFF_TRAINING",
+    category: "dsgvo",
+    weight: 10,
+    max_points: 10,
+    evaluate: (data) => buildResult({
+      data,
+      ruleId: "STAFF_TRAINING",
+      category: "dsgvo",
+      earned: data.staff_training ? 10 : 0,
+      max: 10,
+      passed: data.staff_training === true,
+      finding: data.staff_training ? "Schulung ist dokumentiert." : "Keine aktuelle Schulungsdokumentation.",
+      evidence: `questionnaire.staff_training=${String(data.staff_training)}`,
+      recommendation: "Jährliche Datenschutz- und Phishing-Schulung mit Teilnehmerliste dokumentieren."
+    })
+  },
+  {
+    id: "PRIVACY_DOCUMENTATION",
+    category: "dsgvo",
+    weight: 10,
+    max_points: 10,
+    evaluate: (data) => buildResult({
+      data,
+      ruleId: "PRIVACY_DOCUMENTATION",
+      category: "dsgvo",
+      earned: data.privacy_documents_current ? 10 : 0,
+      max: 10,
+      passed: data.privacy_documents_current === true,
+      finding: data.privacy_documents_current ? "DSGVO-Dokumente sind aktuell." : "DSGVO-Dokumente sind nicht vollständig aktuell.",
+      evidence: `questionnaire.privacy_documents_current=${String(data.privacy_documents_current)}`,
+      recommendation: "AVV, TOMs, Löschkonzept und Verarbeitungsverzeichnis prüfen."
+    })
+  },
+  {
+    id: "ACTIVE_FINDINGS",
+    category: "network",
+    weight: 5,
+    max_points: 5,
+    evaluate: (data) => {
+      const findings = [...(data.externalFindings ?? []), ...(data.wlanFindings ?? [])];
+      const critical = findings.filter((finding) => finding.severity === "critical").length;
+      const warning = findings.filter((finding) => finding.severity === "warning").length;
+      const earned = Math.max(0, 5 - critical * 3 - warning);
+      return buildResult({
+        data,
+        ruleId: "ACTIVE_FINDINGS",
+        category: "network",
+        earned,
+        max: 5,
+        passed: critical === 0 && warning === 0,
+        finding: `${critical} kritische und ${warning} mittlere aktive Findings.`,
+        evidence: `findings.critical=${critical}; findings.warning=${warning}`,
+        recommendation: "Aktive Findings nach Kritikalität abarbeiten und erneut prüfen."
+      });
+    }
+  }
+];
+
+export function calculateScore(data: CheckData): ScoreReport {
+  const ruleResults = SCORING_RULES.map((rule) => rule.evaluate(data));
+  const totalPoints = ruleResults.reduce((sum, result) => sum + result.points_earned, 0);
+  const maxPoints = ruleResults.reduce((sum, result) => sum + result.points_max, 0);
+  const score = maxPoints === 0 ? 0 : Math.round((totalPoints / maxPoints) * 100);
+
+  return {
+    score,
+    scoring_version: SCORING_VERSION,
+    calculated_at: new Date().toISOString(),
+    ampel: score >= 75 ? "grün" : score >= 50 ? "gelb" : "rot",
+    rule_results: ruleResults,
+    scores_by_category: groupByCategory(ruleResults),
+    total_points: totalPoints,
+    max_points: maxPoints
+  };
+}
+
 export function calculateShieldScore(input: ScoreInput) {
-  const questionnaireScore = Object.entries(input.questionnaire).reduce((sum, [key, enabled]) => {
-    return sum + (enabled ? weights[key] ?? 8 : 0);
-  }, 18);
-
-  const penalty = [...input.externalFindings, ...input.wlanFindings].reduce((sum, finding) => {
-    if (finding.severity === "critical") return sum + 18;
-    if (finding.severity === "warning") return sum + 9;
-    return sum + 3;
-  }, 0);
-
-  return Math.max(0, Math.min(100, Math.round(questionnaireScore - penalty)));
+  return calculateScore(scoreInputToCheckData(input)).score;
 }
 
 export function scoreTone(score: number) {
   if (score >= 80) return "safe";
   if (score >= 55) return "warning";
   return "critical";
+}
+
+function scoreInputToCheckData(input: ScoreInput): CheckData {
+  const questionnaire = input.questionnaire;
+  return {
+    mfa_enabled: questionnaire.mfa,
+    backup_tested: questionnaire.backups,
+    backup_frequency: questionnaire.backups ? "daily" : "none",
+    dmarc_exists: questionnaire.dmarc,
+    updates_current: questionnaire.patching,
+    staff_training: questionnaire.staffTraining,
+    privacy_documents_current: questionnaire.privacyDocuments,
+    encryption: "UNKNOWN",
+    externalFindings: input.externalFindings,
+    wlanFindings: input.wlanFindings
+  };
+}
+
+function groupByCategory(results: RuleEvaluation[]): Record<SecurityCategory, number> {
+  const categories: SecurityCategory[] = ["access_control", "backup", "email_security", "network", "dsgvo", "updates"];
+
+  return Object.fromEntries(
+    categories.map((category) => {
+      const categoryResults = results.filter((result) => result.category === category);
+      const earned = categoryResults.reduce((sum, result) => sum + result.points_earned, 0);
+      const max = categoryResults.reduce((sum, result) => sum + result.points_max, 0);
+      return [category, max === 0 ? 0 : Math.round((earned / max) * 100)];
+    })
+  ) as Record<SecurityCategory, number>;
+}
+
+function buildResult(input: {
+  data: CheckData;
+  ruleId: string;
+  category: SecurityCategory;
+  earned: number;
+  max: number;
+  passed: boolean;
+  finding: string;
+  evidence: string;
+  recommendation: string;
+}): RuleEvaluation {
+  return {
+    rule_id: input.ruleId,
+    category: input.category,
+    points_earned: Math.max(0, Math.min(input.max, input.earned)),
+    points_max: input.max,
+    passed: input.passed,
+    finding: input.finding,
+    evidence: input.evidence,
+    recommendation: input.passed ? undefined : input.recommendation
+  };
 }

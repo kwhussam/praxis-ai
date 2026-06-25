@@ -1,6 +1,7 @@
 import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import * as Device from "expo-device";
 import * as Network from "expo-network";
+import { Platform } from "react-native";
 import { MMKV } from "react-native-mmkv";
 
 import {
@@ -12,6 +13,17 @@ import {
 import { supabase } from "@/lib/api/supabase";
 
 export type SecurityProtocol = "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
+export type DataSource = "measured" | "inferred" | "unavailable" | "simulated";
+export type FindingConfidence = "high" | "medium" | "low";
+
+export interface WlanFinding<TValue> {
+  id: string;
+  value: TValue;
+  source: DataSource;
+  source_detail?: string;
+  confidence: FindingConfidence;
+  measured_at: Date;
+}
 
 export type WlanVulnCategory =
   | "encryption"
@@ -67,6 +79,18 @@ export interface WlanScanResult {
   vulnerabilities: Vulnerability[];
   riskScore: number;
   timestamp: Date;
+  findings: {
+    networkName: WlanFinding<string>;
+    securityProtocol: WlanFinding<SecurityProtocol>;
+    ipAddress: WlanFinding<string>;
+    subnetMask: WlanFinding<string>;
+    gatewayIp: WlanFinding<string>;
+    dnsServers: WlanFinding<string[]>;
+    connectedDevices: WlanFinding<DeviceInfo[]>;
+    openPorts: WlanFinding<PortProbe[]>;
+    upnpStatus: WlanFinding<boolean | null>;
+  };
+  methodology: string[];
 }
 
 export type WlanScanProgress = {
@@ -146,6 +170,27 @@ export const SCAN_PHASES = [
     ]
   }
 ] as const;
+
+export const PLATFORM_LIMITATIONS = {
+  ios: [
+    "Geräte-Scan per ARP ist nicht verfügbar, weil iOS keinen Raw-Socket-Zugriff erlaubt.",
+    "WPS-Status ist nicht direkt auslesbar.",
+    "Gerätezahl wird aus sichtbaren HTTP-Antworten und Gateway-Informationen abgeleitet."
+  ],
+  android: [
+    "Geräte-Scan hängt von Android-Version, WLAN-Berechtigungen und Hersteller-ROM ab.",
+    "WPS-Status ist nur bei nativer Verfügbarkeit auslesbar.",
+    "Nicht antwortende Geräte können im mobilen Best-Effort-Scan unsichtbar bleiben."
+  ],
+  web: [
+    "Browser erlauben keinen lokalen WLAN- oder Portscan.",
+    "Netzwerkdetails sind im Web nur eingeschränkt verfügbar."
+  ],
+  default: [
+    "Mobile Betriebssysteme beschränken aktive Netzwerkscans.",
+    "Der Scan ist eine technische Momentaufnahme und ersetzt keinen Penetrationstest."
+  ]
+} as const;
 
 type VulnerabilityDefinition = Omit<Vulnerability, "id">;
 
@@ -336,7 +381,9 @@ export async function runWlanSecurityScan(options?: {
     connectedDevices: context.devices,
     vulnerabilities: dedupeVulnerabilities(context.vulnerabilities),
     riskScore: calculateWlanRiskScore(context.vulnerabilities),
-    timestamp: new Date()
+    timestamp: new Date(),
+    findings: buildFindings(context),
+    methodology: getPlatformLimitations()
   };
 
   persistWlanScanResultLocally(result);
@@ -382,6 +429,8 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       subnetMask: result.subnetMask,
       gatewayIp: result.gatewayIp,
       dnsServers: result.dnsServers,
+      findings: serializeFindings(result.findings),
+      methodology: result.methodology,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
     },
@@ -806,6 +855,88 @@ function isTrustedPublicDns(ipAddress: string) {
   return ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "149.112.112.112"].includes(ipAddress);
 }
 
+function buildFindings(context: ScanContext): WlanScanResult["findings"] {
+  const measuredAt = new Date();
+  const gatewayPorts = context.devices.find((device) => device.ipAddress === context.gatewayIp)?.openPorts ?? [];
+  const securitySource: DataSource = context.visibleNetworks.length > 0 ? "measured" : "inferred";
+  const deviceSource: DataSource = Platform.OS === "web" ? "unavailable" : "measured";
+
+  return {
+    networkName: makeFinding("network_name", context.ssid, context.ssid ? "measured" : "unavailable", "NetInfo / native WiFi", context.ssid ? "high" : "low", measuredAt),
+    securityProtocol: makeFinding(
+      "security_protocol",
+      context.securityProtocol,
+      securitySource,
+      context.visibleNetworks.length > 0 ? "Native WiFi capabilities" : "SSID and platform inference",
+      context.visibleNetworks.length > 0 ? "high" : "low",
+      measuredAt
+    ),
+    ipAddress: makeFinding("ip_address", context.ipAddress, context.ipAddress !== "0.0.0.0" ? "measured" : "unavailable", "NetInfo / Expo Network", "high", measuredAt),
+    subnetMask: makeFinding("subnet_mask", context.subnetMask, context.subnetMask === "unbekannt" ? "unavailable" : "inferred", "NetInfo or RFC1918 inference", "medium", measuredAt),
+    gatewayIp: makeFinding("gateway_ip", context.gatewayIp, context.gatewayIp ? "inferred" : "unavailable", "NetInfo gateway or subnet inference", context.gatewayIp ? "medium" : "low", measuredAt),
+    dnsServers: makeFinding("dns_servers", context.dnsServers, context.dnsServers.length > 0 ? "measured" : "unavailable", "NetInfo DNS details", context.dnsServers.length > 0 ? "high" : "low", measuredAt),
+    connectedDevices: makeFinding("connected_devices", context.devices, deviceSource, "Native discovery and HTTP probes", Platform.OS === "ios" ? "low" : "medium", measuredAt),
+    openPorts: makeFinding("open_ports", gatewayPorts, context.gatewayIp ? "measured" : "unavailable", "HTTP probes against gateway and selected subnet hosts", "medium", measuredAt),
+    upnpStatus: makeFinding(
+      "upnp_status",
+      gatewayPorts.some((port) => port.port === 1900 && port.state === "open") ? true : null,
+      "inferred",
+      "Port 1900 probe; direct router UPnP API is not available in Expo",
+      "low",
+      measuredAt
+    )
+  };
+}
+
+function makeFinding<TValue>(
+  id: string,
+  value: TValue,
+  source: DataSource,
+  sourceDetail: string,
+  confidence: FindingConfidence,
+  measuredAt: Date
+): WlanFinding<TValue> {
+  return {
+    id,
+    value,
+    source,
+    source_detail: sourceDetail,
+    confidence,
+    measured_at: measuredAt
+  };
+}
+
+function serializeFindings(findings: WlanScanResult["findings"]) {
+  return Object.fromEntries(
+    Object.entries(findings).map(([key, finding]) => [
+      key,
+      {
+        ...finding,
+        measured_at: finding.measured_at.toISOString()
+      }
+    ])
+  );
+}
+
+function reviveFindings(findings: StoredWlanScanResult["findings"]): WlanScanResult["findings"] {
+  return Object.fromEntries(
+    Object.entries(findings).map(([key, finding]) => [
+      key,
+      {
+        ...finding,
+        measured_at: new Date(finding.measured_at)
+      }
+    ])
+  ) as WlanScanResult["findings"];
+}
+
+function getPlatformLimitations() {
+  if (Platform.OS === "ios") return [...PLATFORM_LIMITATIONS.ios, ...PLATFORM_LIMITATIONS.default];
+  if (Platform.OS === "android") return [...PLATFORM_LIMITATIONS.android, ...PLATFORM_LIMITATIONS.default];
+  if (Platform.OS === "web") return [...PLATFORM_LIMITATIONS.web, ...PLATFORM_LIMITATIONS.default];
+  return [...PLATFORM_LIMITATIONS.default];
+}
+
 function riskLevelFromScore(score: number) {
   if (score >= 80) return "low";
   if (score >= 55) return "medium";
@@ -823,12 +954,18 @@ function sleep(ms: number) {
 type StoredWlanScanResult = Omit<WlanScanResult, "timestamp" | "connectedDevices"> & {
   timestamp: string;
   connectedDevices: Array<Omit<DeviceInfo, "lastSeen"> & { lastSeen: string }>;
+  findings: {
+    [Key in keyof WlanScanResult["findings"]]: Omit<WlanScanResult["findings"][Key], "measured_at"> & {
+      measured_at: string;
+    };
+  };
 };
 
 function reviveScanResult(result: StoredWlanScanResult): WlanScanResult {
   return {
     ...result,
     timestamp: new Date(result.timestamp),
+    findings: reviveFindings(result.findings),
     connectedDevices: result.connectedDevices.map((device) => ({
       ...device,
       lastSeen: new Date(device.lastSeen)

@@ -6,11 +6,13 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { AmpelBadge } from "@/components/ui/AmpelBadge";
+import { FindingBadge } from "@/components/ui/FindingBadge";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { ScanAnimation, type ScanNode } from "@/components/ui/ScanAnimation";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { VulnerabilityCard } from "@/components/ui/VulnerabilityCard";
 import { colors, type RiskTone } from "@/constants/colors";
+import { apiRequest } from "@/lib/api/client";
 import { useCheckStore } from "@/lib/store/check";
 import {
   mapWlanVulnerabilitiesToFindings,
@@ -46,12 +48,28 @@ export function WlanScanner() {
   );
 
   async function scan() {
+    if (!practiceId) {
+      setError("WLAN-Scan erfordert eine angemeldete Praxis.");
+      setState("error");
+      return;
+    }
+
     setState("scanning");
     setResult(null);
     setError(null);
     setVisibleDevices([]);
 
     try {
+      await apiRequest("/api/legal/consent", {
+        method: "POST",
+        body: {
+          practiceId,
+          type: "wlan_scan",
+          version: "1.0",
+          accepted: true
+        }
+      });
+
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
         onProgress: (nextProgress) => {
@@ -172,13 +190,14 @@ export function WlanScanner() {
             <ScoreRing score={result.riskScore} size={128} stroke={12} />
             <View style={styles.scoreCopy}>
               <Text style={styles.resultTitle}>{result.networkName}</Text>
-              <Text style={styles.meta}>IP {result.ipAddress} · Gateway {result.gatewayIp || "unbekannt"}</Text>
-              <Text style={styles.meta}>
-                Verschlüsselung: {result.securityProtocol} · Geräte: {result.connectedDevices.length}
-              </Text>
+              <FindingRow label={`IP ${result.ipAddress}`} source={result.findings.ipAddress.source} />
+              <FindingRow label={`Gateway ${result.gatewayIp || "unbekannt"}`} source={result.findings.gatewayIp.source} />
+              <FindingRow label={`Verschlüsselung: ${result.securityProtocol}`} source={result.findings.securityProtocol.source} />
+              <FindingRow label={`Geräte: ${result.connectedDevices.length}`} source={result.findings.connectedDevices.source} />
             </View>
           </View>
 
+          <Methodology result={result} />
           <DeviceList devices={result.connectedDevices} />
           <VulnerabilityList vulnerabilities={sortedVulnerabilities} />
         </View>
@@ -191,6 +210,28 @@ export function WlanScanner() {
         </View>
       ) : null}
     </GlassCard>
+  );
+}
+
+function FindingRow({ label, source }: { label: string; source: WlanScanResult["findings"]["networkName"]["source"] }) {
+  return (
+    <View style={styles.findingRow}>
+      <Text style={styles.meta}>{label}</Text>
+      <FindingBadge source={source} />
+    </View>
+  );
+}
+
+function Methodology({ result }: { result: WlanScanResult }) {
+  return (
+    <View style={styles.methodologyBox}>
+      <Text style={styles.methodologyTitle}>Methodik & Einschränkungen</Text>
+      <FindingRow label={`DNS-Server: ${result.dnsServers.length || "nicht sichtbar"}`} source={result.findings.dnsServers.source} />
+      <FindingRow label={`Gateway-Ports: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
+      {result.methodology.slice(0, 3).map((item) => (
+        <Text key={item} style={styles.methodologyText}>{item}</Text>
+      ))}
+    </View>
   );
 }
 
@@ -481,6 +522,32 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     lineHeight: 19
+  },
+  findingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 7
+  },
+  methodologyBox: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 16,
+    padding: 12
+  },
+  methodologyTitle: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  methodologyText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17
   },
   section: {
     marginTop: 20

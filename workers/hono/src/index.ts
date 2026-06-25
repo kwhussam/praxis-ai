@@ -2,6 +2,8 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-types";
 
+import { addDays, RETENTION_PERIODS, type DeletionReport } from "./privacy";
+
 type Env = {
   ANTHROPIC_API_KEY: string;
   ANTHROPIC_MODEL?: string;
@@ -15,6 +17,8 @@ type Env = {
   HIBP_API_KEY?: string;
   MXTOOLBOX_API_KEY?: string;
   VIRUSTOTAL_API_KEY?: string;
+  RESEND_API_KEY?: string;
+  DELETION_FROM_EMAIL?: string;
 };
 
 type FindingSeverity = "critical" | "warning" | "info";
@@ -62,6 +66,14 @@ type AlertAcknowledgeRequest = {
 
 type PrivacyDeleteRequest = {
   practiceId?: string;
+};
+
+type ConsentRequest = {
+  practiceId?: string;
+  type?: "avv" | "privacy_policy" | "wlan_scan" | "ai_processing";
+  version?: string;
+  accepted?: boolean;
+  consentTypes?: Array<"avv" | "privacy_policy" | "wlan_scan" | "ai_processing">;
 };
 
 type MonitoringModule = "ssl_check" | "dns_check" | "port_scan" | "leak_check" | "reputation_check";
@@ -260,7 +272,11 @@ type PracticeRecord = {
 type PracticeAccess = {
   user: AuthUser;
   practice: PracticeRecord;
+  role: "owner" | "manager" | "viewer" | "white_label";
 };
+
+const REPORT_FORMAT_VERSION = "1.0.0";
+const SCORING_VERSION = "1.0.0";
 
 const DNS_TYPE_CODES: Record<string, number> = {
   A: 1,
@@ -305,7 +321,9 @@ app.post("/api/monitoring/run", async (c) => handleMonitoringRun(c));
 app.get("/api/monitoring/history", async (c) => handleMonitoringHistory(c));
 app.post("/api/alert/acknowledge", async (c) => handleAlertAcknowledge(c));
 app.post("/api/privacy/delete", async (c) => handlePrivacyDelete(c));
+app.get("/api/privacy/export", async (c) => handlePrivacyExport(c));
 app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
+app.post("/api/legal/consent", async (c) => handleConsent(c));
 
 app.post("/api/external-check", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
 app.post("/security/external", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
@@ -672,25 +690,70 @@ async function handleReportPdf(c: Context<{ Bindings: Env }>) {
   }
 
   const report = validateReport(payload.report);
-  const pdf = buildSimplePdf([
-    `${payload.practiceName ?? access.practice.name} - PraxisShield Bericht`,
-    `Domain: ${payload.domain ?? access.practice.domain ?? "nicht angegeben"}`,
-    `Security Score: ${report.security_score}/100`,
-    `Ampel: ${report.ampel.toUpperCase()}`,
-    report.executive_summary,
-    ...report.top_risks.map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
-    "Haftungsausschluss: Momentaufnahme, keine Garantie."
-  ]);
+  const reportId = crypto.randomUUID();
+  const pdf = buildSimplePdf(buildPdfSections({
+    reportId,
+    practiceName: payload.practiceName ?? access.practice.name,
+    domain: payload.domain ?? access.practice.domain,
+    report
+  }));
 
   await auditPracticeAccess(c, access, "export", "reports_pdf", { format: "pdf" });
 
   return new Response(pdf, {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="praxisshield-${access.practice.id}.pdf"`,
+      "content-disposition": `attachment; filename="praxisshield-${reportId}.pdf"`,
       "cache-control": "no-store"
     }
   });
+}
+
+function buildPdfSections(input: { reportId: string; practiceName: string; domain?: string; report: Report }) {
+  const generatedAt = new Date().toISOString();
+  return [
+    "Deckblatt",
+    `PraxisShield AI Sicherheitsbericht für ${input.practiceName}`,
+    `Report-ID: ${input.reportId}`,
+    `Format-Version: ${REPORT_FORMAT_VERSION}`,
+    `Scoring-Version: ${SCORING_VERSION}`,
+    `Domain: ${input.domain ?? "nicht angegeben"}`,
+    `Erstellt: ${generatedAt}`,
+    "",
+    "Rechtlicher Hinweis",
+    "Dieser Bericht ist eine technische Momentaufnahme und ersetzt keine Rechtsberatung oder vollständigen Penetrationstest.",
+    "",
+    "Executive Summary",
+    input.report.executive_summary,
+    "",
+    "Security Score",
+    `Score: ${input.report.security_score}/100`,
+    `Ampel: ${input.report.ampel.toUpperCase()}`,
+    ...Object.entries(input.report.scores_by_category).map(([category, score]) => `${category}: ${score}/100`),
+    "",
+    "Kritische Risiken",
+    ...input.report.top_risks.filter((risk) => risk.priority === "sofort").map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
+    "",
+    "Warnungen",
+    ...input.report.top_risks.filter((risk) => risk.priority !== "sofort").map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
+    "",
+    "Bestandenes",
+    input.report.security_score >= 75 ? "Die wichtigsten Basiskontrollen sind sichtbar wirksam." : "Bestandene Kontrollen sind in den Kategoriescores dokumentiert.",
+    "",
+    "DSGVO-Status",
+    `Status: ${input.report.dsgvo_compliance.status}`,
+    `Haftungsrisiko: ${input.report.dsgvo_compliance.liability_risk}`,
+    `Fehlende Dokumente: ${input.report.dsgvo_compliance.missing_documents.join(", ") || "keine angegeben"}`,
+    "",
+    "Maßnahmenplan",
+    ...input.report.quick_wins.map((quickWin) => `${quickWin.action} (${quickWin.time_minutes} Minuten): ${quickWin.impact}`),
+    "",
+    "Methodik",
+    "Geprüft wurden Fragebogenangaben, externe Domainsignale und optional lokale WLAN-Messwerte mit dokumentierter Datenherkunft.",
+    "",
+    "Über PraxisShield",
+    "PraxisShield AI unterstuetzt Arztpraxen und IT-Partner bei Cybersecurity-Transparenz, DSGVO-Dokumentation und Monitoring."
+  ];
 }
 
 async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise<Report | Response> {
@@ -753,14 +816,33 @@ async function requirePracticeAccess(
   );
   const practice = normalizePractice(practices[0]);
 
-  if (!practice || practice.owner_id !== user.id) {
+  if (!practice) {
     return c.json({ error: "forbidden" }, 403);
   }
 
-  const access = { user, practice };
+  const role = practice.owner_id === user.id ? "owner" : await getPartnerRole(c.env, user.id, practice.id);
+
+  if (!role) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  const access = { user, practice, role };
   await auditPracticeAccess(c, access, "access", action);
 
   return access;
+}
+
+async function getPartnerRole(env: Env, userId: string, practiceId: string): Promise<PracticeAccess["role"] | null> {
+  const grants = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/partner_practices?select=role&partner_id=eq.${encodeURIComponent(userId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    { method: "GET" }
+  );
+  const grant = asRecordOrNull(grants[0]);
+  const role = grant?.role;
+
+  if (role === "owner" || role === "manager" || role === "viewer" || role === "white_label") return role;
+  return null;
 }
 
 async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<AuthUser | null> {
@@ -855,6 +937,7 @@ async function persistSecurityCheck(
       practice_id: practiceId,
       type,
       score: clampScore(score),
+      scoring_version: SCORING_VERSION,
       results: payload.summary,
       encrypted_payload: encrypted,
       payload_sha256: payloadHash
@@ -874,9 +957,12 @@ async function persistReport(env: Env, input: { id: string; practiceId: string; 
       id: input.id,
       practice_id: input.practiceId,
       check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
+      format_version: REPORT_FORMAT_VERSION,
+      scoring_version: SCORING_VERSION,
       content: redactedReportSummary(input.report),
       encrypted_content: encrypted,
-      payload_sha256: payloadHash
+      payload_sha256: payloadHash,
+      input_hash: payloadHash
     }
   });
 }
@@ -909,7 +995,7 @@ async function auditPracticeAccess(
 }
 
 function redactAuditMetadata(metadata: Record<string, unknown>) {
-  const allowed = new Set(["check_id", "report_id", "alert_id", "type", "source", "format", "plan"]);
+  const allowed = new Set(["check_id", "report_id", "alert_id", "type", "source", "format", "plan", "role"]);
   return Object.fromEntries(Object.entries(metadata).filter(([key]) => allowed.has(key)));
 }
 
@@ -1014,7 +1100,7 @@ function bytesToHex(bytes: Uint8Array) {
 
 function buildSimplePdf(lines: string[]) {
   const cleanLines = lines.flatMap((line) => wrapPdfLine(line, 86)).slice(0, 46);
-  const stream = ["BT", "/F1 12 Tf", "50 790 Td", "16 TL", ...cleanLines.map((line) => `(${escapePdfText(line)}) Tj T*`), "ET"].join("\n");
+  const stream = ["BT", "/F1 12 Tf", "50 790 Td", "16 TL", ...cleanLines.map((line) => `<${pdfUtf16Hex(line)}> Tj T*`), "ET"].join("\n");
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -1056,8 +1142,13 @@ function wrapPdfLine(value: string, maxLength: number) {
   return lines.length > 0 ? lines : [""];
 }
 
-function escapePdfText(value: string) {
-  return value.replace(/[()\\]/g, "\\$&").replace(/[^\x20-\x7E]/g, "?");
+function pdfUtf16Hex(value: string) {
+  const bytes = [0xfe, 0xff];
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    bytes.push((code >> 8) & 0xff, code & 0xff);
+  }
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
 async function performExternalCheck(domain: string, email: string | null, env: Env): Promise<ExternalCheckResult> {
@@ -1221,32 +1312,169 @@ async function handlePrivacyDelete(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, payload.practiceId, "privacy_delete");
   if (access instanceof Response) return access;
 
-  await auditPracticeAccess(c, access, "delete_requested", "practices");
+  const now = new Date();
+  const deletionId = crypto.randomUUID();
+  const requestedAt = now.toISOString();
+
   await supabaseRest(c.env, "/rest/v1/deletion_requests", {
     method: "POST",
+    prefer: "return=minimal",
     body: {
+      id: deletionId,
       practice_id: access.practice.id,
       user_id: access.user.id,
-      status: "completed",
-      completed_at: new Date().toISOString(),
+      requested_by: access.user.id,
+      status: "requested",
+      state: "requested",
+      requested_at: requestedAt,
       metadata: { reason: "user_requested_erasure" }
     }
   });
-  await supabaseRest(c.env, `/rest/v1/practice_access_audit?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
-    method: "DELETE"
-  });
-  await supabaseRest(c.env, `/rest/v1/practices?id=eq.${encodeURIComponent(access.practice.id)}`, {
+
+  await auditPracticeAccess(c, access, "delete_requested", "practices");
+
+  await supabaseRest(c.env, `/rest/v1/wlan_scans?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
     method: "DELETE"
   });
 
-  return c.json({ ok: true, deletedPracticeId: access.practice.id });
+  await supabaseRest(c.env, `/rest/v1/practices?id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "PATCH",
+    body: {
+      name: "[GELOESCHT]",
+      domain: null,
+      email: null,
+      deleted_at: requestedAt
+    }
+  });
+  await supabaseRest(c.env, `/rest/v1/security_checks?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "PATCH",
+    body: {
+      results: { anonymized: true },
+      encrypted_payload: {},
+      anonymized_at: requestedAt
+    }
+  });
+  await supabaseRest(c.env, `/rest/v1/reports?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "PATCH",
+    body: {
+      content: { anonymized: true },
+      encrypted_content: {},
+      anonymized_at: requestedAt
+    }
+  });
+
+  const deletionReport: DeletionReport = {
+    deletion_id: deletionId,
+    practice_id: access.practice.id,
+    requested_at: requestedAt,
+    state: "completed",
+    immediate_deletions: ["personal_data", "wlan_scans"],
+    anonymizations: ["security_checks", "reports"],
+    retained_for_legal: ["practice_access_audit", "deletion_requests", "consent_log"],
+    retention_until: addDays(now, RETENTION_PERIODS.audit_logs).toISOString(),
+    completed_by: "system"
+  };
+
+  await supabaseRest(c.env, `/rest/v1/deletion_requests?id=eq.${encodeURIComponent(deletionId)}`, {
+    method: "PATCH",
+    body: {
+      status: "completed",
+      state: "completed",
+      completed_at: new Date().toISOString(),
+      report: deletionReport
+    }
+  });
+
+  await sendDeletionConfirmation(c.env, access.user.email, deletionReport);
+
+  return c.json({ ok: true, deletion: deletionReport });
+}
+
+async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "privacy_export");
+  if (access instanceof Response) return access;
+
+  const exportData = {
+    export_created_at: new Date().toISOString(),
+    export_format: "1.0",
+    practice: access.practice,
+    security_checks: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/security_checks?select=id,type,score,scoring_version,results,completed_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    ),
+    reports: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at,input_hash&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    ),
+    monitoring_events: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    ),
+    consent_log: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    )
+  };
+  const signature = await sha256Json(exportData);
+
+  await auditPracticeAccess(c, access, "export", "privacy_data", { format: "json" });
+
+  return c.json({
+    data: exportData,
+    signature,
+    valid_until: addDays(new Date(), 7).toISOString()
+  });
+}
+
+async function sendDeletionConfirmation(env: Env, email: string | undefined, report: DeletionReport) {
+  if (!email) return;
+
+  await supabaseRest(env, "/rest/v1/email_outbox", {
+    method: "POST",
+    body: {
+      recipient: email,
+      template: "privacy_deletion_confirmation",
+      payload: report,
+      status: env.RESEND_API_KEY ? "sending" : "queued"
+    }
+  });
+
+  if (!env.RESEND_API_KEY) return;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      from: env.DELETION_FROM_EMAIL ?? "PraxisShield <privacy@praxisshield.de>",
+      to: email,
+      subject: "Bestaetigung Ihrer Datenschutz-Loeschanfrage",
+      text: [
+        "Ihre Loeschanfrage wurde verarbeitet.",
+        `Vorgangs-ID: ${report.deletion_id}`,
+        `Praxis-ID: ${report.practice_id}`,
+        `Aufbewahrungspflichtige Audit-Nachweise werden bis ${report.retention_until} gehalten.`
+      ].join("\n")
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("deletion_confirmation_email_failed");
+  }
 }
 
 async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
-  let payload: { practiceId?: string; version?: string };
+  let payload: ConsentRequest;
 
   try {
-    payload = await c.req.json<{ practiceId?: string; version?: string }>();
+    payload = await c.req.json<ConsentRequest>();
   } catch {
     return c.json({ error: "invalid_json" }, 400);
   }
@@ -1270,9 +1498,60 @@ async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
       }
     }
   });
+  await insertConsentLog(c, access, payload.consentTypes ?? ["avv"], payload.version ?? "2026-06-24", true);
   await auditPracticeAccess(c, access, "accept", "data_processing_agreements");
 
   return c.json({ ok: true });
+}
+
+async function handleConsent(c: Context<{ Bindings: Env }>) {
+  let payload: ConsentRequest;
+
+  try {
+    payload = await c.req.json<ConsentRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "consent_log");
+  if (access instanceof Response) return access;
+  const consentType = payload.type;
+
+  if (!consentType) {
+    return c.json({ error: "type is required" }, 400);
+  }
+
+  await insertConsentLog(c, access, [consentType], payload.version ?? "1.0", payload.accepted === true);
+  await auditPracticeAccess(c, access, payload.accepted === true ? "accept" : "withdraw", "consent_log", { type: consentType });
+
+  return c.json({ ok: true });
+}
+
+async function insertConsentLog(
+  c: Context<{ Bindings: Env }>,
+  access: PracticeAccess,
+  types: Array<"avv" | "privacy_policy" | "wlan_scan" | "ai_processing">,
+  version: string,
+  accepted: boolean
+) {
+  const now = new Date().toISOString();
+  const ipHash = await sha256Text(c.req.header("cf-connecting-ip") ?? "unknown");
+  const userAgentHash = await sha256Text(c.req.header("user-agent") ?? "unknown");
+
+  await supabaseRest(c.env, "/rest/v1/consent_log", {
+    method: "POST",
+    body: types.map((type) => ({
+      practice_id: access.practice.id,
+      user_id: access.user.id,
+      type,
+      version,
+      accepted,
+      accepted_at: now,
+      ip_hash: ipHash,
+      user_agent_hash: userAgentHash,
+      withdrawn_at: accepted ? null : now
+    }))
+  });
 }
 
 async function runScheduledMonitoring(cron: string, env: Env) {

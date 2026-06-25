@@ -9,7 +9,8 @@
       ]
     },
     "types": [
-      "nativewind/types"
+      "nativewind/types",
+      "@cloudflare/workers-types"
     ]
   },
   "include": [

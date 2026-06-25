@@ -25,7 +25,9 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { Screen } from "@/components/ui/Screen";
 import { colors, riskColors, type RiskTone } from "@/constants/colors";
+import { AppConfig } from "@/lib/config/environment";
 import {
+  buildEmptyDashboard,
   buildDemoDashboard,
   loadMonitoringDashboard,
   startManualMonitoringScan,
@@ -48,8 +50,10 @@ type AlertFilter = "all" | MonitoringSeverity;
 
 export default function MonitoringScreen() {
   const practice = useSessionStore((state) => state.practice);
-  const practiceId = practice?.id ?? "demo-practice";
-  const [dashboard, setDashboard] = useState<DashboardData>(() => buildDemoDashboard(practiceId));
+  const practiceId = practice?.id ?? "";
+  const [dashboard, setDashboard] = useState<DashboardData>(() =>
+    AppConfig.isDemoMode && practiceId.startsWith("demo-") ? buildDemoDashboard(practiceId) : buildEmptyDashboard(practiceId)
+  );
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -63,8 +67,11 @@ export default function MonitoringScreen() {
       .then((data) => {
         if (mounted) setDashboard(data);
       })
-      .catch(() => {
-        if (mounted) setDashboard(buildDemoDashboard(practiceId));
+      .catch((loadError) => {
+        if (mounted) {
+          setNotice(loadError instanceof Error ? loadError.message : "Monitoring-Daten konnten nicht geladen werden.");
+          setDashboard(buildEmptyDashboard(practiceId));
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -132,7 +139,7 @@ export default function MonitoringScreen() {
       }));
       setNotice("Manueller Scan abgeschlossen.");
     } catch {
-      setNotice("Scan konnte nicht gestartet werden. Demo-Daten bleiben aktiv.");
+      setNotice("Scan konnte nicht gestartet werden. Bitte prüfen Sie Verbindung und Berechtigungen.");
     } finally {
       setScanning(false);
     }

@@ -1,5 +1,7 @@
 import { apiRequest } from "@/lib/api/client";
 import { supabase } from "@/lib/api/supabase";
+import { AppConfig } from "@/lib/config/environment";
+import { assertDemoPracticeAccess } from "@/lib/demo/demo-data";
 import {
   type DashboardData,
   type EmailSecurityStatus,
@@ -22,8 +24,25 @@ type RealtimeHandlers = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export class MonitoringFetchError extends Error {
+  constructor(message: string, public readonly context: { practiceId: string }) {
+    super(message);
+    this.name = "MonitoringFetchError";
+  }
+}
+
 export async function loadMonitoringDashboard(practiceId: string): Promise<DashboardData> {
+  assertDemoPracticeAccess(practiceId);
+
   if (!UUID_RE.test(practiceId)) {
+    if (AppConfig.isDemoMode && practiceId.startsWith("demo-")) {
+      return buildDemoDashboard(practiceId);
+    }
+
+    throw new MonitoringFetchError("Ungültige Practice-ID für Monitoring.", { practiceId });
+  }
+
+  if (practiceId.startsWith("demo-")) {
     return buildDemoDashboard(practiceId);
   }
 
@@ -49,8 +68,20 @@ export async function loadMonitoringDashboard(practiceId: string): Promise<Dashb
       .limit(40)
   ]);
 
-  if (snapshotResult.error || !snapshotResult.data) {
-    return buildDemoDashboard(practiceId);
+  if (snapshotResult.error) {
+    throw new MonitoringFetchError(snapshotResult.error.message, { practiceId });
+  }
+
+  if (historyResult.error) {
+    throw new MonitoringFetchError(historyResult.error.message, { practiceId });
+  }
+
+  if (eventsResult.error) {
+    throw new MonitoringFetchError(eventsResult.error.message, { practiceId });
+  }
+
+  if (!snapshotResult.data) {
+    return buildEmptyDashboard(practiceId);
   }
 
   return {
@@ -64,6 +95,8 @@ export async function loadMonitoringDashboard(practiceId: string): Promise<Dashb
 }
 
 export function subscribeToMonitoringRealtime(practiceId: string, handlers: RealtimeHandlers) {
+  assertDemoPracticeAccess(practiceId);
+
   if (!UUID_RE.test(practiceId)) {
     return () => undefined;
   }
@@ -88,6 +121,8 @@ export function subscribeToMonitoringRealtime(practiceId: string, handlers: Real
 }
 
 export async function startManualMonitoringScan(practice: PracticeRef) {
+  assertDemoPracticeAccess(practice.id);
+
   return apiRequest<{ snapshot: MonitoringSnapshot; events: MonitoringEvent[] }>("/api/monitoring/run", {
     method: "POST",
     body: {
@@ -98,7 +133,41 @@ export async function startManualMonitoringScan(practice: PracticeRef) {
   });
 }
 
+export function buildEmptyDashboard(practiceId: string): DashboardData {
+  const checkedAt = new Date().toISOString();
+
+  return {
+    snapshot: {
+      id: "empty-snapshot",
+      practice_id: practiceId,
+      source: "scheduled",
+      score: 0,
+      category_scores: {},
+      ssl: {
+        valid: false,
+        expires_at: null,
+        days_remaining: null
+      },
+      email_security: {
+        spf: false,
+        dkim: false,
+        dmarc: false
+      },
+      devices: {
+        known: 0,
+        unknown: 0
+      },
+      checks: {},
+      checked_at: checkedAt
+    },
+    events: [],
+    history: []
+  };
+}
+
 export function buildDemoDashboard(practiceId: string): DashboardData {
+  assertDemoPracticeAccess(practiceId);
+
   const now = new Date();
   const history = Array.from({ length: 13 }, (_, index) => {
     const date = new Date(now);

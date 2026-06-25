@@ -22,7 +22,7 @@ export default function WelcomeScreen() {
         <Text style={styles.promiseTitle}>Für Arztpraxen und IT-Partner</Text>
         <Text style={styles.copy}>White-Label-fähig, auditierbar und vorbereitet für Monitoring, Reports und konkrete Handlungsempfehlungen.</Text>
       </GlassCard>
-      <AnimatedButton label="Praxis-Check starten" onPress={() => router.push("/(auth)/onboarding")} style={styles.cta} />
+      <AnimatedButton label="Praxis-Check starten" onPress={() => router.push("/(auth)/login")} style={styles.cta} />
     </Screen>
   );
 }
