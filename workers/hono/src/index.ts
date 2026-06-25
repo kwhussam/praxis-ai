@@ -1,0 +1,2171 @@
+import { Hono, type Context } from "hono";
+import { cors } from "hono/cors";
+import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-types";
+
+type Env = {
+  ANTHROPIC_API_KEY: string;
+  ANTHROPIC_MODEL?: string;
+  APP_ENV?: string;
+  DATA_ENCRYPTION_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+  SECURITYTRAILS_API_KEY?: string;
+  SHODAN_API_KEY?: string;
+  HIBP_API_KEY?: string;
+  MXTOOLBOX_API_KEY?: string;
+  VIRUSTOTAL_API_KEY?: string;
+};
+
+type FindingSeverity = "critical" | "warning" | "info";
+
+type SecurityFinding = {
+  id: string;
+  severity: FindingSeverity;
+  title: string;
+};
+
+type ExternalCheckRequest = {
+  practiceId?: string;
+  domain: string;
+  email?: string;
+  consent?: boolean;
+};
+
+type MonitoringRunRequest = {
+  practiceId?: string;
+  domain?: string;
+  email?: string;
+};
+
+type QuestionnaireRequest = {
+  practiceId?: string;
+  questionnaire?: Record<string, boolean>;
+};
+
+type ReportRequest = CheckData & {
+  practiceId?: string;
+  checkId?: string;
+};
+
+type PdfReportRequest = {
+  practiceId?: string;
+  report?: Report;
+  practiceName?: string;
+  domain?: string;
+};
+
+type AlertAcknowledgeRequest = {
+  practiceId?: string;
+  alertId?: string;
+};
+
+type PrivacyDeleteRequest = {
+  practiceId?: string;
+};
+
+type MonitoringModule = "ssl_check" | "dns_check" | "port_scan" | "leak_check" | "reputation_check";
+
+type PracticeMonitorTarget = {
+  id: string;
+  domain: string;
+  email?: string;
+};
+
+type SSLCheck = {
+  valid: boolean;
+  issuer: string;
+  expires_at: string | null;
+  days_remaining: number | null;
+  protocol: string;
+  grade: "A+" | "A" | "B" | "C" | "F";
+  hsts_enabled: boolean;
+  vulnerabilities: string[];
+};
+
+type DNSCheck = {
+  a_records: string[];
+  aaaa_records: string[];
+  cname_records: string[];
+  ns_records: string[];
+  txt_records: string[];
+  caa_records: string[];
+};
+
+type EmailSecurityCheck = {
+  spf: {
+    exists: boolean;
+    valid: boolean;
+    record: string;
+    issues: string[];
+  };
+  dkim: {
+    exists: boolean;
+    selector_found: string | null;
+    valid: boolean;
+  };
+  dmarc: {
+    exists: boolean;
+    policy: "none" | "quarantine" | "reject" | null;
+    rua: string | null;
+    recommendation: string;
+  };
+  mx_records: {
+    exists: boolean;
+    records: string[];
+    secure: boolean;
+  };
+};
+
+type OpenPort = {
+  port: number;
+  protocol: string;
+  service: string;
+  severity: FindingSeverity;
+  banner?: string;
+};
+
+type ShodanVuln = {
+  id: string;
+  cvss: number | null;
+  summary: string;
+  port?: number;
+};
+
+type PortCheck = {
+  open_ports: OpenPort[];
+  known_vulnerabilities: ShodanVuln[];
+};
+
+type LeakCheck = {
+  email_found: boolean;
+  breach_count: number;
+  breaches: {
+    name: string;
+    date: string;
+    data_types: string[];
+  }[];
+  domain_found: boolean;
+  paste_count: number;
+};
+
+type DNSHistoryEntry = {
+  type: string;
+  value: string;
+  first_seen?: string;
+  last_seen?: string;
+};
+
+type ReputationCheck = {
+  blacklisted: boolean;
+  blacklists: string[];
+  malware_hosting: boolean;
+  phishing_reports: number;
+  dns_history: DNSHistoryEntry[];
+};
+
+type ExternalCheckResult = {
+  domain: string;
+  timestamp: string;
+  checks: {
+    ssl: SSLCheck;
+    dns: DNSCheck;
+    email_security: EmailSecurityCheck;
+    ports: PortCheck;
+    reputation: ReputationCheck;
+    leaks: LeakCheck;
+  };
+  overall_score: number;
+  critical_count: number;
+  warning_count: number;
+  findings: SecurityFinding[];
+  checkedAt: string;
+  scoreImpact: number;
+  providers: Record<string, boolean>;
+};
+
+type CheckData = {
+  practiceId?: string;
+  practiceName?: string;
+  domain?: string;
+  questionnaire?: Record<string, boolean>;
+  wlan?: unknown;
+  external?: unknown;
+  score?: number;
+};
+
+type Report = {
+  executive_summary: string;
+  overall_risk: "critical" | "high" | "medium" | "low";
+  security_score: number;
+  ampel: "rot" | "gelb" | "grün";
+  top_risks: Array<{
+    rank: number;
+    title: string;
+    plain_language: string;
+    business_impact: string;
+    action: string;
+    effort_hours: string;
+    cost_estimate: string;
+    priority: "sofort" | "diese_woche" | "diesen_monat";
+  }>;
+  scores_by_category: {
+    access_control: number;
+    backup: number;
+    email_security: number;
+    network: number;
+    dsgvo: number;
+    updates: number;
+  };
+  dsgvo_compliance: {
+    status: "nicht_konform" | "teilweise" | "konform";
+    missing_documents: string[];
+    liability_risk: string;
+  };
+  quick_wins: Array<{
+    action: string;
+    time_minutes: number;
+    impact: string;
+  }>;
+  monthly_monitoring_recommendation: boolean;
+};
+
+type DnsAnswer = {
+  name: string;
+  type: number;
+  TTL: number;
+  data: string;
+};
+
+type DnsResponse = {
+  Status: number;
+  Answer?: DnsAnswer[];
+};
+
+type AuthUser = {
+  id: string;
+  email?: string;
+};
+
+type PracticeRecord = {
+  id: string;
+  owner_id: string;
+  name: string;
+  domain?: string;
+  email?: string;
+  plan: "free" | "audit" | "monitoring" | "compliance";
+  white_label_partner_id?: string | null;
+};
+
+type PracticeAccess = {
+  user: AuthUser;
+  practice: PracticeRecord;
+};
+
+const DNS_TYPE_CODES: Record<string, number> = {
+  A: 1,
+  NS: 2,
+  CNAME: 5,
+  MX: 15,
+  TXT: 16,
+  AAAA: 28,
+  CAA: 257
+};
+
+const app = new Hono<{ Bindings: Env }>();
+
+const MONITORING_SCHEDULE: Record<MonitoringModule, string> = {
+  ssl_check: "0 */6 * * *",
+  dns_check: "0 */4 * * *",
+  port_scan: "0 */12 * * *",
+  leak_check: "0 2 * * *",
+  reputation_check: "0 3 * * *"
+};
+
+const CRON_MODULES = new Map<string, MonitoringModule[]>(
+  Object.entries(MONITORING_SCHEDULE).map(([module, cron]) => [cron, [module as MonitoringModule]])
+);
+
+app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+
+app.get("/health", (c) =>
+  c.json({
+    ok: true,
+    service: "praxisshield-edge",
+    checkedAt: new Date().toISOString()
+  })
+);
+
+app.post("/api/check/external", async (c) => handleExternalCheck(c, { requirePractice: true, persist: true }));
+app.post("/api/check/questionnaire", async (c) => handleQuestionnaireCheck(c));
+app.post("/api/report/generate", async (c) => handleReportGenerate(c, { requirePractice: true, persist: true }));
+app.post("/api/report/pdf", async (c) => handleReportPdf(c));
+app.get("/api/monitoring/status", async (c) => handleMonitoringStatus(c));
+app.post("/api/monitoring/run", async (c) => handleMonitoringRun(c));
+app.get("/api/monitoring/history", async (c) => handleMonitoringHistory(c));
+app.post("/api/alert/acknowledge", async (c) => handleAlertAcknowledge(c));
+app.post("/api/privacy/delete", async (c) => handlePrivacyDelete(c));
+app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
+
+app.post("/api/external-check", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
+app.post("/security/external", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
+app.post("/ai/report", async (c) => handleReportGenerate(c, { requirePractice: false, persist: false }));
+
+const SYSTEM_PROMPT = `
+Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
+Du analysierst Sicherheitsdaten und erstellst verständliche Berichte für Ärzte ohne IT-Kenntnisse.
+
+TONALITÄT:
+- Klar, direkt, ohne Fachjargon
+- Ernst aber nicht alarmistisch
+- Lösungsorientiert - immer konkrete nächste Schritte
+- Sensibel für den Praxiskontext (Patientendaten, DSGVO, Haftung)
+
+AUSGABEFORMAT: Antworte ausschließlich als valides JSON gemäß ReportSchema. Keine Markdown-Blöcke, keine Erklärtexte.
+`;
+
+const REPORT_SCHEMA_HINT = `{
+  "executive_summary": "2-3 Sätze für den Praxisinhaber",
+  "overall_risk": "critical|high|medium|low",
+  "security_score": 0,
+  "ampel": "rot|gelb|grün",
+  "top_risks": [
+    {
+      "rank": 1,
+      "title": "Titel des Risikos",
+      "plain_language": "Erklärung ohne Fachbegriffe",
+      "business_impact": "Was passiert wenn unbehoben",
+      "action": "Konkrete Maßnahme",
+      "effort_hours": "Zeitaufwand",
+      "cost_estimate": "Kostenrahmen",
+      "priority": "sofort|diese_woche|diesen_monat"
+    }
+  ],
+  "scores_by_category": {
+    "access_control": 0,
+    "backup": 0,
+    "email_security": 0,
+    "network": 0,
+    "dsgvo": 0,
+    "updates": 0
+  },
+  "dsgvo_compliance": {
+    "status": "nicht_konform|teilweise|konform",
+    "missing_documents": [],
+    "liability_risk": "Haftungseinschätzung"
+  },
+  "quick_wins": [
+    {
+      "action": "Sofortmaßnahme",
+      "time_minutes": 30,
+      "impact": "Wirkung der Maßnahme"
+    }
+  ],
+  "monthly_monitoring_recommendation": true
+}`;
+
+function buildReportPrompt(data: CheckData) {
+  return `
+Analysiere folgende Sicherheitsdaten einer Arztpraxis und erstelle einen strukturierten Bericht.
+
+Praxis: ${data.practiceName ?? "Unbekannte Praxis"}
+Domain: ${data.domain ?? "nicht angegeben"}
+Vorberechneter Score: ${typeof data.score === "number" ? data.score : "nicht angegeben"}
+
+FRAGEBOGEN-ANTWORTEN:
+${JSON.stringify(data.questionnaire ?? {}, null, 2)}
+
+WLAN-SCAN-ERGEBNISSE:
+${JSON.stringify(data.wlan ?? null, null, 2)}
+
+EXTERNER CHECK:
+${JSON.stringify(data.external ?? null, null, 2)}
+
+Erstelle einen Bericht gemäß diesem Schema:
+${REPORT_SCHEMA_HINT}
+
+Bewertungsregeln:
+- top_risks: maximal 5 Einträge, nach Dringlichkeit sortiert.
+- quick_wins: 2 bis 4 konkrete Maßnahmen mit geringem Aufwand.
+- security_score und scores_by_category immer zwischen 0 und 100.
+- Ampel: rot bei critical/high, gelb bei medium, grün bei low.
+- Nenne keine erfundenen Produktpreise; nutze grobe Kostenrahmen wie "0-100 EUR" oder "IT-Dienstleister, 1-2 Stunden".
+`;
+}
+
+function parseAnthropicJson(value: unknown): unknown {
+  const content = asRecord(value).content;
+  if (!Array.isArray(content)) throw new Error("Anthropic response has no content array");
+
+  const text = content
+    .map((block) => {
+      const item = asRecord(block);
+      return typeof item.text === "string" ? item.text : "";
+    })
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Anthropic response text is empty");
+
+  const jsonText = extractJsonObject(text);
+  return JSON.parse(jsonText) as unknown;
+}
+
+function extractJsonObject(text: string) {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1]?.trim() ?? text;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+
+  if (start < 0 || end <= start) throw new Error("No JSON object found in Claude response");
+  return candidate.slice(start, end + 1);
+}
+
+function validateReport(value: unknown): Report {
+  const report = asRecord(value);
+  const scores = requireRecord(report.scores_by_category, "scores_by_category");
+  const dsgvo = requireRecord(report.dsgvo_compliance, "dsgvo_compliance");
+
+  return {
+    executive_summary: requireString(report.executive_summary, "executive_summary"),
+    overall_risk: requireEnum(report.overall_risk, ["critical", "high", "medium", "low"], "overall_risk"),
+    security_score: clampScore(requireNumber(report.security_score, "security_score")),
+    ampel: requireEnum(report.ampel, ["rot", "gelb", "grün"], "ampel"),
+    top_risks: requireArray(report.top_risks, "top_risks").slice(0, 5).map(validateTopRisk),
+    scores_by_category: {
+      access_control: clampScore(requireNumber(scores.access_control, "scores_by_category.access_control")),
+      backup: clampScore(requireNumber(scores.backup, "scores_by_category.backup")),
+      email_security: clampScore(requireNumber(scores.email_security, "scores_by_category.email_security")),
+      network: clampScore(requireNumber(scores.network, "scores_by_category.network")),
+      dsgvo: clampScore(requireNumber(scores.dsgvo, "scores_by_category.dsgvo")),
+      updates: clampScore(requireNumber(scores.updates, "scores_by_category.updates"))
+    },
+    dsgvo_compliance: {
+      status: requireEnum(dsgvo.status, ["nicht_konform", "teilweise", "konform"], "dsgvo_compliance.status"),
+      missing_documents: requireArray(dsgvo.missing_documents, "dsgvo_compliance.missing_documents").map((item, index) =>
+        requireString(item, `dsgvo_compliance.missing_documents.${index}`)
+      ),
+      liability_risk: requireString(dsgvo.liability_risk, "dsgvo_compliance.liability_risk")
+    },
+    quick_wins: requireArray(report.quick_wins, "quick_wins").map(validateQuickWin),
+    monthly_monitoring_recommendation: requireBoolean(
+      report.monthly_monitoring_recommendation,
+      "monthly_monitoring_recommendation"
+    )
+  };
+}
+
+function validateTopRisk(value: unknown, index: number): Report["top_risks"][number] {
+  const risk = requireRecord(value, `top_risks.${index}`);
+
+  return {
+    rank: Math.max(1, Math.round(requireNumber(risk.rank, `top_risks.${index}.rank`))),
+    title: requireString(risk.title, `top_risks.${index}.title`),
+    plain_language: requireString(risk.plain_language, `top_risks.${index}.plain_language`),
+    business_impact: requireString(risk.business_impact, `top_risks.${index}.business_impact`),
+    action: requireString(risk.action, `top_risks.${index}.action`),
+    effort_hours: requireString(risk.effort_hours, `top_risks.${index}.effort_hours`),
+    cost_estimate: requireString(risk.cost_estimate, `top_risks.${index}.cost_estimate`),
+    priority: requireEnum(risk.priority, ["sofort", "diese_woche", "diesen_monat"], `top_risks.${index}.priority`)
+  };
+}
+
+function validateQuickWin(value: unknown, index: number): Report["quick_wins"][number] {
+  const quickWin = requireRecord(value, `quick_wins.${index}`);
+
+  return {
+    action: requireString(quickWin.action, `quick_wins.${index}.action`),
+    time_minutes: Math.max(5, Math.round(requireNumber(quickWin.time_minutes, `quick_wins.${index}.time_minutes`))),
+    impact: requireString(quickWin.impact, `quick_wins.${index}.impact`)
+  };
+}
+
+function requireRecord(value: unknown, field: string): Record<string, unknown> {
+  try {
+    return asRecord(value);
+  } catch {
+    throw new Error(`${field} is missing or not an object`);
+  }
+}
+
+function requireArray(value: unknown, field: string): unknown[] {
+  if (!Array.isArray(value)) throw new Error(`${field} is missing or not an array`);
+  return value;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${field} is missing or empty`);
+  return value.trim();
+}
+
+function requireNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${field} is not a valid number`);
+  return value;
+}
+
+function requireBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`${field} is not a boolean`);
+  return value;
+}
+
+function requireEnum<const T extends readonly string[]>(value: unknown, values: T, field: string): T[number] {
+  if (typeof value !== "string" || !values.includes(value as T[number])) {
+    throw new Error(`${field} has an unsupported value`);
+  }
+  return value as T[number];
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Expected object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function asRecordOrNull(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+async function handleExternalCheck(
+  c: Context<{ Bindings: Env }>,
+  options: { requirePractice: boolean; persist: boolean }
+) {
+  let payload: ExternalCheckRequest;
+
+  try {
+    payload = await c.req.json<ExternalCheckRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  if (options.requirePractice && payload.consent !== true) {
+    return c.json({ error: "consent_required", message: "Vor externen Checks ist eine Einwilligung erforderlich." }, 400);
+  }
+
+  const access = options.requirePractice || payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "external_check") : null;
+  if (access instanceof Response) return access;
+
+  const domain = normalizeDomain(payload.domain || access?.practice.domain);
+
+  if (!domain) {
+    return c.json({ error: "domain is required" }, 400);
+  }
+
+  if (access) {
+    const allowed = await consumeExternalQuota(c.env, access);
+    if (!allowed) {
+      await auditPracticeAccess(c, access, "quota_denied", "external_check", { plan: access.practice.plan });
+      return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
+    }
+  }
+
+  const email = normalizeEmail(payload.email ?? access?.practice.email);
+  const result = await performExternalCheck(domain, email, c.env);
+
+  if (access && options.persist) {
+    const checkId = await persistSecurityCheck(c.env, access.practice.id, "external", result.overall_score, {
+      summary: redactedExternalSummary(result),
+      encryptedPayload: result
+    });
+    await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "external" });
+    return c.json({ ...result, checkId });
+  }
+
+  return c.json(result);
+}
+
+async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
+  let payload: QuestionnaireRequest;
+
+  try {
+    payload = await c.req.json<QuestionnaireRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "questionnaire_check");
+  if (access instanceof Response) return access;
+
+  const questionnaire = payload.questionnaire ?? {};
+  const score = scoreQuestionnaire(questionnaire);
+  const findings = questionnaireFindings(questionnaire);
+  const checkId = await persistSecurityCheck(c.env, access.practice.id, "questionnaire", score, {
+    summary: {
+      score,
+      answered: Object.keys(questionnaire).length,
+      risk_count: findings.length
+    },
+    encryptedPayload: { questionnaire, score, findings }
+  });
+
+  await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "questionnaire" });
+
+  return c.json({
+    checkId,
+    score,
+    findings,
+    checkedAt: new Date().toISOString()
+  });
+}
+
+async function handleReportGenerate(
+  c: Context<{ Bindings: Env }>,
+  options: { requirePractice: boolean; persist: boolean }
+) {
+  let payload: ReportRequest;
+
+  try {
+    payload = await c.req.json<ReportRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = options.requirePractice || payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "report_generate") : null;
+  if (access instanceof Response) return access;
+
+  const reportInput: CheckData = {
+    ...payload,
+    practiceName: payload.practiceName ?? access?.practice.name,
+    domain: payload.domain ?? access?.practice.domain
+  };
+
+  const reportResult = await generateAiReportFromChecks(c.env, reportInput);
+  if (reportResult instanceof Response) return reportResult;
+
+  if (access && options.persist) {
+    const reportId = crypto.randomUUID();
+    await persistReport(c.env, {
+      id: reportId,
+      practiceId: access.practice.id,
+      checkId: payload.checkId,
+      report: reportResult
+    });
+    await auditPracticeAccess(c, access, "create", "reports", { report_id: reportId });
+    return c.json({ ...reportResult, reportId });
+  }
+
+  return c.json(reportResult);
+}
+
+async function handleReportPdf(c: Context<{ Bindings: Env }>) {
+  let payload: PdfReportRequest;
+
+  try {
+    payload = await c.req.json<PdfReportRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "report_pdf");
+  if (access instanceof Response) return access;
+
+  if (!payload.report) {
+    return c.json({ error: "report is required" }, 400);
+  }
+
+  const report = validateReport(payload.report);
+  const pdf = buildSimplePdf([
+    `${payload.practiceName ?? access.practice.name} - PraxisShield Bericht`,
+    `Domain: ${payload.domain ?? access.practice.domain ?? "nicht angegeben"}`,
+    `Security Score: ${report.security_score}/100`,
+    `Ampel: ${report.ampel.toUpperCase()}`,
+    report.executive_summary,
+    ...report.top_risks.map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
+    "Haftungsausschluss: Momentaufnahme, keine Garantie."
+  ]);
+
+  await auditPracticeAccess(c, access, "export", "reports_pdf", { format: "pdf" });
+
+  return new Response(pdf, {
+    headers: {
+      "content-type": "application/pdf",
+      "content-disposition": `attachment; filename="praxisshield-${access.practice.id}.pdf"`,
+      "cache-control": "no-store"
+    }
+  });
+}
+
+async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise<Report | Response> {
+  if (!env.ANTHROPIC_API_KEY) {
+    return Response.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
+  }
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01"
+    },
+    body: JSON.stringify({
+      model: env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: buildReportPrompt(payload) }]
+    })
+  });
+
+  const data = (await response.json()) as unknown;
+
+  if (!response.ok) {
+    return Response.json({ error: "anthropic_request_failed" }, { status: 502 });
+  }
+
+  try {
+    return validateReport(parseAnthropicJson(data));
+  } catch (error) {
+    return Response.json(
+      {
+        error: "invalid_ai_report",
+        message: error instanceof Error ? error.message : "Claude response did not match Report schema"
+      },
+      { status: 502 }
+    );
+  }
+}
+
+async function requirePracticeAccess(
+  c: Context<{ Bindings: Env }>,
+  practiceId: string | undefined,
+  action: string
+): Promise<PracticeAccess | Response> {
+  if (!practiceId || !isUuid(practiceId)) {
+    return c.json({ error: "practiceId is required" }, 400);
+  }
+
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+
+  const practices = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/practices?select=id,owner_id,name,domain,email,plan,white_label_partner_id&id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    { method: "GET" }
+  );
+  const practice = normalizePractice(practices[0]);
+
+  if (!practice || practice.owner_id !== user.id) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  const access = { user, practice };
+  await auditPracticeAccess(c, access, "access", action);
+
+  return access;
+}
+
+async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<AuthUser | null> {
+  if (!c.env.SUPABASE_URL || !c.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+
+  const token = getBearerToken(c.req.header("authorization"));
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${c.env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        apikey: c.env.SUPABASE_ANON_KEY ?? c.env.SUPABASE_SERVICE_ROLE_KEY,
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) return null;
+
+    const data = asRecord(await response.json());
+    const id = typeof data.id === "string" ? data.id : "";
+    if (!isUuid(id)) return null;
+
+    return {
+      id,
+      email: typeof data.email === "string" ? data.email : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getBearerToken(value?: string) {
+  const match = value?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function normalizePractice(value: unknown): PracticeRecord | null {
+  const item = asRecordOrNull(value);
+  if (!item) return null;
+
+  const id = typeof item.id === "string" ? item.id : "";
+  const ownerId = typeof item.owner_id === "string" ? item.owner_id : "";
+  const plan = item.plan === "audit" || item.plan === "monitoring" || item.plan === "compliance" ? item.plan : "free";
+
+  if (!isUuid(id) || !isUuid(ownerId)) return null;
+
+  return {
+    id,
+    owner_id: ownerId,
+    name: typeof item.name === "string" ? item.name : "Praxis",
+    domain: typeof item.domain === "string" ? item.domain : undefined,
+    email: typeof item.email === "string" ? item.email : undefined,
+    plan,
+    white_label_partner_id: typeof item.white_label_partner_id === "string" ? item.white_label_partner_id : null
+  };
+}
+
+async function consumeExternalQuota(env: Env, access: PracticeAccess) {
+  if (access.practice.plan !== "free") return true;
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return false;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_external_check_quota", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      p_user_id: access.user.id,
+      p_practice_id: access.practice.id,
+      p_usage_date: today,
+      p_limit: 3
+    }
+  });
+
+  return allowed === true;
+}
+
+async function persistSecurityCheck(
+  env: Env,
+  practiceId: string,
+  type: "questionnaire" | "wlan" | "external" | "full",
+  score: number,
+  payload: { summary: Record<string, unknown>; encryptedPayload: unknown }
+) {
+  const id = crypto.randomUUID();
+  const encrypted = await encryptJson(env, payload.encryptedPayload);
+  const payloadHash = await sha256Json(payload.encryptedPayload);
+
+  await supabaseRest(env, "/rest/v1/security_checks", {
+    method: "POST",
+    body: {
+      id,
+      practice_id: practiceId,
+      type,
+      score: clampScore(score),
+      results: payload.summary,
+      encrypted_payload: encrypted,
+      payload_sha256: payloadHash
+    }
+  });
+
+  return id;
+}
+
+async function persistReport(env: Env, input: { id: string; practiceId: string; checkId?: string; report: Report }) {
+  const encrypted = await encryptJson(env, input.report);
+  const payloadHash = await sha256Json(input.report);
+
+  await supabaseRest(env, "/rest/v1/reports", {
+    method: "POST",
+    body: {
+      id: input.id,
+      practice_id: input.practiceId,
+      check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
+      content: redactedReportSummary(input.report),
+      encrypted_content: encrypted,
+      payload_sha256: payloadHash
+    }
+  });
+}
+
+async function auditPracticeAccess(
+  c: Context<{ Bindings: Env }>,
+  access: PracticeAccess,
+  action: string,
+  resource: string,
+  metadata: Record<string, unknown> = {}
+) {
+  if (!c.env.SUPABASE_URL || !c.env.SUPABASE_SERVICE_ROLE_KEY) return;
+
+  try {
+    await supabaseRest(c.env, "/rest/v1/practice_access_audit", {
+      method: "POST",
+      body: {
+        practice_id: access.practice.id,
+        user_id: access.user.id,
+        action,
+        resource,
+        metadata: redactAuditMetadata(metadata),
+        ip_hash: await sha256Text(c.req.header("cf-connecting-ip") ?? "unknown"),
+        user_agent: (c.req.header("user-agent") ?? "unknown").slice(0, 180)
+      }
+    });
+  } catch {
+    // Audit failures must not leak sensitive payloads into logs or responses.
+  }
+}
+
+function redactAuditMetadata(metadata: Record<string, unknown>) {
+  const allowed = new Set(["check_id", "report_id", "alert_id", "type", "source", "format", "plan"]);
+  return Object.fromEntries(Object.entries(metadata).filter(([key]) => allowed.has(key)));
+}
+
+function redactedExternalSummary(result: ExternalCheckResult) {
+  return {
+    domain: result.domain,
+    checkedAt: result.checkedAt,
+    overall_score: result.overall_score,
+    critical_count: result.critical_count,
+    warning_count: result.warning_count,
+    providers: result.providers,
+    finding_ids: result.findings.map((finding) => finding.id)
+  };
+}
+
+function redactedReportSummary(report: Report) {
+  return {
+    security_score: report.security_score,
+    overall_risk: report.overall_risk,
+    ampel: report.ampel,
+    top_risk_count: report.top_risks.length,
+    monthly_monitoring_recommendation: report.monthly_monitoring_recommendation
+  };
+}
+
+function scoreQuestionnaire(questionnaire: Record<string, boolean>) {
+  const answers = Object.values(questionnaire);
+  if (answers.length === 0) return 50;
+
+  const positive = answers.filter(Boolean).length;
+  return clampScore((positive / answers.length) * 100);
+}
+
+function questionnaireFindings(questionnaire: Record<string, boolean>): SecurityFinding[] {
+  return Object.entries(questionnaire)
+    .filter(([, value]) => value === false)
+    .slice(0, 10)
+    .map(([key], index) => ({
+      id: `questionnaire-${key}`,
+      severity: index < 3 ? "warning" : "info",
+      title: `Fragebogen-Risiko: ${key}`
+    }));
+}
+
+async function encryptJson(env: Env, value: unknown) {
+  const key = await importAesKey(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(JSON.stringify(value));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+
+  return {
+    alg: "AES-256-GCM",
+    iv: bytesToBase64(iv),
+    data: bytesToBase64(new Uint8Array(ciphertext)),
+    created_at: new Date().toISOString()
+  };
+}
+
+async function importAesKey(env: Env) {
+  const material = decodeEncryptionKey(env.DATA_ENCRYPTION_KEY);
+  if (material.length !== 32) {
+    throw new Error("DATA_ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256-GCM");
+  }
+
+  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt"]);
+}
+
+function decodeEncryptionKey(value?: string) {
+  if (!value) return new Uint8Array();
+
+  const trimmed = value.trim();
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) {
+    return new Uint8Array(trimmed.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? []);
+  }
+
+  try {
+    const binary = atob(trimmed.replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  } catch {
+    return new TextEncoder().encode(trimmed);
+  }
+}
+
+async function sha256Json(value: unknown) {
+  return sha256Text(JSON.stringify(value));
+}
+
+async function sha256Text(value: string) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return bytesToHex(new Uint8Array(hash));
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function bytesToHex(bytes: Uint8Array) {
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function buildSimplePdf(lines: string[]) {
+  const cleanLines = lines.flatMap((line) => wrapPdfLine(line, 86)).slice(0, 46);
+  const stream = ["BT", "/F1 12 Tf", "50 790 Td", "16 TL", ...cleanLines.map((line) => `(${escapePdfText(line)}) Tj T*`), "ET"].join("\n");
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(body.length);
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return body;
+}
+
+function wrapPdfLine(value: string, maxLength: number) {
+  const words = value.replace(/\s+/g, " ").trim().split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    if (`${current} ${word}`.trim().length > maxLength) {
+      if (current) lines.push(current);
+      current = word;
+    } else {
+      current = `${current} ${word}`.trim();
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [""];
+}
+
+function escapePdfText(value: string) {
+  return value.replace(/[()\\]/g, "\\$&").replace(/[^\x20-\x7E]/g, "?");
+}
+
+async function performExternalCheck(domain: string, email: string | null, env: Env): Promise<ExternalCheckResult> {
+  const timestamp = new Date().toISOString();
+  const [dns, ssl, emailSecurity, ports, reputation, leaks] = await Promise.all([
+    checkDns(domain),
+    checkSsl(domain),
+    checkEmailSecurity(domain),
+    checkPorts(domain, env.SHODAN_API_KEY),
+    checkReputation(domain, env),
+    checkLeaks(domain, email, env.HIBP_API_KEY)
+  ]);
+  const checks = { ssl, dns, email_security: emailSecurity, ports, reputation, leaks };
+  const findings = buildFindings(checks);
+  const critical_count = findings.filter((finding) => finding.severity === "critical").length;
+  const warning_count = findings.filter((finding) => finding.severity === "warning").length;
+  const overall_score = calculateOverallScore(critical_count, warning_count, findings);
+
+  const result: ExternalCheckResult = {
+    domain,
+    timestamp,
+    checks,
+    overall_score,
+    critical_count,
+    warning_count,
+    findings,
+    checkedAt: timestamp,
+    scoreImpact: overall_score - 100,
+    providers: {
+      sslLabs: true,
+      cloudflareDns: true,
+      securityTrails: Boolean(env.SECURITYTRAILS_API_KEY),
+      shodan: Boolean(env.SHODAN_API_KEY),
+      hibp: Boolean(env.HIBP_API_KEY),
+      virusTotal: Boolean(env.VIRUSTOTAL_API_KEY),
+      mxToolbox: Boolean(env.MXTOOLBOX_API_KEY)
+    }
+  };
+
+  return result;
+}
+
+async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
+  let payload: MonitoringRunRequest;
+
+  try {
+    payload = await c.req.json<MonitoringRunRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "monitoring_run") : null;
+  if (access instanceof Response) return access;
+
+  const domain = normalizeDomain(payload.domain || access?.practice.domain);
+
+  if (!domain) {
+    return c.json({ error: "domain is required" }, 400);
+  }
+
+  if (access) {
+    const allowed = await consumeExternalQuota(c.env, access);
+    if (!allowed) {
+      await auditPracticeAccess(c, access, "quota_denied", "monitoring_run", { plan: access.practice.plan });
+      return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
+    }
+  }
+
+  const practiceId = access?.practice.id ?? payload.practiceId ?? "";
+  const result = await performExternalCheck(domain, normalizeEmail(payload.email ?? access?.practice.email), c.env);
+  const previousPorts = practiceId ? await fetchPreviousCriticalPorts(c.env, practiceId) : new Set<number>();
+  const snapshot = buildMonitoringSnapshot(practiceId, result, "manual");
+  const events = buildMonitoringEvents(result, ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"], previousPorts).map(
+    (event) => ({ ...event, practice_id: practiceId })
+  );
+
+  if (practiceId && isUuid(practiceId)) {
+    await persistMonitoringResult(c.env, snapshot, events);
+  }
+
+  if (access) {
+    await auditPracticeAccess(c, access, "create", "monitoring_snapshots", { snapshot_id: snapshot.id, source: "manual" });
+  }
+
+  return c.json({ snapshot, events, result });
+}
+
+async function handleMonitoringStatus(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "monitoring_status");
+  if (access instanceof Response) return access;
+
+  const snapshots = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/monitoring_snapshots?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&order=checked_at.desc&limit=1`,
+    { method: "GET" }
+  );
+  const events = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&resolved_at=is.null&order=created_at.desc&limit=20`,
+    { method: "GET" }
+  );
+
+  await auditPracticeAccess(c, access, "read", "monitoring_status");
+
+  return c.json({
+    snapshot: snapshots[0] ?? null,
+    activeAlerts: events
+  });
+}
+
+async function handleMonitoringHistory(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "monitoring_history");
+  if (access instanceof Response) return access;
+
+  const history = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/monitoring_snapshots?select=id,score,category_scores,checked_at,source&practice_id=eq.${encodeURIComponent(
+      access.practice.id
+    )}&order=checked_at.desc&limit=90`,
+    { method: "GET" }
+  );
+
+  await auditPracticeAccess(c, access, "read", "monitoring_history");
+
+  return c.json({ history });
+}
+
+async function handleAlertAcknowledge(c: Context<{ Bindings: Env }>) {
+  let payload: AlertAcknowledgeRequest;
+
+  try {
+    payload = await c.req.json<AlertAcknowledgeRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "alert_acknowledge");
+  if (access instanceof Response) return access;
+  if (!payload.alertId || !isUuid(payload.alertId)) return c.json({ error: "alertId is required" }, 400);
+
+  await supabaseRest(c.env, `/rest/v1/monitoring_events?id=eq.${encodeURIComponent(payload.alertId)}&practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "PATCH",
+    body: { resolved_at: new Date().toISOString() }
+  });
+  await auditPracticeAccess(c, access, "update", "monitoring_events", { alert_id: payload.alertId });
+
+  return c.json({ ok: true });
+}
+
+async function handlePrivacyDelete(c: Context<{ Bindings: Env }>) {
+  let payload: PrivacyDeleteRequest;
+
+  try {
+    payload = await c.req.json<PrivacyDeleteRequest>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "privacy_delete");
+  if (access instanceof Response) return access;
+
+  await auditPracticeAccess(c, access, "delete_requested", "practices");
+  await supabaseRest(c.env, "/rest/v1/deletion_requests", {
+    method: "POST",
+    body: {
+      practice_id: access.practice.id,
+      user_id: access.user.id,
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      metadata: { reason: "user_requested_erasure" }
+    }
+  });
+  await supabaseRest(c.env, `/rest/v1/practice_access_audit?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "DELETE"
+  });
+  await supabaseRest(c.env, `/rest/v1/practices?id=eq.${encodeURIComponent(access.practice.id)}`, {
+    method: "DELETE"
+  });
+
+  return c.json({ ok: true, deletedPracticeId: access.practice.id });
+}
+
+async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
+  let payload: { practiceId?: string; version?: string };
+
+  try {
+    payload = await c.req.json<{ practiceId?: string; version?: string }>();
+  } catch {
+    return c.json({ error: "invalid_json" }, 400);
+  }
+
+  const access = await requirePracticeAccess(c, payload.practiceId, "avv_accept");
+  if (access instanceof Response) return access;
+
+  await supabaseRest(c.env, "/rest/v1/data_processing_agreements?on_conflict=practice_id,version", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: {
+      practice_id: access.practice.id,
+      user_id: access.user.id,
+      version: payload.version ?? "2026-06-24",
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+      metadata: {
+        legal_basis: "DSGVO Art. 28",
+        data_region: "EU / Frankfurt",
+        generated_automatically: true
+      }
+    }
+  });
+  await auditPracticeAccess(c, access, "accept", "data_processing_agreements");
+
+  return c.json({ ok: true });
+}
+
+async function runScheduledMonitoring(cron: string, env: Env) {
+  const modules = CRON_MODULES.get(cron) ?? ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"];
+  const targets = await fetchMonitoringTargets(env);
+
+  await Promise.all(
+    targets.map(async (target) => {
+      const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env);
+      const previousPorts = await fetchPreviousCriticalPorts(env, target.id);
+      const snapshot = buildMonitoringSnapshot(target.id, result, "scheduled");
+      const events = buildMonitoringEvents(result, modules, previousPorts);
+
+      await persistMonitoringResult(env, snapshot, events);
+    })
+  );
+}
+
+function buildMonitoringSnapshot(practiceId: string, result: ExternalCheckResult, source: "manual" | "scheduled") {
+  const checks = result.checks;
+
+  return {
+    id: crypto.randomUUID(),
+    practice_id: practiceId,
+    source,
+    score: result.overall_score,
+    category_scores: {
+      ssl: scoreSsl(checks.ssl),
+      dns: scoreDns(checks.dns),
+      email: scoreEmail(checks.email_security),
+      ports: scorePorts(checks.ports),
+      reputation: scoreReputation(checks.reputation),
+      leaks: scoreLeaks(checks.leaks)
+    },
+    ssl: {
+      valid: checks.ssl.valid,
+      expires_at: checks.ssl.expires_at,
+      days_remaining: checks.ssl.days_remaining,
+      issuer: checks.ssl.issuer,
+      grade: checks.ssl.grade
+    },
+    email_security: {
+      spf: checks.email_security.spf.exists && checks.email_security.spf.valid,
+      dkim: checks.email_security.dkim.exists && checks.email_security.dkim.valid,
+      dmarc: checks.email_security.dmarc.exists && checks.email_security.dmarc.policy !== "none"
+    },
+    devices: {
+      known: 0,
+      unknown: 0
+    },
+    checks,
+    checked_at: result.timestamp
+  };
+}
+
+function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringModule[], previousCriticalPorts: Set<number>) {
+  const events: Array<{
+    id: string;
+    practice_id: string;
+    type: "ssl_expiry" | "dmarc_missing" | "leak_detected" | "port_open" | "domain_blacklisted" | "dns_changed" | "monitoring_run";
+    severity: FindingSeverity;
+    title: string;
+    message: string;
+    details: Record<string, unknown>;
+    created_at: string;
+  }> = [];
+  const checks = result.checks;
+  const timestamp = result.timestamp;
+
+  if (
+    modules.includes("ssl_check") &&
+    checks.ssl.days_remaining !== null &&
+    checks.ssl.days_remaining <= 14
+  ) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "ssl_expiry",
+      severity: "critical",
+      title: "SSL-Zertifikat läuft in 14 Tagen ab",
+      message: `Das Zertifikat für ${result.domain} läuft in ${checks.ssl.days_remaining} Tagen ab.`,
+      details: { days_remaining: checks.ssl.days_remaining, expires_at: checks.ssl.expires_at },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("dns_check") && !checks.email_security.dmarc.exists) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "dmarc_missing",
+      severity: "critical",
+      title: "DMARC-Eintrag wurde entfernt",
+      message: "Für die Praxis-Domain wurde kein DMARC-Eintrag gefunden.",
+      details: { domain: result.domain },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("leak_check") && checks.leaks.email_found) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "leak_detected",
+      severity: "critical",
+      title: "Neuer Datenleck mit Praxis-E-Mail gefunden",
+      message: `${checks.leaks.breach_count} bekannte Datenleck-Einträge betreffen die geprüfte E-Mail.`,
+      details: { breach_count: checks.leaks.breach_count, breaches: checks.leaks.breaches },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("port_scan")) {
+    for (const port of checks.ports.open_ports.filter((item) => item.severity === "critical")) {
+      if (previousCriticalPorts.has(port.port)) continue;
+
+      events.push({
+        id: crypto.randomUUID(),
+        practice_id: "",
+        type: "port_open",
+        severity: "critical",
+        title: "Neuer offener kritischer Port erkannt",
+        message: `${port.service} ist auf Port ${port.port}/${port.protocol} öffentlich erreichbar.`,
+        details: port as unknown as Record<string, unknown>,
+        created_at: timestamp
+      });
+    }
+  }
+
+  if (modules.includes("reputation_check") && checks.reputation.blacklisted) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "domain_blacklisted",
+      severity: "critical",
+      title: "Domain auf Blacklist eingetragen",
+      message: `${result.domain} ist bei ${checks.reputation.blacklists.length} Reputation-Quelle(n) auffällig.`,
+      details: { blacklists: checks.reputation.blacklists },
+      created_at: timestamp
+    });
+  }
+
+  if (events.length === 0) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "monitoring_run",
+      severity: result.critical_count > 0 ? "warning" : "info",
+      title: "Monitoring-Lauf abgeschlossen",
+      message: `${result.critical_count} kritische und ${result.warning_count} Warn-Ereignisse im aktuellen Lauf.`,
+      details: { score: result.overall_score },
+      created_at: timestamp
+    });
+  }
+
+  return events;
+}
+
+async function persistMonitoringResult(
+  env: Env,
+  snapshot: ReturnType<typeof buildMonitoringSnapshot>,
+  events: ReturnType<typeof buildMonitoringEvents>
+) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return;
+
+  const encryptedChecks = await encryptJson(env, snapshot.checks);
+  const payloadHash = await sha256Json(snapshot.checks);
+  const dbSnapshot = {
+    ...snapshot,
+    checks: {
+      categories: snapshot.category_scores,
+      checked_at: snapshot.checked_at
+    },
+    encrypted_checks: encryptedChecks,
+    payload_sha256: payloadHash
+  };
+
+  await supabaseRest(env, "/rest/v1/monitoring_snapshots", {
+    method: "POST",
+    body: dbSnapshot
+  });
+
+  const eventsWithPractice = events.map((event) => ({
+    ...event,
+    practice_id: snapshot.practice_id
+  }));
+
+  await supabaseRest(env, "/rest/v1/monitoring_events", {
+    method: "POST",
+    body: eventsWithPractice
+  });
+}
+
+async function fetchMonitoringTargets(env: Env): Promise<PracticeMonitorTarget[]> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return [];
+
+  const data = await supabaseRest<unknown[]>(env, "/rest/v1/practices?select=id,domain,email&domain=not.is.null", {
+    method: "GET"
+  });
+
+  return data
+    .map((item) => asRecordOrNull(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item))
+    .map((item) => ({
+      id: typeof item.id === "string" ? item.id : "",
+      domain: typeof item.domain === "string" ? item.domain : "",
+      email: typeof item.email === "string" ? item.email : undefined
+    }))
+    .filter((target) => isUuid(target.id) && Boolean(normalizeDomain(target.domain)));
+}
+
+async function fetchPreviousCriticalPorts(env: Env, practiceId: string) {
+  const ports = new Set<number>();
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !isUuid(practiceId)) return ports;
+
+  try {
+    const data = await supabaseRest<unknown[]>(
+      env,
+      `/rest/v1/monitoring_snapshots?select=checks&practice_id=eq.${encodeURIComponent(practiceId)}&order=checked_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const previous = asRecordOrNull(data[0]);
+    const checks = asRecordOrNull(previous?.checks);
+    const portCheck = asRecordOrNull(checks?.ports);
+    const openPorts = Array.isArray(portCheck?.open_ports) ? portCheck.open_ports : [];
+
+    for (const item of openPorts) {
+      const port = asRecordOrNull(item);
+      if (typeof port?.port === "number" && port.severity === "critical") {
+        ports.add(port.port);
+      }
+    }
+  } catch {
+    return ports;
+  }
+
+  return ports;
+}
+
+async function supabaseRest<T>(
+  env: Env,
+  path: string,
+  options: { method: "GET" | "POST" | "PATCH" | "DELETE"; body?: unknown; prefer?: string }
+): Promise<T> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Supabase service credentials are not configured");
+  }
+
+  const response = await fetch(`${env.SUPABASE_URL}${path}`, {
+    method: options.method,
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+      "content-type": "application/json",
+      prefer: options.prefer ?? "return=minimal"
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase request failed with ${response.status}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  if (!text) return undefined as T;
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) return text as T;
+  return JSON.parse(text) as T;
+}
+
+function scoreSsl(ssl: SSLCheck) {
+  let score = ssl.valid ? 100 : 30;
+  if (ssl.days_remaining !== null && ssl.days_remaining <= 14) score -= 45;
+  else if (ssl.days_remaining !== null && ssl.days_remaining <= 30) score -= 20;
+  if (!ssl.hsts_enabled) score -= 10;
+  if (ssl.vulnerabilities.length > 0 || ssl.grade === "F") score -= 35;
+  return clampScore(score);
+}
+
+function scoreDns(dns: DNSCheck) {
+  let score = 70;
+  if (dns.a_records.length > 0 || dns.aaaa_records.length > 0) score += 15;
+  if (dns.ns_records.length >= 2) score += 10;
+  if (dns.caa_records.length > 0) score += 5;
+  return clampScore(score);
+}
+
+function scoreEmail(email: EmailSecurityCheck) {
+  return clampScore(
+    (email.spf.exists && email.spf.valid ? 30 : 0) +
+      (email.dkim.exists && email.dkim.valid ? 25 : 0) +
+      (email.dmarc.exists ? 20 : 0) +
+      (email.dmarc.policy === "reject" ? 15 : email.dmarc.policy === "quarantine" ? 10 : 0) +
+      (email.mx_records.secure ? 10 : 0)
+  );
+}
+
+function scorePorts(ports: PortCheck) {
+  const critical = ports.open_ports.filter((port) => port.severity === "critical").length;
+  const warning = ports.open_ports.filter((port) => port.severity === "warning").length;
+  return clampScore(100 - critical * 28 - warning * 12 - ports.known_vulnerabilities.length * 16);
+}
+
+function scoreReputation(reputation: ReputationCheck) {
+  return clampScore(100 - (reputation.blacklisted ? 65 : 0) - (reputation.malware_hosting ? 40 : 0) - reputation.phishing_reports * 8);
+}
+
+function scoreLeaks(leaks: LeakCheck) {
+  return clampScore(100 - (leaks.email_found ? 55 : 0) - (leaks.domain_found ? 20 : 0) - leaks.paste_count * 5);
+}
+
+async function checkSsl(domain: string): Promise<SSLCheck> {
+  const https = await checkHttpsSignal(domain);
+  const fallback: SSLCheck = {
+    valid: https.reachable,
+    issuer: "unknown",
+    expires_at: null,
+    days_remaining: null,
+    protocol: "unknown",
+    grade: https.reachable ? "B" : "C",
+    hsts_enabled: https.hsts,
+    vulnerabilities: []
+  };
+
+  try {
+    const response = await fetch(
+      `https://api.ssllabs.com/api/v3/analyze?host=${encodeURIComponent(domain)}&publish=off&all=done&fromCache=on&maxAge=24`
+    );
+
+    if (!response.ok) return fallback;
+
+    const data = (await response.json()) as {
+      status?: string;
+      endpoints?: Array<{
+        grade?: string;
+        details?: {
+          protocols?: Array<{ name?: string; version?: string }>;
+          cert?: {
+            notAfter?: number;
+            issuerSubject?: string;
+          };
+          poodle?: boolean;
+          beast?: boolean;
+          heartbleed?: boolean;
+          drownVulnerable?: boolean;
+          freak?: boolean;
+          logjam?: boolean;
+        };
+      }>;
+    };
+    const endpoint = data.endpoints?.[0];
+    const details = endpoint?.details;
+    const notAfter = details?.cert?.notAfter;
+    const expiresAt = notAfter ? new Date(notAfter).toISOString() : null;
+    const daysRemaining = notAfter ? Math.ceil((notAfter - Date.now()) / 86_400_000) : null;
+    const vulnerabilities = [
+      details?.poodle ? "POODLE" : null,
+      details?.beast ? "BEAST" : null,
+      details?.heartbleed ? "HEARTBLEED" : null,
+      details?.drownVulnerable ? "DROWN" : null,
+      details?.freak ? "FREAK" : null,
+      details?.logjam ? "LOGJAM" : null
+    ].filter(Boolean) as string[];
+    const protocol = bestTlsProtocol(details?.protocols ?? []);
+
+    return {
+      valid: Boolean(endpoint && !endpoint.grade?.startsWith("T") && (daysRemaining === null || daysRemaining > 0)),
+      issuer: details?.cert?.issuerSubject ?? "unknown",
+      expires_at: expiresAt,
+      days_remaining: daysRemaining,
+      protocol,
+      grade: normalizeSslGrade(endpoint?.grade),
+      hsts_enabled: https.hsts,
+      vulnerabilities
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function checkHttpsSignal(domain: string) {
+  try {
+    const response = await fetch(`https://${domain}`, {
+      method: "HEAD",
+      redirect: "follow"
+    });
+
+    return {
+      reachable: response.ok,
+      hsts: response.headers.has("strict-transport-security")
+    };
+  } catch {
+    return {
+      reachable: false,
+      hsts: false
+    };
+  }
+}
+
+async function checkDns(domain: string): Promise<DNSCheck> {
+  const [a, aaaa, cname, ns, txt, caa] = await Promise.all([
+    queryDns(domain, "A"),
+    queryDns(domain, "AAAA"),
+    queryDns(domain, "CNAME"),
+    queryDns(domain, "NS"),
+    queryDns(domain, "TXT"),
+    queryDns(domain, "CAA")
+  ]);
+
+  return {
+    a_records: a,
+    aaaa_records: aaaa,
+    cname_records: cname,
+    ns_records: ns,
+    txt_records: txt,
+    caa_records: caa
+  };
+}
+
+async function checkEmailSecurity(domain: string): Promise<EmailSecurityCheck> {
+  const [txtRecords, mxRecords, dmarcRecords, mtaStsRecords, tlsRptRecords, dkim] = await Promise.all([
+    queryDns(domain, "TXT"),
+    queryDns(domain, "MX"),
+    queryDns(`_dmarc.${domain}`, "TXT"),
+    queryDns(`_mta-sts.${domain}`, "TXT"),
+    queryDns(`_smtp._tls.${domain}`, "TXT"),
+    findDkim(domain)
+  ]);
+  const spfRecords = txtRecords.filter((record) => record.toLowerCase().startsWith("v=spf1"));
+  const spfIssues = getSpfIssues(spfRecords);
+  const dmarcRecord = dmarcRecords.find((record) => record.toLowerCase().startsWith("v=dmarc1")) ?? "";
+  const policy = getDmarcPolicy(dmarcRecord);
+  const rua = getTagValue(dmarcRecord, "rua");
+
+  return {
+    spf: {
+      exists: spfRecords.length > 0,
+      valid: spfRecords.length === 1 && spfIssues.length === 0,
+      record: spfRecords[0] ?? "",
+      issues: spfIssues
+    },
+    dkim,
+    dmarc: {
+      exists: Boolean(dmarcRecord),
+      policy,
+      rua,
+      recommendation: getDmarcRecommendation(policy)
+    },
+    mx_records: {
+      exists: mxRecords.length > 0,
+      records: mxRecords,
+      secure:
+        mxRecords.length > 0 &&
+        (mtaStsRecords.some((record) => record.toLowerCase().startsWith("v=stsv1")) ||
+          tlsRptRecords.some((record) => record.toLowerCase().startsWith("v=tlsrptv1")))
+    }
+  };
+}
+
+async function checkPorts(domain: string, apiKey?: string): Promise<PortCheck> {
+  if (!apiKey) {
+    return { open_ports: [], known_vulnerabilities: [] };
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.shodan.io/shodan/host/search?key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(
+        `hostname:${domain}`
+      )}`
+    );
+
+    if (!response.ok) {
+      return { open_ports: [], known_vulnerabilities: [] };
+    }
+
+    const data = (await response.json()) as {
+      matches?: Array<{
+        port?: number;
+        transport?: string;
+        product?: string;
+        _shodan?: { module?: string };
+        data?: string;
+        vulns?: Record<string, { cvss?: number; summary?: string }>;
+      }>;
+    };
+    const ports = new Map<string, OpenPort>();
+    const vulnerabilities = new Map<string, ShodanVuln>();
+
+    for (const match of data.matches ?? []) {
+      if (!match.port) continue;
+
+      const service = match.product ?? match._shodan?.module ?? "unknown";
+      const severity = severityForPort(match.port);
+      ports.set(`${match.transport ?? "tcp"}:${match.port}`, {
+        port: match.port,
+        protocol: match.transport ?? "tcp",
+        service,
+        severity,
+        banner: trimBanner(match.data)
+      });
+
+      for (const [id, vuln] of Object.entries(match.vulns ?? {})) {
+        vulnerabilities.set(`${id}:${match.port}`, {
+          id,
+          cvss: typeof vuln.cvss === "number" ? vuln.cvss : null,
+          summary: vuln.summary ?? "",
+          port: match.port
+        });
+      }
+    }
+
+    return {
+      open_ports: [...ports.values()].sort((left, right) => left.port - right.port),
+      known_vulnerabilities: [...vulnerabilities.values()].sort((left, right) => (right.cvss ?? 0) - (left.cvss ?? 0))
+    };
+  } catch {
+    return { open_ports: [], known_vulnerabilities: [] };
+  }
+}
+
+async function checkLeaks(domain: string, email: string | null, apiKey?: string): Promise<LeakCheck> {
+  const empty: LeakCheck = {
+    email_found: false,
+    breach_count: 0,
+    breaches: [],
+    domain_found: false,
+    paste_count: 0
+  };
+
+  if (!apiKey || !email) return empty;
+
+  try {
+    const [breachesResponse, pastesResponse, domainBreachesResponse] = await Promise.all([
+      fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
+        headers: hibpHeaders(apiKey)
+      }),
+      fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(email)}`, {
+        headers: hibpHeaders(apiKey)
+      }),
+      fetch(`https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`, {
+        headers: hibpHeaders(apiKey)
+      })
+    ]);
+    const breaches =
+      breachesResponse.status === 404 || !breachesResponse.ok
+        ? []
+        : ((await breachesResponse.json()) as Array<{ Name?: string; BreachDate?: string; DataClasses?: string[] }>);
+    const pastes =
+      pastesResponse.status === 404 || !pastesResponse.ok ? [] : ((await pastesResponse.json()) as unknown[]);
+    const domainBreaches =
+      domainBreachesResponse.status === 404 || !domainBreachesResponse.ok
+        ? []
+        : ((await domainBreachesResponse.json()) as unknown[]);
+
+    return {
+      email_found: breaches.length > 0,
+      breach_count: breaches.length,
+      breaches: breaches.map((breach) => ({
+        name: breach.Name ?? "Unknown breach",
+        date: breach.BreachDate ?? "",
+        data_types: breach.DataClasses ?? []
+      })),
+      domain_found: domainBreaches.length > 0,
+      paste_count: pastes.length
+    };
+  } catch {
+    return empty;
+  }
+}
+
+async function checkReputation(domain: string, env: Env): Promise<ReputationCheck> {
+  const [virusTotal, securityTrails] = await Promise.all([
+    checkVirusTotal(domain, env.VIRUSTOTAL_API_KEY),
+    checkSecurityTrailsHistory(domain, env.SECURITYTRAILS_API_KEY)
+  ]);
+
+  return {
+    blacklisted: virusTotal.blacklists.length > 0,
+    blacklists: virusTotal.blacklists,
+    malware_hosting: virusTotal.malicious > 0,
+    phishing_reports: virusTotal.phishing,
+    dns_history: securityTrails
+  };
+}
+
+async function checkVirusTotal(domain: string, apiKey?: string) {
+  if (!apiKey) {
+    return { blacklists: [] as string[], malicious: 0, phishing: 0 };
+  }
+
+  try {
+    const response = await fetch(`https://www.virustotal.com/api/v3/domains/${encodeURIComponent(domain)}`, {
+      headers: { "x-apikey": apiKey }
+    });
+
+    if (!response.ok) {
+      return { blacklists: [], malicious: 0, phishing: 0 };
+    }
+
+    const data = (await response.json()) as {
+      data?: {
+        attributes?: {
+          last_analysis_stats?: { malicious?: number; suspicious?: number };
+          last_analysis_results?: Record<string, { category?: string; result?: string }>;
+          popular_threat_classification?: {
+            suggested_threat_label?: string;
+            popular_threat_category?: Array<{ value?: string; count?: number }>;
+          };
+        };
+      };
+    };
+    const attributes = data.data?.attributes;
+    const results = attributes?.last_analysis_results ?? {};
+    const blacklists = Object.entries(results)
+      .filter(([, result]) => result.category === "malicious" || result.category === "suspicious")
+      .map(([engine, result]) => `${engine}: ${result.result ?? result.category}`);
+    const threatCategories = attributes?.popular_threat_classification?.popular_threat_category ?? [];
+    const phishing = threatCategories
+      .filter((category) => category.value?.toLowerCase().includes("phishing"))
+      .reduce((sum, category) => sum + (category.count ?? 0), 0);
+
+    return {
+      blacklists,
+      malicious: attributes?.last_analysis_stats?.malicious ?? 0,
+      phishing
+    };
+  } catch {
+    return { blacklists: [], malicious: 0, phishing: 0 };
+  }
+}
+
+async function checkSecurityTrailsHistory(domain: string, apiKey?: string): Promise<DNSHistoryEntry[]> {
+  if (!apiKey) return [];
+
+  try {
+    const response = await fetch(`https://api.securitytrails.com/v1/history/${encodeURIComponent(domain)}/dns/a`, {
+      headers: { APIKEY: apiKey }
+    });
+
+    if (!response.ok) return [];
+
+    const data = (await response.json()) as {
+      records?: Array<{
+        first_seen?: string;
+        last_seen?: string;
+        values?: Array<{ ip?: string; value?: string }>;
+      }>;
+    };
+
+    return (data.records ?? []).flatMap((record) =>
+      (record.values ?? []).map((value) => ({
+        type: "A",
+        value: value.ip ?? value.value ?? "",
+        first_seen: record.first_seen,
+        last_seen: record.last_seen
+      }))
+    );
+  } catch {
+    return [];
+  }
+}
+
+async function queryDns(name: string, type: string): Promise<string[]> {
+  try {
+    const response = await fetch(
+      `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
+      { headers: { accept: "application/dns-json" } }
+    );
+
+    if (!response.ok) return [];
+
+    const data = (await response.json()) as DnsResponse;
+
+    return [
+      ...new Set(
+        (data.Answer ?? [])
+          .filter((answer) => answer.data && answer.type === DNS_TYPE_CODES[type])
+          .map((answer) => normalizeDnsValue(type, answer.data))
+          .filter(Boolean)
+      )
+    ];
+  } catch {
+    return [];
+  }
+}
+
+async function findDkim(domain: string) {
+  const selectors = ["selector1", "selector2", "google", "default", "dkim", "k1", "s1", "s2", "mail", "mandrill", "zoho"];
+  const results = await Promise.all(
+    selectors.map(async (selector) => ({
+      selector,
+      records: await queryDns(`${selector}._domainkey.${domain}`, "TXT")
+    }))
+  );
+  const found = results.find((result) =>
+    result.records.some((record) => record.toLowerCase().includes("v=dkim1") || record.toLowerCase().includes("k=rsa"))
+  );
+
+  return {
+    exists: Boolean(found),
+    selector_found: found?.selector ?? null,
+    valid: Boolean(found)
+  };
+}
+
+function buildFindings(checks: ExternalCheckResult["checks"]): SecurityFinding[] {
+  const findings: SecurityFinding[] = [];
+
+  if (!checks.ssl.valid) {
+    findings.push({ id: "ssl-invalid", severity: "critical", title: "SSL/TLS certificate is invalid or expired" });
+  }
+
+  if (checks.ssl.days_remaining !== null && checks.ssl.days_remaining < 30) {
+    findings.push({ id: "ssl-expiring", severity: "warning", title: "SSL/TLS certificate expires within 30 days" });
+  }
+
+  if (!checks.ssl.hsts_enabled) {
+    findings.push({ id: "hsts-missing", severity: "warning", title: "HTTP Strict Transport Security is not enabled" });
+  }
+
+  if (checks.ssl.vulnerabilities.length > 0 || checks.ssl.grade === "F") {
+    findings.push({ id: "tls-vulnerable", severity: "critical", title: "TLS scan reports critical vulnerabilities" });
+  } else if (checks.ssl.grade === "C") {
+    findings.push({ id: "tls-weak-grade", severity: "warning", title: "TLS configuration should be hardened" });
+  }
+
+  if (!checks.email_security.spf.exists) {
+    findings.push({ id: "spf-missing", severity: "warning", title: "SPF record is missing" });
+  } else if (!checks.email_security.spf.valid) {
+    findings.push({ id: "spf-invalid", severity: "warning", title: "SPF record has configuration issues" });
+  }
+
+  if (!checks.email_security.dkim.exists) {
+    findings.push({ id: "dkim-missing", severity: "warning", title: "No common DKIM selector was found" });
+  }
+
+  if (!checks.email_security.dmarc.exists) {
+    findings.push({ id: "dmarc-missing", severity: "critical", title: "DMARC record is missing" });
+  } else if (checks.email_security.dmarc.policy === "none") {
+    findings.push({ id: "dmarc-policy", severity: "warning", title: "DMARC policy should be quarantine or reject" });
+  }
+
+  for (const port of checks.ports.open_ports) {
+    if (port.severity !== "info") {
+      findings.push({
+        id: `open-port-${port.port}`,
+        severity: port.severity,
+        title: `Externally exposed ${port.service} on port ${port.port}`
+      });
+    }
+  }
+
+  for (const vuln of checks.ports.known_vulnerabilities) {
+    findings.push({
+      id: `vuln-${vuln.id}`,
+      severity: (vuln.cvss ?? 0) >= 7 ? "critical" : "warning",
+      title: `Known vulnerability ${vuln.id} is visible externally`
+    });
+  }
+
+  if (checks.leaks.email_found || checks.leaks.domain_found) {
+    findings.push({ id: "data-leak", severity: "critical", title: "Public breach data was found for the checked identity" });
+  }
+
+  if (checks.reputation.blacklisted || checks.reputation.malware_hosting) {
+    findings.push({ id: "domain-reputation", severity: "critical", title: "Domain has malicious or suspicious reputation signals" });
+  }
+
+  if (checks.reputation.phishing_reports > 0) {
+    findings.push({ id: "phishing-reports", severity: "warning", title: "Phishing reports exist for this domain" });
+  }
+
+  return findings;
+}
+
+function calculateOverallScore(criticalCount: number, warningCount: number, findings: SecurityFinding[]) {
+  const infoCount = findings.filter((finding) => finding.severity === "info").length;
+
+  return Math.max(0, Math.min(100, 100 - criticalCount * 18 - warningCount * 8 - infoCount * 2));
+}
+
+function normalizeDomain(value?: string) {
+  if (!value) return "";
+
+  const withoutProtocol = value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
+
+  if (!/^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$/.test(withoutProtocol)) {
+    return "";
+  }
+
+  return withoutProtocol;
+}
+
+function normalizeEmail(value?: string) {
+  if (!value) return null;
+
+  const email = value.trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function normalizeSslGrade(value?: string): SSLCheck["grade"] {
+  if (value === "A+" || value === "A" || value === "B" || value === "C") return value;
+  return "F";
+}
+
+function bestTlsProtocol(protocols: Array<{ name?: string; version?: string }>) {
+  const supported = protocols
+    .map((protocol) => `${protocol.name ?? ""} ${protocol.version ?? ""}`.trim())
+    .filter((protocol) => protocol.toLowerCase().includes("tls"));
+
+  if (supported.some((protocol) => protocol.includes("1.3"))) return "TLS 1.3";
+  if (supported.some((protocol) => protocol.includes("1.2"))) return "TLS 1.2";
+  return supported[0] ?? "unknown";
+}
+
+function normalizeDnsValue(type: string, value: string) {
+  const withoutQuotes = value.replace(/^"|"$/g, "").replace(/"\s+"/g, "");
+
+  if (type === "MX") {
+    return withoutQuotes.replace(/^\d+\s+/, "").replace(/\.$/, "");
+  }
+
+  return withoutQuotes.replace(/\.$/, "");
+}
+
+function getSpfIssues(records: string[]) {
+  const issues: string[] = [];
+
+  if (records.length === 0) return ["missing_spf"];
+  if (records.length > 1) issues.push("multiple_spf_records");
+
+  const record = records[0]?.toLowerCase() ?? "";
+
+  if (!record.includes(" -all") && !record.endsWith("-all")) {
+    issues.push("policy_not_strict");
+  }
+
+  if (record.includes("+all")) {
+    issues.push("allows_all_senders");
+  }
+
+  return issues;
+}
+
+function getDmarcPolicy(record: string): EmailSecurityCheck["dmarc"]["policy"] {
+  const policy = getTagValue(record, "p");
+
+  if (policy === "none" || policy === "quarantine" || policy === "reject") {
+    return policy;
+  }
+
+  return null;
+}
+
+function getTagValue(record: string, tag: string) {
+  const match = record.match(new RegExp(`(?:^|;)\\s*${tag}=([^;]+)`, "i"));
+  return match?.[1]?.trim() ?? null;
+}
+
+function getDmarcRecommendation(policy: EmailSecurityCheck["dmarc"]["policy"]) {
+  if (policy === "reject") return "DMARC policy is strong. Keep monitoring reports and maintain SPF/DKIM alignment.";
+  if (policy === "quarantine") return "Consider moving DMARC from quarantine to reject after monitoring false positives.";
+  if (policy === "none") return "Move DMARC from monitoring-only to quarantine, then reject once legitimate senders align.";
+  return "Publish a DMARC record with reporting and at least quarantine enforcement.";
+}
+
+function severityForPort(port: number): FindingSeverity {
+  const critical = new Set([21, 23, 135, 137, 138, 139, 445, 1433, 1521, 3306, 3389, 5432, 5900, 5985, 6379, 9200, 9300, 11211, 27017]);
+  const warning = new Set([22, 25, 53, 110, 143, 389, 465, 587, 993, 995, 8080, 8443]);
+
+  if (critical.has(port)) return "critical";
+  if (warning.has(port)) return "warning";
+  return "info";
+}
+
+function trimBanner(value?: string) {
+  if (!value) return undefined;
+
+  return value.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function hibpHeaders(apiKey: string) {
+  return {
+    "hibp-api-key": apiKey,
+    "user-agent": "PraxisShield external-check"
+  };
+}
+
+export default {
+  fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
+  scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(runScheduledMonitoring(controller.cron, env));
+  }
+};

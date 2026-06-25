@@ -1,0 +1,11 @@
+.expo/
+.expo-shared/
+node_modules/
+dist/
+web-build/
+.env
+.env.local
+*.log
+ios/
+android/
+.wrangler/

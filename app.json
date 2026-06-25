@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "PraxisShield AI",
+    "slug": "praxisshield",
+    "scheme": "praxisshield",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.praxisshield.app"
+    },
+    "android": {
+      "package": "ai.praxisshield.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0A1628"
+      },
+      "permissions": [
+        "ACCESS_WIFI_STATE",
+        "ACCESS_FINE_LOCATION",
+        "CHANGE_WIFI_STATE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-notifications",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
