@@ -24,6 +24,7 @@
     "plugins": [
       "expo-router",
       "expo-notifications",
+      "./plugins/with-ios-metro-localhost-fallback",
       [
         "expo-build-properties",
         {
