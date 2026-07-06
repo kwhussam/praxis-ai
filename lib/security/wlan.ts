@@ -2,7 +2,6 @@ import NetInfo, { type NetInfoState } from "@react-native-community/netinfo";
 import * as Device from "expo-device";
 import * as Network from "expo-network";
 import { Platform } from "react-native";
-import { MMKV } from "react-native-mmkv";
 
 import {
   getCurrentWifiSsid,
@@ -11,6 +10,7 @@ import {
   type NativeWifiNetwork
 } from "@/lib/security/nativeWifi";
 import { supabase } from "@/lib/api/supabase";
+import { createStringStorage } from "@/lib/store/storage";
 
 export type SecurityProtocol = "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
 export type DataSource = "measured" | "inferred" | "unavailable" | "simulated";
@@ -305,8 +305,7 @@ const HIGH_RISK_PORTS = [
   { port: 5432, service: "PostgreSQL / Praxissoftware-Datenbank", risk: "high" }
 ] as const;
 
-const wlanScanStorage = new MMKV({
-  id: "praxisshield-wlan-scans",
+const wlanScanStorage = createStringStorage("praxisshield-wlan-scans", {
   encryptionKey: "praxisshield-local-wlan-v1"
 });
 

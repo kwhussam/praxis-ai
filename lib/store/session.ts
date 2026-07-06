@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { MMKV } from "react-native-mmkv";
 import type { Session } from "@supabase/supabase-js";
 
 import type { PlanId } from "@/lib/billing/plans";
 import { getDemoPractice } from "@/lib/demo/demo-data";
+import { createStringStorage } from "@/lib/store/storage";
 import { supabase } from "@/lib/supabase/client";
 
 export type Practice = {
@@ -24,7 +24,7 @@ type SessionState = {
   clear: () => void;
 };
 
-const storage = new MMKV({ id: "praxisshield-session" });
+const storage = createStringStorage("praxisshield-session");
 
 export const useSessionStore = create<SessionState>()(
   persist(

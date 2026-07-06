@@ -1,8 +1,8 @@
-import { MMKV } from "react-native-mmkv";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { CheckData, Report } from "@/lib/ai/report";
+import { createStringStorage } from "@/lib/store/storage";
 
 export type StoredReport = {
   id: string;
@@ -19,7 +19,7 @@ type ReportState = {
   clear: () => void;
 };
 
-const storage = new MMKV({ id: "praxisshield-ai-reports" });
+const storage = createStringStorage("praxisshield-ai-reports");
 
 export const useReportStore = create<ReportState>()(
   persist(
