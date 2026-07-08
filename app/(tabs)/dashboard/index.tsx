@@ -2,6 +2,7 @@ import { BellRing } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
+import { EvidenceCoveragePanel } from "@/components/modules/EvidenceCoveragePanel";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { RiskCard } from "@/components/ui/RiskCard";
 import { Screen } from "@/components/ui/Screen";
@@ -20,6 +21,7 @@ const scoreData = [
 
 export default function DashboardScreen() {
   const score = useCheckStore((state) => state.currentScore);
+  const scoreReport = useCheckStore((state) => state.currentScoreReport);
   const practice = useSessionStore((state) => state.practice);
   const plan = PLANS[practice?.plan ?? "free"];
 
@@ -37,6 +39,7 @@ export default function DashboardScreen() {
       <View style={styles.scoreWrap}>
         <ScoreRing score={score} />
       </View>
+      <EvidenceCoveragePanel report={scoreReport} />
       <RiskCard
         tone="warning"
         title="DMARC nicht strikt genug"

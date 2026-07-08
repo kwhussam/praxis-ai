@@ -5,6 +5,7 @@ export const SCORING_VERSION = "1.0.0";
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
 export type SecurityCategory = "access_control" | "backup" | "email_security" | "network" | "dsgvo" | "updates";
+export type EvidenceSource = "measured" | "inferred" | "self_reported" | "unavailable";
 
 export type SecurityFinding = {
   id: string;
@@ -14,8 +15,8 @@ export type SecurityFinding = {
 
 export type ScoreInput = {
   questionnaire: Record<string, boolean>;
-  externalFindings: SecurityFinding[];
-  wlanFindings: SecurityFinding[];
+  externalFindings?: SecurityFinding[];
+  wlanFindings?: SecurityFinding[];
   wlanSecurityFindings?: NetworkSecurityFinding[];
 };
 
@@ -48,7 +49,15 @@ export interface RuleEvaluation {
   passed: boolean;
   finding: string;
   evidence: string;
+  evidence_coverage: EvidenceCoverage;
   recommendation?: string;
+}
+
+export interface EvidenceCoverage {
+  source: EvidenceSource;
+  score: number;
+  label: string;
+  detail: string;
 }
 
 export interface ScoringRule {
@@ -66,8 +75,23 @@ export type ScoreReport = {
   ampel: AmpelColor;
   rule_results: RuleEvaluation[];
   scores_by_category: Record<SecurityCategory, number>;
+  evidence_coverage_score: number;
   total_points: number;
   max_points: number;
+};
+
+export const EVIDENCE_SOURCE_LABELS: Record<EvidenceSource, string> = {
+  measured: "Gemessen",
+  inferred: "Abgeleitet",
+  self_reported: "Selbstauskunft",
+  unavailable: "Nicht verfügbar"
+};
+
+export const EVIDENCE_SOURCE_SCORES: Record<EvidenceSource, number> = {
+  measured: 100,
+  inferred: 70,
+  self_reported: 45,
+  unavailable: 0
 };
 
 export const SCORING_RULES: ScoringRule[] = [
@@ -85,6 +109,7 @@ export const SCORING_RULES: ScoringRule[] = [
       passed: data.mfa_enabled === true,
       finding: data.mfa_enabled ? "MFA ist aktiviert." : "MFA ist nicht aktiv.",
       evidence: `questionnaire.mfa_enabled=${String(data.mfa_enabled)}`,
+      evidenceCoverage: booleanCoverage(data.mfa_enabled, "MFA-Status wurde im Fragebogen erfasst."),
       recommendation: "Microsoft Authenticator oder FIDO2-Schlüssel für alle Praxiszugänge aktivieren."
     })
   },
@@ -105,6 +130,9 @@ export const SCORING_RULES: ScoringRule[] = [
         passed: frequency === "daily" && data.backup_tested === true,
         finding: `Backup-Frequenz: ${frequency}, Restore-Test: ${String(data.backup_tested)}.`,
         evidence: `questionnaire.backup_frequency=${frequency}; questionnaire.backup_tested=${String(data.backup_tested)}`,
+        evidenceCoverage: data.backup_frequency !== undefined || data.backup_tested !== undefined
+          ? coverage("self_reported", "Backup-Frequenz und Restore-Test wurden per Fragebogen erfasst.")
+          : coverage("unavailable", "Es liegen keine Backup-Angaben vor."),
         recommendation: "Tägliche Backups mit quartalsweisem Restore-Test dokumentieren."
       });
     }
@@ -116,6 +144,7 @@ export const SCORING_RULES: ScoringRule[] = [
     max_points: 10,
     evaluate: (data) => {
       const policy = data.external?.email_security?.dmarc?.policy ?? (data.dmarc_exists ? "none" : null);
+      const hasExternalEvidence = data.external?.email_security?.dmarc !== undefined;
       const earned = policy === "reject" ? 10 : policy === "quarantine" ? 7 : policy === "none" ? 3 : 0;
       return buildResult({
         data,
@@ -126,6 +155,9 @@ export const SCORING_RULES: ScoringRule[] = [
         passed: policy === "reject" || policy === "quarantine",
         finding: `DMARC Policy: ${policy ?? "fehlt"}.`,
         evidence: `external.email_security.dmarc.policy=${policy ?? "null"}`,
+        evidenceCoverage: hasExternalEvidence
+          ? coverage("measured", "DMARC wurde über den externen Domain-Check geprüft.")
+          : booleanCoverage(data.dmarc_exists, "DMARC wurde per Fragebogen erfasst."),
         recommendation: "DMARC mit Reporting veröffentlichen und auf quarantine oder reject härten."
       });
     }
@@ -144,6 +176,7 @@ export const SCORING_RULES: ScoringRule[] = [
       passed: data.updates_current === true,
       finding: data.updates_current ? "Updates sind aktuell." : "Updates sind nicht nachweislich aktuell.",
       evidence: `questionnaire.updates_current=${String(data.updates_current)}`,
+      evidenceCoverage: booleanCoverage(data.updates_current, "Update-Prozess wurde im Fragebogen erfasst."),
       recommendation: "Patch-Fenster und Verantwortliche dokumentieren."
     })
   },
@@ -164,6 +197,9 @@ export const SCORING_RULES: ScoringRule[] = [
         passed: protocol === "WPA2" || protocol === "WPA3",
         finding: `WLAN-Verschlüsselung: ${protocol}.`,
         evidence: `wlan.security_protocol=${protocol}`,
+        evidenceCoverage: data.encryption && data.encryption !== "UNKNOWN"
+          ? coverage("measured", "WLAN-Verschlüsselung wurde technisch aus dem Scan übernommen.")
+          : coverage("unavailable", "WLAN-Verschlüsselung konnte nicht zuverlässig ausgelesen werden."),
         recommendation: "WPA3 oder mindestens WPA2-AES aktivieren; WEP und offene WLANs sofort ersetzen."
       });
     }
@@ -182,6 +218,7 @@ export const SCORING_RULES: ScoringRule[] = [
       passed: data.staff_training === true,
       finding: data.staff_training ? "Schulung ist dokumentiert." : "Keine aktuelle Schulungsdokumentation.",
       evidence: `questionnaire.staff_training=${String(data.staff_training)}`,
+      evidenceCoverage: booleanCoverage(data.staff_training, "Schulungsstatus wurde im Fragebogen erfasst."),
       recommendation: "Jährliche Datenschutz- und Phishing-Schulung mit Teilnehmerliste dokumentieren."
     })
   },
@@ -199,6 +236,7 @@ export const SCORING_RULES: ScoringRule[] = [
       passed: data.privacy_documents_current === true,
       finding: data.privacy_documents_current ? "DSGVO-Dokumente sind aktuell." : "DSGVO-Dokumente sind nicht vollständig aktuell.",
       evidence: `questionnaire.privacy_documents_current=${String(data.privacy_documents_current)}`,
+      evidenceCoverage: booleanCoverage(data.privacy_documents_current, "DSGVO-Dokumentationsstatus wurde im Fragebogen erfasst."),
       recommendation: "AVV, TOMs, Löschkonzept und Verarbeitungsverzeichnis prüfen."
     })
   },
@@ -209,6 +247,7 @@ export const SCORING_RULES: ScoringRule[] = [
     max_points: 5,
     evaluate: (data) => {
       const findings = [...(data.externalFindings ?? []), ...(data.wlanFindings ?? [])];
+      const hasFindingInputs = Array.isArray(data.externalFindings) || Array.isArray(data.wlanFindings);
       const critical = findings.filter((finding) => finding.severity === "critical").length;
       const warning = findings.filter((finding) => finding.severity === "warning").length;
       const earned = Math.max(0, 5 - critical * 3 - warning);
@@ -221,6 +260,9 @@ export const SCORING_RULES: ScoringRule[] = [
         passed: critical === 0 && warning === 0,
         finding: `${critical} kritische und ${warning} mittlere aktive Findings.`,
         evidence: `findings.critical=${critical}; findings.warning=${warning}`,
+        evidenceCoverage: hasFindingInputs
+          ? coverage("inferred", "Aktive Findings wurden aus technischen Prüf- und Scanbefunden abgeleitet.")
+          : coverage("unavailable", "Es liegen keine Finding-Quellen für diese Aggregation vor."),
         recommendation: "Aktive Findings nach Kritikalität abarbeiten und erneut prüfen."
       });
     }
@@ -232,6 +274,7 @@ export const SCORING_RULES: ScoringRule[] = [
     max_points: 10,
     evaluate: (data) => {
       const findings = data.wlanSecurityFindings ?? [];
+      const hasProbeInput = Array.isArray(data.wlanSecurityFindings);
       const detected = findings.filter((finding) => finding.detected);
       const penalty = Math.min(
         10,
@@ -258,6 +301,9 @@ export const SCORING_RULES: ScoringRule[] = [
             ? "Keine erweiterten lokalen Netzwerkprüfungen im Score vorhanden."
             : `${critical} kritische und ${warning} weitere lokale Netzwerkbefunde.`,
         evidence: `wlanSecurityFindings.detected=${detected.length}; wlanSecurityFindings.critical=${critical}`,
+        evidenceCoverage: hasProbeInput
+          ? coverage("measured", "Erweiterte lokale Netzwerkprüfungen wurden technisch ausgeführt.")
+          : coverage("unavailable", "Erweiterte lokale Netzwerkprüfungen wurden nicht ausgeführt oder nicht übergeben."),
         recommendation: "Telnet/RDP deaktivieren, Router-HTTP auf HTTPS umstellen, SMB absichern und UPnP nur bei zwingendem Bedarf erlauben."
       });
     }
@@ -277,6 +323,7 @@ export function calculateScore(data: CheckData): ScoreReport {
     ampel: score >= 75 ? "grün" : score >= 50 ? "gelb" : "rot",
     rule_results: ruleResults,
     scores_by_category: groupByCategory(ruleResults),
+    evidence_coverage_score: groupEvidenceCoverage(ruleResults),
     total_points: totalPoints,
     max_points: maxPoints
   };
@@ -322,6 +369,17 @@ function groupByCategory(results: RuleEvaluation[]): Record<SecurityCategory, nu
   ) as Record<SecurityCategory, number>;
 }
 
+function groupEvidenceCoverage(results: RuleEvaluation[]) {
+  const maxPoints = results.reduce((sum, result) => sum + result.points_max, 0);
+  if (maxPoints === 0) return 0;
+
+  const weightedCoverage = results.reduce(
+    (sum, result) => sum + result.evidence_coverage.score * result.points_max,
+    0
+  );
+  return Math.round(weightedCoverage / maxPoints);
+}
+
 function buildResult(input: {
   data: CheckData;
   ruleId: string;
@@ -331,6 +389,7 @@ function buildResult(input: {
   passed: boolean;
   finding: string;
   evidence: string;
+  evidenceCoverage: EvidenceCoverage;
   recommendation: string;
 }): RuleEvaluation {
   return {
@@ -341,6 +400,20 @@ function buildResult(input: {
     passed: input.passed,
     finding: input.finding,
     evidence: input.evidence,
+    evidence_coverage: input.evidenceCoverage,
     recommendation: input.passed ? undefined : input.recommendation
+  };
+}
+
+function booleanCoverage(value: boolean | undefined, detail: string) {
+  return value === undefined ? coverage("unavailable", "Für dieses Prüfmodul liegt keine Angabe vor.") : coverage("self_reported", detail);
+}
+
+function coverage(source: EvidenceSource, detail: string): EvidenceCoverage {
+  return {
+    source,
+    score: EVIDENCE_SOURCE_SCORES[source],
+    label: EVIDENCE_SOURCE_LABELS[source],
+    detail
   };
 }

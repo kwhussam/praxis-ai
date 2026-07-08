@@ -68,6 +68,26 @@ describe("SecurityScoring", () => {
     const result = calculateScore(ALL_CHECKS_PASSING);
     expect(result.rule_results.length).toBeGreaterThanOrEqual(8);
     expect(result.rule_results.every((rule) => rule.evidence.length > 0)).toBe(true);
+    expect(result.rule_results.every((rule) => rule.evidence_coverage.score >= 0)).toBe(true);
+  });
+
+  it("weist Evidenzquellen pro Prüfmodul aus", () => {
+    const result = calculateScore({ ...ALL_CHECKS_PASSING, wlanSecurityFindings: [] });
+    const unavailableResult = calculateScore({} as CheckData);
+
+    expect(result.rule_results.find((rule) => rule.rule_id === "MFA_ENABLED")?.evidence_coverage.source).toBe("self_reported");
+    expect(result.rule_results.find((rule) => rule.rule_id === "DMARC_POLICY")?.evidence_coverage.source).toBe("measured");
+    expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.source).toBe("inferred");
+    expect(result.rule_results.find((rule) => rule.rule_id === "NETWORK_SECURITY_PROBES")?.evidence_coverage.source).toBe("measured");
+    expect(unavailableResult.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION")?.evidence_coverage.source).toBe("unavailable");
+  });
+
+  it("berechnet einen separaten gewichteten Evidence-Coverage-Score", () => {
+    const measuredCoverage = calculateScore({ ...ALL_CHECKS_PASSING, wlanSecurityFindings: [] });
+    const unavailableCoverage = calculateScore({} as CheckData);
+
+    expect(measuredCoverage.evidence_coverage_score).toBeGreaterThan(unavailableCoverage.evidence_coverage_score);
+    expect(measuredCoverage.score).toBe(ALL_CHECKS_PASSING_SCORE);
   });
 
   it("bewertet tägliches Backup ohne Restore-Test nur teilweise", () => {
@@ -114,3 +134,5 @@ describe("SecurityScoring", () => {
     expect(score).toBeGreaterThanOrEqual(75);
   });
 });
+
+const ALL_CHECKS_PASSING_SCORE = 100;

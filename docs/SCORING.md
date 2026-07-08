@@ -2,6 +2,24 @@
 
 Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, technische Evidenz, Finding und Empfehlung.
 
+## Evidence & Coverage
+
+Zusätzlich zum Sicherheitswert berechnet die Engine einen separaten `evidence_coverage_score`. Dieser Wert verändert den Sicherheits-Score nicht, sondern bewertet, wie belastbar die Datengrundlage je Prüfmodul ist.
+
+Jedes `rule_results`-Element enthält `evidence_coverage` mit:
+
+- `source`: `measured`, `inferred`, `self_reported` oder `unavailable`.
+- `score`: Coverage-Wert von 0 bis 100 für dieses Prüfmodul.
+- `label`: deutschsprachige Anzeige für die UI.
+- `detail`: kurze Begründung der Einordnung.
+
+Die Gewichtung erfolgt anhand der maximalen Regelpunkte:
+
+- `measured` = 100: technisch gemessen, z. B. WLAN-Verschlüsselung oder DMARC aus externem Check.
+- `inferred` = 70: aus anderen Befunden abgeleitet, z. B. aggregierte aktive Findings.
+- `self_reported` = 45: per Fragebogen/Selbstauskunft erfasst.
+- `unavailable` = 0: nicht verfügbar oder nicht zuverlässig auslesbar.
+
 ## Kategorien
 
 - `access_control`: Zugriffsschutz, insbesondere MFA.
