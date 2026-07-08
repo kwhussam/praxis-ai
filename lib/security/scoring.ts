@@ -1,6 +1,6 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 
-export const SCORING_VERSION = "1.0.0";
+export const SCORING_VERSION = "1.1.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
@@ -250,15 +250,17 @@ export const SCORING_RULES: ScoringRule[] = [
       const hasFindingInputs = Array.isArray(data.externalFindings) || Array.isArray(data.wlanFindings);
       const critical = findings.filter((finding) => finding.severity === "critical").length;
       const warning = findings.filter((finding) => finding.severity === "warning").length;
-      const earned = Math.max(0, 5 - critical * 3 - warning);
+      const earned = hasFindingInputs ? Math.max(0, 5 - critical * 3 - warning) : 0;
       return buildResult({
         data,
         ruleId: "ACTIVE_FINDINGS",
         category: "network",
         earned,
         max: 5,
-        passed: critical === 0 && warning === 0,
-        finding: `${critical} kritische und ${warning} mittlere aktive Findings.`,
+        passed: hasFindingInputs && critical === 0 && warning === 0,
+        finding: hasFindingInputs
+          ? `${critical} kritische und ${warning} mittlere aktive Findings.`
+          : "Aktive Findings wurden nicht bewertet, weil keine Finding-Quellen vorliegen.",
         evidence: `findings.critical=${critical}; findings.warning=${warning}`,
         evidenceCoverage: hasFindingInputs
           ? coverage("inferred", "Aktive Findings wurden aus technischen Prüf- und Scanbefunden abgeleitet.")
@@ -285,7 +287,7 @@ export const SCORING_RULES: ScoringRule[] = [
           return sum + 1;
         }, 0)
       );
-      const earned = findings.length === 0 ? 10 : Math.max(0, 10 - penalty);
+      const earned = hasProbeInput ? Math.max(0, 10 - penalty) : 0;
       const critical = detected.filter((finding) => finding.severity === "critical").length;
       const warning = detected.length - critical;
 
@@ -295,10 +297,12 @@ export const SCORING_RULES: ScoringRule[] = [
         category: "network",
         earned,
         max: 10,
-        passed: critical === 0 && warning === 0,
+        passed: hasProbeInput && critical === 0 && warning === 0,
         finding:
-          findings.length === 0
-            ? "Keine erweiterten lokalen Netzwerkprüfungen im Score vorhanden."
+          !hasProbeInput
+            ? "Erweiterte lokale Netzwerkprüfungen wurden nicht ausgeführt."
+            : findings.length === 0
+              ? "Erweiterte lokale Netzwerkprüfungen wurden ohne Befund ausgeführt."
             : `${critical} kritische und ${warning} weitere lokale Netzwerkbefunde.`,
         evidence: `wlanSecurityFindings.detected=${detected.length}; wlanSecurityFindings.critical=${critical}`,
         evidenceCoverage: hasProbeInput
@@ -392,16 +396,18 @@ function buildResult(input: {
   evidenceCoverage: EvidenceCoverage;
   recommendation: string;
 }): RuleEvaluation {
+  const unavailable = input.evidenceCoverage.source === "unavailable";
+
   return {
     rule_id: input.ruleId,
     category: input.category,
-    points_earned: Math.max(0, Math.min(input.max, input.earned)),
+    points_earned: unavailable ? 0 : Math.max(0, Math.min(input.max, input.earned)),
     points_max: input.max,
-    passed: input.passed,
+    passed: unavailable ? false : input.passed,
     finding: input.finding,
     evidence: input.evidence,
     evidence_coverage: input.evidenceCoverage,
-    recommendation: input.passed ? undefined : input.recommendation
+    recommendation: unavailable || !input.passed ? input.recommendation : undefined
   };
 }
 

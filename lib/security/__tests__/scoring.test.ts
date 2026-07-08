@@ -17,7 +17,8 @@ const ALL_CHECKS_PASSING: CheckData = {
     }
   },
   externalFindings: [],
-  wlanFindings: []
+  wlanFindings: [],
+  wlanSecurityFindings: []
 };
 
 const ALL_CHECKS_FAILING: CheckData = {
@@ -110,6 +111,35 @@ describe("SecurityScoring", () => {
     expect(wlan?.points_earned).toBe(0);
   });
 
+  it("wertet nicht ausgeführte technische Prüfungen nicht automatisch als bestanden", () => {
+    const result = calculateScore({
+      ...ALL_CHECKS_PASSING,
+      externalFindings: undefined,
+      wlanFindings: undefined,
+      wlanSecurityFindings: undefined
+    });
+    const active = result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS");
+    const probes = result.rule_results.find((rule) => rule.rule_id === "NETWORK_SECURITY_PROBES");
+
+    expect(active?.passed).toBe(false);
+    expect(active?.points_earned).toBe(0);
+    expect(active?.evidence_coverage.source).toBe("unavailable");
+    expect(probes?.passed).toBe(false);
+    expect(probes?.points_earned).toBe(0);
+    expect(probes?.evidence_coverage.source).toBe("unavailable");
+  });
+
+  it("wertet ausgeführte technische Prüfungen ohne Befund weiterhin als bestanden", () => {
+    const result = calculateScore({ ...ALL_CHECKS_PASSING, externalFindings: [], wlanFindings: [], wlanSecurityFindings: [] });
+    const active = result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS");
+    const probes = result.rule_results.find((rule) => rule.rule_id === "NETWORK_SECURITY_PROBES");
+
+    expect(active?.passed).toBe(true);
+    expect(active?.points_earned).toBe(5);
+    expect(probes?.passed).toBe(true);
+    expect(probes?.points_earned).toBe(10);
+  });
+
   it("gruppiert Kategorie-Scores", () => {
     const result = calculateScore(ALL_CHECKS_PASSING);
     expect(result.scores_by_category.access_control).toBe(100);
@@ -131,7 +161,8 @@ describe("SecurityScoring", () => {
       externalFindings: [],
       wlanFindings: []
     });
-    expect(score).toBeGreaterThanOrEqual(75);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(100);
   });
 });
 

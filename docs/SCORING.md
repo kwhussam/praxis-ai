@@ -1,4 +1,4 @@
-# PraxisShield Scoring 1.0.0
+# PraxisShield Scoring 1.1.0
 
 Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, technische Evidenz, Finding und Empfehlung.
 
@@ -19,6 +19,8 @@ Die Gewichtung erfolgt anhand der maximalen Regelpunkte:
 - `inferred` = 70: aus anderen Befunden abgeleitet, z. B. aggregierte aktive Findings.
 - `self_reported` = 45: per Fragebogen/Selbstauskunft erfasst.
 - `unavailable` = 0: nicht verfügbar oder nicht zuverlässig auslesbar.
+
+Prüfmodule mit `unavailable`-Evidenz erhalten keine Punkte und werden nicht als bestanden markiert. Ausgeführte technische Prüfungen ohne Befund bleiben weiterhin positiv bewertbar, sofern die jeweilige Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
 
 ## Kategorien
 
