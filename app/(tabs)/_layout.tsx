@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { Activity, FileText, Gauge, ShieldCheck } from "lucide-react-native";
+import { Activity, FileText, Gauge, Package, ShieldCheck } from "lucide-react-native";
 
 import { colors } from "@/constants/colors";
 
@@ -25,6 +25,7 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="dashboard" options={{ title: "Dashboard", tabBarIcon: ({ color }) => <Gauge color={color} size={22} /> }} />
       <Tabs.Screen name="check" options={{ title: "Check", tabBarIcon: ({ color }) => <ShieldCheck color={color} size={22} /> }} />
+      <Tabs.Screen name="inventory" options={{ title: "Inventar", tabBarIcon: ({ color }) => <Package color={color} size={22} /> }} />
       <Tabs.Screen name="report" options={{ title: "Berichte", tabBarIcon: ({ color }) => <FileText color={color} size={22} /> }} />
       <Tabs.Screen name="monitoring" options={{ title: "Live", tabBarIcon: ({ color }) => <Activity color={color} size={22} /> }} />
     </Tabs>
