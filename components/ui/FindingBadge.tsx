@@ -8,7 +8,8 @@ const SOURCE_CONFIG: Record<DataSource, { label: string; color: string; icon: ke
   measured: { label: "Gemessen", color: colors.safe, icon: "checkmark-circle" },
   inferred: { label: "Abgeleitet", color: colors.warning, icon: "analytics" },
   unavailable: { label: "Nicht verfügbar", color: colors.muted, icon: "remove-circle" },
-  simulated: { label: "Demo", color: colors.info, icon: "flask" }
+  simulated: { label: "Demo", color: colors.info, icon: "flask" },
+  questionnaire: { label: "Fragebogen", color: colors.info, icon: "clipboard" }
 };
 
 export function FindingBadge({ source }: { source: DataSource }) {

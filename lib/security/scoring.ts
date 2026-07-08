@@ -1,3 +1,5 @@
+import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
+
 export const SCORING_VERSION = "1.0.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
@@ -14,6 +16,7 @@ export type ScoreInput = {
   questionnaire: Record<string, boolean>;
   externalFindings: SecurityFinding[];
   wlanFindings: SecurityFinding[];
+  wlanSecurityFindings?: NetworkSecurityFinding[];
 };
 
 export type CheckData = {
@@ -34,6 +37,7 @@ export type CheckData = {
   };
   externalFindings?: SecurityFinding[];
   wlanFindings?: SecurityFinding[];
+  wlanSecurityFindings?: NetworkSecurityFinding[];
 };
 
 export interface RuleEvaluation {
@@ -220,6 +224,43 @@ export const SCORING_RULES: ScoringRule[] = [
         recommendation: "Aktive Findings nach Kritikalität abarbeiten und erneut prüfen."
       });
     }
+  },
+  {
+    id: "NETWORK_SECURITY_PROBES",
+    category: "network",
+    weight: 10,
+    max_points: 10,
+    evaluate: (data) => {
+      const findings = data.wlanSecurityFindings ?? [];
+      const detected = findings.filter((finding) => finding.detected);
+      const penalty = Math.min(
+        10,
+        detected.reduce((sum, finding) => {
+          if (finding.severity === "critical") return sum + 5;
+          if (finding.severity === "high") return sum + 4;
+          if (finding.severity === "medium") return sum + 2;
+          return sum + 1;
+        }, 0)
+      );
+      const earned = findings.length === 0 ? 10 : Math.max(0, 10 - penalty);
+      const critical = detected.filter((finding) => finding.severity === "critical").length;
+      const warning = detected.length - critical;
+
+      return buildResult({
+        data,
+        ruleId: "NETWORK_SECURITY_PROBES",
+        category: "network",
+        earned,
+        max: 10,
+        passed: critical === 0 && warning === 0,
+        finding:
+          findings.length === 0
+            ? "Keine erweiterten lokalen Netzwerkprüfungen im Score vorhanden."
+            : `${critical} kritische und ${warning} weitere lokale Netzwerkbefunde.`,
+        evidence: `wlanSecurityFindings.detected=${detected.length}; wlanSecurityFindings.critical=${critical}`,
+        recommendation: "Telnet/RDP deaktivieren, Router-HTTP auf HTTPS umstellen, SMB absichern und UPnP nur bei zwingendem Bedarf erlauben."
+      });
+    }
   }
 ];
 
@@ -263,7 +304,8 @@ function scoreInputToCheckData(input: ScoreInput): CheckData {
     privacy_documents_current: questionnaire.privacyDocuments,
     encryption: "UNKNOWN",
     externalFindings: input.externalFindings,
-    wlanFindings: input.wlanFindings
+    wlanFindings: input.wlanFindings,
+    wlanSecurityFindings: input.wlanSecurityFindings
   };
 }
 

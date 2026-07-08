@@ -29,7 +29,8 @@ export const useCheckStore = create<CheckState>((set, get) => ({
     const score = calculateShieldScore({
       questionnaire: answers,
       externalFindings: input?.externalFindings ?? [],
-      wlanFindings: input?.wlanFindings ?? []
+      wlanFindings: input?.wlanFindings ?? [],
+      wlanSecurityFindings: input?.wlanSecurityFindings
     });
     set({ currentScore: score });
   }

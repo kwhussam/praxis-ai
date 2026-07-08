@@ -8,7 +8,29 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.praxisshield.app"
+      "bundleIdentifier": "ai.praxisshield.app",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "PraxisShield prüft ausschließlich technische Metadaten im lokalen Praxisnetz, z. B. Routerdienste und UPnP. Es werden keine Patientendaten, Dateien oder Praxissoftware-Inhalte gelesen.",
+        "NSLocationWhenInUseUsageDescription": "iOS benötigt diese Berechtigung, um den verbundenen WLAN-Namen für die lokale Sicherheitsbewertung zu lesen.",
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_https._tcp",
+          "_ipp._tcp",
+          "_printer._tcp",
+          "_pdl-datastream._tcp",
+          "_smb._tcp",
+          "_afpovertcp._tcp",
+          "_nfs._tcp",
+          "_rtsp._tcp",
+          "_workstation._tcp",
+          "_scanner._tcp",
+          "_dicom._tcp"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "ai.praxisshield.app",
@@ -17,7 +39,10 @@
       },
       "permissions": [
         "ACCESS_WIFI_STATE",
+        "ACCESS_NETWORK_STATE",
         "ACCESS_FINE_LOCATION",
+        "NEARBY_WIFI_DEVICES",
+        "CHANGE_WIFI_MULTICAST_STATE",
         "CHANGE_WIFI_STATE"
       ]
     },
@@ -25,6 +50,7 @@
       "expo-router",
       "expo-notifications",
       "./plugins/with-ios-metro-localhost-fallback",
+      "./plugins/with-network-security-probe",
       [
         "expo-build-properties",
         {

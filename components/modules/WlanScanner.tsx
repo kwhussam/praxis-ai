@@ -20,6 +20,7 @@ import {
   SCAN_PHASES,
   syncWlanScanResultToSupabase,
   type DeviceInfo,
+  type NetworkSecurityFinding,
   type Vulnerability,
   type WlanScanProgress,
   type WlanScanResult
@@ -60,15 +61,7 @@ export function WlanScanner() {
     setVisibleDevices([]);
 
     try {
-      await apiRequest("/api/legal/consent", {
-        method: "POST",
-        body: {
-          practiceId,
-          type: "wlan_scan",
-          version: "1.0",
-          accepted: true
-        }
-      });
+      void recordWlanScanConsent(practiceId);
 
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
@@ -82,11 +75,14 @@ export function WlanScanner() {
 
       setResult(nextResult);
       setVisibleDevices(nextResult.connectedDevices);
-      recalculateScore({ wlanFindings: mapWlanVulnerabilitiesToFindings(nextResult.vulnerabilities) });
+      recalculateScore({
+        wlanFindings: mapWlanVulnerabilitiesToFindings(nextResult.vulnerabilities),
+        wlanSecurityFindings: nextResult.securityFindings
+      });
       if (practiceId) void syncWlanScanResultToSupabase(practiceId, nextResult).catch(() => undefined);
       setState("done");
-    } catch {
-      setError("Der WLAN-Scan konnte auf diesem Gerät nicht abgeschlossen werden. Prüfen Sie WLAN-Berechtigungen und Verbindung.");
+    } catch (scanError) {
+      setError(scanErrorMessage(scanError));
       setState("error");
     }
   }
@@ -198,6 +194,7 @@ export function WlanScanner() {
           </View>
 
           <Methodology result={result} />
+          <SecurityCheckList findings={result.securityFindings} />
           <DeviceList devices={result.connectedDevices} />
           <VulnerabilityList vulnerabilities={sortedVulnerabilities} />
         </View>
@@ -211,6 +208,30 @@ export function WlanScanner() {
       ) : null}
     </GlassCard>
   );
+}
+
+async function recordWlanScanConsent(practiceId: string) {
+  try {
+    await apiRequest("/api/legal/consent", {
+      method: "POST",
+      body: {
+        practiceId,
+        type: "wlan_scan",
+        version: "1.0",
+        accepted: true
+      }
+    });
+  } catch {
+    // Local-first scan: API consent sync must not block diagnostics when the worker is offline.
+  }
+}
+
+function scanErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.length > 0) {
+    return `Der lokale WLAN-Scan konnte nicht abgeschlossen werden: ${error.message}`;
+  }
+
+  return "Der lokale WLAN-Scan konnte nicht abgeschlossen werden. Prüfen Sie WLAN-Berechtigungen und ob das Gerät mit dem Praxis-WLAN verbunden ist.";
 }
 
 function FindingRow({ label, source }: { label: string; source: WlanScanResult["findings"]["networkName"]["source"] }) {
@@ -230,6 +251,31 @@ function Methodology({ result }: { result: WlanScanResult }) {
       <FindingRow label={`Gateway-Ports: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
       {result.methodology.slice(0, 3).map((item) => (
         <Text key={item} style={styles.methodologyText}>{item}</Text>
+      ))}
+    </View>
+  );
+}
+
+function SecurityCheckList({ findings }: { findings: NetworkSecurityFinding[] }) {
+  if (findings.length === 0) return null;
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Sicherheitsprüfungen</Text>
+      {findings.map((finding) => (
+        <View key={finding.id} style={styles.securityCheckRow}>
+          <View style={[styles.securityCheckIcon, { borderColor: statusColor(finding), backgroundColor: statusBackground(finding) }]}>
+            <Ionicons name={securityCheckIcon(finding)} size={18} color={statusColor(finding)} />
+          </View>
+          <View style={styles.securityCheckText}>
+            <View style={styles.securityCheckTitleRow}>
+              <Text style={styles.securityCheckTitle}>{finding.title}</Text>
+              <AmpelBadge tone={statusTone(finding)} label={statusLabel(finding)} />
+            </View>
+            <Text style={styles.securityCheckDetails}>{finding.details}</Text>
+            {finding.detected ? <Text style={styles.securityCheckRecommendation}>{finding.recommendation}</Text> : null}
+          </View>
+        </View>
       ))}
     </View>
   );
@@ -320,6 +366,60 @@ function stateLabel(state: ScannerState, result: WlanScanResult | null) {
   return "Bereit";
 }
 
+function securityCheckIcon(finding: NetworkSecurityFinding): IoniconName {
+  if (finding.checkId === "wifi_encryption" || finding.checkId === "wpa3_upgrade") return finding.status === "secure" ? "lock-closed" : "lock-open";
+  if (finding.checkId === "router_http") return "globe";
+  if (finding.checkId === "telnet") return "terminal";
+  if (finding.checkId === "smb") return "file-tray-stacked";
+  if (finding.checkId === "upnp_ssdp") return "swap-horizontal";
+  if (finding.checkId === "rdp") return "desktop";
+  if (finding.checkId === "database_ports") return "server";
+  if (finding.checkId === "printer_services") return "print";
+  if (finding.checkId === "nas_services") return "file-tray-stacked";
+  if (finding.checkId === "camera_iot") return "videocam";
+  if (finding.checkId === "medical_device_metadata") return "medkit";
+  if (finding.checkId === "ipv6_exposure") return "git-network";
+  if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security") return "globe";
+  if (finding.checkId === "dhcp_consistency") return "git-branch";
+  if (finding.checkId === "guest_network") return "people";
+  if (finding.checkId === "network_segmentation") return "git-compare";
+  if (finding.checkId === "rogue_access_point") return "radio";
+  if (finding.checkId === "rogue_device") return "help-circle";
+  if (finding.checkId === "router_firmware") return "cloud-upload";
+  if (finding.checkId === "default_password_risk") return "key";
+  if (finding.checkId === "firewall_baseline") return "shield-half";
+  return "shield-checkmark";
+}
+
+function statusTone(finding: NetworkSecurityFinding): RiskTone {
+  if (finding.status === "critical") return "critical";
+  if (finding.status === "warning") return "warning";
+  if (finding.status === "secure") return "safe";
+  return "info";
+}
+
+function statusColor(finding: NetworkSecurityFinding) {
+  if (finding.status === "critical") return colors.critical;
+  if (finding.status === "warning") return colors.warning;
+  if (finding.status === "secure") return colors.safe;
+  return colors.electric;
+}
+
+function statusBackground(finding: NetworkSecurityFinding) {
+  if (finding.status === "critical") return "rgba(255, 71, 87, 0.12)";
+  if (finding.status === "warning") return "rgba(255, 165, 2, 0.12)";
+  if (finding.status === "secure") return "rgba(46, 213, 115, 0.12)";
+  return colors.electricSoft;
+}
+
+function statusLabel(finding: NetworkSecurityFinding) {
+  if (finding.status === "critical") return "Kritisch";
+  if (finding.status === "warning") return "Prüfen";
+  if (finding.status === "secure") return "Sicher";
+  if (finding.status === "not_supported") return "Nicht unterstützt";
+  return "Unbekannt";
+}
+
 function scoreTone(score: number): RiskTone {
   if (score >= 80) return "safe";
   if (score >= 55) return "warning";
@@ -345,6 +445,9 @@ function deviceIcon(device: DeviceInfo): IoniconName {
   if (device.deviceType === "gateway") return "server";
   if (device.deviceType === "phone") return "phone-portrait";
   if (device.deviceType === "printer") return "print";
+  if (device.deviceType === "nas") return "file-tray-stacked";
+  if (device.deviceType === "medical") return "medkit";
+  if (device.deviceType === "database") return "server";
   if (device.deviceType === "workstation") return "desktop";
   if (device.deviceType === "server") return "file-tray-stacked";
   if (device.deviceType === "iot") return "hardware-chip";
@@ -582,6 +685,55 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 14,
     fontWeight: "800"
+  },
+  securityCheckRow: {
+    alignItems: "flex-start",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 10,
+    padding: 12
+  },
+  securityCheckIcon: {
+    alignItems: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 38,
+    justifyContent: "center",
+    width: 38
+  },
+  securityCheckText: {
+    flex: 1,
+    minWidth: 0
+  },
+  securityCheckTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  securityCheckTitle: {
+    color: colors.ink,
+    flexShrink: 1,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 19
+  },
+  securityCheckDetails: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6
+  },
+  securityCheckRecommendation: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginTop: 8
   },
   vulnerabilityCard: {
     marginBottom: 12

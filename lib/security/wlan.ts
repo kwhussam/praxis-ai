@@ -9,11 +9,33 @@ import {
   scanVisibleWifiNetworks,
   type NativeWifiNetwork
 } from "@/lib/security/nativeWifi";
+import { assessFirewallBaseline, firewallBaselineFinding } from "@/lib/security/firewallBaseline";
+import { assessGuestNetwork, guestNetworkFinding } from "@/lib/security/guestNetworkAssessment";
+import { classifyDevice } from "@/lib/security/deviceClassification";
+import { assessGatewaySecurity, assessDeviceSecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
+import { getNativeWifiSecurityDetails, probeDeviceServices, probeGatewaySecurity } from "@/lib/security/networkProbes";
+import { assessRogueAccessPoints, rogueApFinding } from "@/lib/security/rogueApAssessment";
+import { assessRogueDevices, rogueDeviceFinding } from "@/lib/security/rogueDeviceAssessment";
+import { assessRouterCredentialRisk, defaultPasswordRiskFinding } from "@/lib/security/routerCredentialRisk";
+import { fingerprintRouter, routerFirmwareFinding } from "@/lib/security/routerFingerprint";
+import { assessNetworkSegmentation, segmentationFinding } from "@/lib/security/segmentationAssessment";
+import type {
+  DeviceClassification,
+  GatewaySecurityProbeResult,
+  HttpAdminProbeResult,
+  NetworkSecurityFinding,
+  TcpProbeResult,
+  WifiSecurityDetails,
+  WifiSecurityProtocol
+} from "@/lib/security/networkProbeTypes";
+import { serviceForPort } from "@/lib/security/servicePortCatalog";
+import { resolveWifiSecurityDetails } from "@/lib/security/wifiCapabilities";
 import { supabase } from "@/lib/api/supabase";
 import { createStringStorage } from "@/lib/store/storage";
 
-export type SecurityProtocol = "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
-export type DataSource = "measured" | "inferred" | "unavailable" | "simulated";
+export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
+export type SecurityProtocol = WifiSecurityProtocol;
+export type DataSource = "measured" | "inferred" | "unavailable" | "simulated" | "questionnaire";
 export type FindingConfidence = "high" | "medium" | "low";
 
 export interface WlanFinding<TValue> {
@@ -35,7 +57,10 @@ export type WlanVulnCategory =
   | "guest_network"
   | "firmware_outdated"
   | "upnp_enabled"
-  | "wps_enabled";
+  | "wps_enabled"
+  | "device_inventory"
+  | "ipv6"
+  | "dhcp";
 
 export interface Vulnerability {
   id: string;
@@ -52,6 +77,7 @@ export interface PortProbe {
   service: string;
   state: "open" | "closed" | "filtered" | "unknown";
   risk: "critical" | "high" | "medium" | "low" | "info";
+  source?: DataSource;
 }
 
 export interface DeviceInfo {
@@ -60,23 +86,26 @@ export interface DeviceInfo {
   hostname: string;
   macAddress?: string;
   vendor?: string;
-  deviceType: "gateway" | "phone" | "workstation" | "printer" | "server" | "iot" | "unknown";
+  deviceType: "gateway" | "phone" | "workstation" | "printer" | "server" | "nas" | "iot" | "medical" | "database" | "unknown";
   isKnown: boolean;
   isGateway?: boolean;
   openPorts: PortProbe[];
   riskTags: string[];
+  classification?: DeviceClassification;
   lastSeen: Date;
 }
 
 export interface WlanScanResult {
   networkName: string;
   securityProtocol: SecurityProtocol;
+  wifiSecurity: WifiSecurityDetails;
   ipAddress: string;
   subnetMask: string;
   gatewayIp: string;
   dnsServers: string[];
   connectedDevices: DeviceInfo[];
   vulnerabilities: Vulnerability[];
+  securityFindings: NetworkSecurityFinding[];
   riskScore: number;
   timestamp: Date;
   findings: {
@@ -89,6 +118,11 @@ export interface WlanScanResult {
     connectedDevices: WlanFinding<DeviceInfo[]>;
     openPorts: WlanFinding<PortProbe[]>;
     upnpStatus: WlanFinding<boolean | null>;
+    deviceClassifications: WlanFinding<DeviceClassification[]>;
+    ipv6Status: WlanFinding<GatewaySecurityProbeResult["ipv6"] | null>;
+    dnsResolverAssessments: WlanFinding<GatewaySecurityProbeResult["dnsResolvers"]>;
+    dhcpConsistency: WlanFinding<GatewaySecurityProbeResult["dhcpConsistency"] | null>;
+    securityChecks: WlanFinding<NetworkSecurityFinding[]>;
   };
   methodology: string[];
 }
@@ -112,7 +146,8 @@ export const SCAN_PHASES = [
       "SSID und BSSID ermitteln",
       "IP-Adressbereich analysieren",
       "Gateway und DNS-Server prüfen",
-      "WLAN-Sicherheitsprotokoll erkennen (WEP/WPA/WPA2/WPA3)"
+      "WLAN-Sicherheitsprotokoll erkennen (WEP/WPA/WPA2/WPA3)",
+      "Rogue-Access-Point-Hinweise aus WLAN-Metadaten ableiten"
     ]
   },
   {
@@ -134,8 +169,8 @@ export const SCAN_PHASES = [
       "Telnet-Zugang prüfen (Port 23 - kritisch)",
       "SSH-Zugang ermitteln (Port 22)",
       "UPnP-Service erkennen (Port 1900)",
-      "Praxissoftware-Ports prüfen (Port 3306, 5432)",
-      "SMB/Windows-Freigaben prüfen (Port 445 - kritisch)"
+      "Datenbankports prüfen (MySQL 3306, PostgreSQL 5432)",
+      "SMB/NFS/AFP-Dateidienste prüfen"
     ]
   },
   {
@@ -143,10 +178,11 @@ export const SCAN_PHASES = [
     label: "Geräte im Netzwerk werden erkannt",
     icon: "devices",
     checks: [
-      "ARP-Scan des lokalen Subnetzes",
-      "Geräteklassen identifizieren (PC, Drucker, IoT, Handy)",
+      "Schonende Geräteerkennung über bekannte Kandidaten",
+      "Drucker, NAS, Kamera/IoT und medizinische Geräte vorsichtig klassifizieren",
       "Unbekannte/verdächtige Geräte markieren",
-      "Netzwerksegmentierung prüfen (Gäste-WLAN vorhanden?)"
+      "HTTP-, IPP-, JetDirect- und Webinterfaces prüfen",
+      "Rogue-Device-Hinweise mit früheren Scans vergleichen"
     ]
   },
   {
@@ -154,9 +190,9 @@ export const SCAN_PHASES = [
     label: "DNS-Sicherheit wird analysiert",
     icon: "globe",
     checks: [
-      "DNS-Server gegen bekannte unsichere Server prüfen",
-      "DNS-over-HTTPS/TLS-Unterstützung prüfen",
-      "DNS-Hijacking-Indikatoren erkennen"
+      "DNS-Resolver klassifizieren",
+      "DNS-Filter-/Schutzfunktion ableiten",
+      "DHCP-, Gateway- und DNS-Konsistenz prüfen"
     ]
   },
   {
@@ -164,9 +200,10 @@ export const SCAN_PHASES = [
     label: "Datenverkehr wird bewertet",
     icon: "activity",
     checks: [
-      "Unverschlüsselte HTTP-Kommunikation erkennen",
-      "Prüfung ob Praxissoftware verschlüsselt kommuniziert",
-      "Dateifreigaben ohne Authentifizierung erkennen"
+      "IPv6-Aktivität und globale IPv6-Adressen bewerten",
+      "Unverschlüsselte lokale Adminoberflächen bewerten",
+      "Gastnetz- und Segmentierungs-Score berechnen",
+      "Router-Firmware-, Default-Passwort- und Firewall-Basisrisiko bewerten"
     ]
   }
 ] as const;
@@ -290,21 +327,6 @@ export const WLAN_VULNERABILITIES = {
   }
 } as const satisfies Record<string, VulnerabilityDefinition>;
 
-const HTTP_PORTS = [
-  { port: 80, service: "HTTP / Router-Webinterface", risk: "medium" },
-  { port: 443, service: "HTTPS / Router-Webinterface", risk: "info" },
-  { port: 8080, service: "HTTP-Admininterface", risk: "medium" }
-] as const;
-
-const HIGH_RISK_PORTS = [
-  { port: 22, service: "SSH", risk: "low" },
-  { port: 23, service: "Telnet", risk: "critical" },
-  { port: 445, service: "SMB / Windows-Dateifreigabe", risk: "critical" },
-  { port: 1900, service: "UPnP / SSDP", risk: "medium" },
-  { port: 3306, service: "MySQL / Praxissoftware-Datenbank", risk: "high" },
-  { port: 5432, service: "PostgreSQL / Praxissoftware-Datenbank", risk: "high" }
-] as const;
-
 const wlanScanStorage = createStringStorage("praxisshield-wlan-scans", {
   encryptionKey: "praxisshield-local-wlan-v1"
 });
@@ -317,9 +339,12 @@ type ScanContext = {
   gatewayIp: string;
   dnsServers: string[];
   securityProtocol: SecurityProtocol;
+  wifiSecurity: WifiSecurityDetails;
   visibleNetworks: NativeWifiNetwork[];
   devices: DeviceInfo[];
   vulnerabilities: Vulnerability[];
+  securityFindings: NetworkSecurityFinding[];
+  gatewayProbe: GatewaySecurityProbeResult | null;
 };
 
 export async function runWlanSecurityScan(options?: {
@@ -342,13 +367,34 @@ export async function runWlanSecurityScan(options?: {
     }
 
     if (phase.id === "encryption_check" && context) {
-      context.vulnerabilities.push(...assessEncryption(context.securityProtocol));
+      const encryptionFindings = assessWifiSecurity(context.wifiSecurity);
+      context.securityFindings.push(...encryptionFindings);
+      context.vulnerabilities.push(...securityFindingsToVulnerabilities(encryptionFindings));
     }
 
     if (phase.id === "port_scan" && context) {
-      const gatewayPorts = await scanGatewayPorts(context.gatewayIp);
-      context.devices = upsertGatewayPorts(context.devices, context.gatewayIp, gatewayPorts);
-      context.vulnerabilities.push(...assessPorts(gatewayPorts));
+      const gatewayProbe = await probeGatewaySecurity({
+        host: context.gatewayIp,
+        localIp: context.ipAddress,
+        subnetMask: context.subnetMask,
+        dnsServers: context.dnsServers
+      });
+      const gatewayClassification = classifyDevice({
+        host: context.gatewayIp,
+        hostname: "Gateway / Router",
+        http: gatewayProbe.http,
+        tcp: gatewayProbe.tcp,
+        ssdp: gatewayProbe.ssdp,
+        mdns: gatewayProbe.mdns,
+        snmp: gatewayProbe.snmp
+      });
+      gatewayProbe.deviceClassifications = [gatewayClassification];
+      context.gatewayProbe = gatewayProbe;
+      const gatewayPorts = gatewayProbeToPortProbes(gatewayProbe);
+      context.devices = upsertGatewayPorts(context.devices, context.gatewayIp, gatewayPorts, gatewayClassification);
+      const gatewayFindings = assessGatewaySecurity(gatewayProbe);
+      context.securityFindings.push(...gatewayFindings);
+      context.vulnerabilities.push(...securityFindingsToVulnerabilities(gatewayFindings));
     }
 
     if (phase.id === "device_discovery" && context) {
@@ -370,16 +416,23 @@ export async function runWlanSecurityScan(options?: {
     context = await readNetworkContext();
   }
 
+  const previousResult = getLatestWlanScanResult();
+  const advancedFindings = buildAdvancedNetworkFindings(context, previousResult?.connectedDevices ?? []);
+  context.securityFindings.push(...advancedFindings);
+  context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
+
   const result = {
     networkName: context.ssid,
     securityProtocol: context.securityProtocol,
+    wifiSecurity: context.wifiSecurity,
     ipAddress: context.ipAddress,
     subnetMask: context.subnetMask,
     gatewayIp: context.gatewayIp,
     dnsServers: context.dnsServers,
     connectedDevices: context.devices,
     vulnerabilities: dedupeVulnerabilities(context.vulnerabilities),
-    riskScore: calculateWlanRiskScore(context.vulnerabilities),
+    securityFindings: dedupeSecurityFindings(context.securityFindings),
+    riskScore: calculateWlanRiskScore(context.vulnerabilities, context.securityFindings),
     timestamp: new Date(),
     findings: buildFindings(context),
     methodology: getPlatformLimitations()
@@ -428,7 +481,9 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       subnetMask: result.subnetMask,
       gatewayIp: result.gatewayIp,
       dnsServers: result.dnsServers,
+      wifiSecurity: result.wifiSecurity,
       findings: serializeFindings(result.findings),
+      securityFindings: result.securityFindings,
       methodology: result.methodology,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
@@ -442,7 +497,10 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
   return { ok: true as const };
 }
 
-export function calculateWlanRiskScore(vulnerabilities: Vulnerability[]) {
+export function calculateWlanRiskScore(vulnerabilities: Vulnerability[], securityFindings: NetworkSecurityFinding[] = []) {
+  const securityFindingScore = calculateSecurityFindingScore(securityFindings);
+  if (securityFindingScore !== null) return securityFindingScore;
+
   const uniqueVulnerabilities = dedupeVulnerabilities(vulnerabilities);
   const penalty = uniqueVulnerabilities.reduce((sum, vulnerability) => {
     if (vulnerability.severity === "critical") return sum + 26;
@@ -465,6 +523,159 @@ export function mapWlanVulnerabilitiesToFindings(vulnerabilities: Vulnerability[
           ? ("warning" as const)
           : ("info" as const)
   }));
+}
+
+function gatewayProbeToPortProbes(probe: GatewaySecurityProbeResult): PortProbe[] {
+  const httpPorts: PortProbe[] = probe.http.map((item) => ({
+    port: item.port,
+    service: item.port === 443 || item.port === 8443 ? "HTTPS / Webinterface" : item.port === 631 ? "IPP / Druck-Webinterface" : item.port === 8080 ? "HTTP-Admininterface" : "HTTP / Webinterface",
+    state: item.state,
+    risk: item.port === 443 ? "info" : item.redirectsToHttps ? "low" : "medium",
+    source: item.source
+  }));
+
+  const tcpPorts: PortProbe[] = probe.tcp.map((item) => ({
+    port: item.port,
+    service: serviceNameForPort(item.port),
+    state: item.state,
+    risk: riskForPort(item.port),
+    source: item.source
+  }));
+
+  const ssdpPort: PortProbe = {
+    port: 1900,
+    service: "UPnP / SSDP",
+    state: probe.ssdp.active === true ? "open" : probe.ssdp.active === false ? "closed" : "unknown",
+    risk: "medium",
+    source: probe.ssdp.source
+  };
+
+  return dedupePorts([...httpPorts, ...tcpPorts, ssdpPort]);
+}
+
+function securityFindingsToVulnerabilities(findings: NetworkSecurityFinding[]): Vulnerability[] {
+  return findings
+    .filter((finding) => finding.detected && finding.status !== "secure" && finding.status !== "unknown")
+    .map((finding) => ({
+      id: finding.id,
+      title: finding.title,
+      description: finding.details,
+      severity: finding.severity,
+      remediation: finding.recommendation,
+      category: categoryForSecurityFinding(finding)
+    }));
+}
+
+function serviceNameForPort(port: number) {
+  const service = serviceForPort(port);
+  if (service) return service.service;
+  if (port === 23) return "Telnet";
+  if (port === 139) return "NetBIOS / SMB";
+  if (port === 445) return "SMB / Windows-Dateifreigabe";
+  if (port === 3389) return "RDP / Remote Desktop";
+  return `TCP ${port}`;
+}
+
+function riskForPort(port: number): PortProbe["risk"] {
+  const service = serviceForPort(port);
+  if (service) return service.risk;
+  if (port === 23 || port === 3389) return "critical";
+  if (port === 445 || port === 139) return "high";
+  return "info";
+}
+
+function categoryForSecurityFinding(finding: NetworkSecurityFinding): WlanVulnCategory {
+  if (finding.checkId === "wifi_encryption" || finding.checkId === "wpa3_upgrade") return "encryption";
+  if (finding.checkId === "upnp_ssdp") return "upnp_enabled";
+  if (finding.checkId === "router_http") return "unencrypted_traffic";
+  if (finding.checkId === "guest_network" || finding.checkId === "network_segmentation") return "guest_network";
+  if (finding.checkId === "rogue_device" || finding.checkId === "rogue_access_point") return "rogue_devices";
+  if (finding.checkId === "router_firmware") return "firmware_outdated";
+  if (finding.checkId === "default_password_risk") return "default_credentials";
+  if (finding.checkId === "firewall_baseline") return "open_ports";
+  if (finding.checkId === "printer_services" || finding.checkId === "nas_services" || finding.checkId === "camera_iot" || finding.checkId === "medical_device_metadata") return "device_inventory";
+  if (finding.checkId === "ipv6_exposure") return "ipv6";
+  if (finding.checkId === "dhcp_consistency") return "dhcp";
+  if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security") return "dns_hijacking";
+  return "open_ports";
+}
+
+function deviceServicePorts(http: HttpAdminProbeResult[], tcp: TcpProbeResult[]): PortProbe[] {
+  const httpPorts = http.map((probe) => ({
+    port: probe.port,
+    service: probe.port === 443 || probe.port === 8443 ? "HTTPS-Webinterface" : probe.port === 631 ? "IPP / Druck-Webinterface" : "HTTP-Webinterface",
+    state: probe.state,
+    risk: probe.state === "open" && probe.port !== 443 && probe.port !== 8443 ? ("medium" as const) : ("info" as const),
+    source: probe.source
+  }));
+  const tcpPorts = tcp.map((probe) => ({
+    port: probe.port,
+    service: serviceNameForPort(probe.port),
+    state: probe.state,
+    risk: riskForPort(probe.port),
+    source: probe.source
+  }));
+  return dedupePorts([...httpPorts, ...tcpPorts]);
+}
+
+function deviceTypeFromClassification(classification: DeviceClassification): DeviceInfo["deviceType"] | null {
+  if (classification.deviceClass === "printer") return "printer";
+  if (classification.deviceClass === "nas") return "nas";
+  if (classification.deviceClass === "camera_iot") return "iot";
+  if (classification.deviceClass === "medical_device") return "medical";
+  if (classification.deviceClass === "database_server") return "database";
+  if (classification.deviceClass === "server") return "server";
+  if (classification.deviceClass === "workstation") return "workstation";
+  if (classification.deviceClass === "phone") return "phone";
+  return null;
+}
+
+function buildAdvancedNetworkFindings(context: ScanContext, previousDevices: DeviceInfo[]) {
+  const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
+  const gatewayDevice = context.devices.find((device) => device.ipAddress === context.gatewayIp);
+  const gatewayPorts = gatewayDevice?.openPorts ?? [];
+  const gatewayReachable = gatewayPorts.some((port) => port.state === "open") || Boolean(context.gatewayIp);
+
+  const guestAssessment = assessGuestNetwork({
+    ssid: context.ssid,
+    gatewayReachable,
+    visibleDeviceCount: context.devices.length,
+    classifications,
+    captivePortalLikely: context.ssid.toLowerCase().includes("guest") || context.ssid.toLowerCase().includes("gast") ? null : false
+  });
+
+  const segmentationAssessment = assessNetworkSegmentation({
+    guestNetworkStatus: guestAssessment.status,
+    classifications,
+    visibleDeviceCount: context.devices.length
+  });
+
+  const rogueApAssessment = assessRogueAccessPoints({
+    currentSsid: context.ssid,
+    visibleNetworks: context.visibleNetworks
+  });
+
+  const rogueDeviceAssessment = assessRogueDevices(context.devices, previousDevices);
+  const findings = [
+    guestNetworkFinding(guestAssessment),
+    segmentationFinding(segmentationAssessment),
+    rogueApFinding(rogueApAssessment),
+    rogueDeviceFinding(rogueDeviceAssessment)
+  ];
+
+  if (context.gatewayProbe) {
+    const routerFingerprint = fingerprintRouter({
+      http: context.gatewayProbe.http,
+      classification: gatewayDevice?.classification
+    });
+    const credentialRisk = assessRouterCredentialRisk({ fingerprint: routerFingerprint });
+    const firewallBaseline = assessFirewallBaseline(context.gatewayProbe);
+    findings.push(routerFirmwareFinding(routerFingerprint));
+    findings.push(defaultPasswordRiskFinding(credentialRisk));
+    findings.push(firewallBaselineFinding(firewallBaseline));
+  }
+
+  return findings;
 }
 
 function emitProgress(
@@ -499,7 +710,9 @@ async function readNetworkContext(): Promise<ScanContext> {
   const gatewayIp = getStringProperty(details, "gateway") || inferGatewayIp(ipAddress);
   const ssid = await getCurrentSsid(state);
   const visibleNetworks = await scanVisibleWifiNetworks();
-  const securityProtocol = inferSecurityProtocol(state, ssid, visibleNetworks);
+  const nativeWifiSecurity = await getNativeWifiSecurityDetails();
+  const wifiSecurity = resolveWifiSecurityDetails(ssid, visibleNetworks, nativeWifiSecurity, Platform.OS);
+  const securityProtocol = state.type === "wifi" ? wifiSecurity.protocol : "UNKNOWN";
   const dnsServers = getStringArrayProperty(details, "dns") || getStringArrayProperty(details, "dnsServers") || [];
   const devices = buildBaseDevices(ipAddress, gatewayIp);
 
@@ -511,9 +724,12 @@ async function readNetworkContext(): Promise<ScanContext> {
     gatewayIp,
     dnsServers,
     securityProtocol,
+    wifiSecurity,
     visibleNetworks,
     devices,
-    vulnerabilities: []
+    vulnerabilities: [],
+    securityFindings: [],
+    gatewayProbe: null
   };
 }
 
@@ -528,118 +744,54 @@ async function getCurrentSsid(state: NetInfoState) {
   return state.type === "wifi" ? "Praxis-WLAN" : "Kein WLAN verbunden";
 }
 
-function inferSecurityProtocol(state: NetInfoState, ssid: string, visibleNetworks: NativeWifiNetwork[]): SecurityProtocol {
-  if (state.type !== "wifi") return "UNKNOWN";
-  const currentNetwork = visibleNetworks.find((network) => stripWifiQuotes(network.ssid ?? "") === ssid);
-  const capabilities = currentNetwork?.capabilities?.toUpperCase() ?? "";
-  if (capabilities.includes("WPA3")) return "WPA3";
-  if (capabilities.includes("WPA2")) return "WPA2";
-  if (capabilities.includes("WPA")) return "WPA";
-  if (capabilities.includes("WEP")) return "WEP";
-  if (capabilities.includes("ESS") && !capabilities.includes("WPA") && !capabilities.includes("WEP")) return "OPEN";
-  const normalizedSsid = ssid.toLowerCase();
-  if (normalizedSsid.includes("open") || normalizedSsid.includes("freewifi")) return "OPEN";
-  return "UNKNOWN";
-}
-
-function assessEncryption(protocol: SecurityProtocol): Vulnerability[] {
-  if (protocol === "WEP") return [makeVulnerability("WEP_ENCRYPTION")];
-  if (protocol === "WPA") return [makeVulnerability("WPA_TKIP")];
-  if (protocol === "OPEN") {
-    return [
-      makeVulnerability("WEP_ENCRYPTION", {
-        title: "Offenes WLAN ohne Passwort",
-        description:
-          "Das WLAN ist ohne Passwort erreichbar. Geräte im Empfangsbereich können dem Praxisnetz beitreten.",
-        remediation: "Aktivieren Sie WPA3 oder mindestens WPA2-AES und vergeben Sie ein starkes WLAN-Passwort."
-      })
-    ];
-  }
-  return [];
-}
-
-async function scanGatewayPorts(gatewayIp: string): Promise<PortProbe[]> {
-  if (!isPrivateIp(gatewayIp)) return [];
-
-  const httpPorts = await Promise.all(
-    HTTP_PORTS.map(async (item) => ({
-      port: item.port,
-      service: item.service,
-      risk: item.risk,
-      state: await probeHttpPort(gatewayIp, item.port)
-    }))
-  );
-
-  const nativeOnlyPorts = HIGH_RISK_PORTS.map((item) => ({
-    port: item.port,
-    service: item.service,
-    risk: item.risk,
-    state: "unknown" as const
-  }));
-
-  return [...httpPorts, ...nativeOnlyPorts];
-}
-
-async function probeHttpPort(ipAddress: string, port: number): Promise<PortProbe["state"]> {
-  const protocol = port === 443 ? "https" : "http";
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 1600);
-
-  try {
-    await fetch(`${protocol}://${ipAddress}:${port}`, {
-      method: "GET",
-      signal: controller.signal
-    });
-    return "open";
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") return "filtered";
-    return "closed";
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function assessPorts(ports: PortProbe[]): Vulnerability[] {
-  const vulnerabilities: Vulnerability[] = [];
-  if (ports.some((port) => port.port === 23 && port.state === "open")) vulnerabilities.push(makeVulnerability("OPEN_TELNET"));
-  if (ports.some((port) => port.port === 445 && port.state === "open")) vulnerabilities.push(makeVulnerability("OPEN_SMB"));
-  if (ports.some((port) => port.port === 1900 && port.state === "open")) vulnerabilities.push(makeVulnerability("UPNP_ENABLED"));
-  if (ports.some((port) => port.port === 80 && port.state === "open")) {
-    vulnerabilities.push(makeVulnerability("ROUTER_DEFAULT_PORT"));
-    vulnerabilities.push(makeVulnerability("HTTP_SERVICES"));
-  }
-
-  return vulnerabilities;
-}
-
 async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[]> {
   const nativeDevices = await scanLocalDevices();
   const candidates = candidateIps(context.ipAddress, context.gatewayIp);
   const probes = await Promise.all(
-    candidates.map(async (ipAddress) => ({
-      ipAddress,
-      httpState: await probeHttpPort(ipAddress, 80)
-    }))
+    candidates.map(async (ipAddress) => {
+      const services = await probeDeviceServices(ipAddress, 1200);
+      const nativeDevice = nativeDevices.find((device) => device.ip === ipAddress);
+      const classification = classifyDevice({
+        host: ipAddress,
+        hostname: nativeDevice?.hostname,
+        macAddress: nativeDevice?.mac,
+        http: services.http,
+        tcp: services.tcp,
+        ssdp: context.gatewayProbe?.ssdp,
+        mdns: context.gatewayProbe?.mdns,
+        snmp: context.gatewayProbe?.snmp.filter((probe) => probe.host === ipAddress)
+      });
+      const openPorts = deviceServicePorts(services.http, services.tcp);
+      const isVisible = openPorts.some((port) => port.state === "open") || nativeDevice || classification.deviceClass !== "unknown";
+      return {
+        ipAddress,
+        services,
+        nativeDevice,
+        classification,
+        openPorts,
+        isVisible
+      };
+    })
   );
 
   const responsiveDevices: DeviceInfo[] = probes
-    .filter((probe) => probe.httpState === "open")
+    .filter((probe) => probe.isVisible)
     .map((probe) => ({
       id: `device-${probe.ipAddress}`,
       ipAddress: probe.ipAddress,
-      hostname: probe.ipAddress === context.gatewayIp ? "Gateway / Router" : `Netzwerkgerät ${probe.ipAddress}`,
-      deviceType: probe.ipAddress === context.gatewayIp ? "gateway" : inferDeviceTypeFromIp(probe.ipAddress),
+      hostname: probe.nativeDevice?.hostname ?? (probe.ipAddress === context.gatewayIp ? "Gateway / Router" : `Netzwerkgerät ${probe.ipAddress}`),
+      macAddress: probe.nativeDevice?.mac,
+      vendor: probe.classification.vendor,
+      deviceType: probe.ipAddress === context.gatewayIp ? "gateway" : deviceTypeFromClassification(probe.classification) ?? inferDeviceTypeFromIp(probe.ipAddress),
       isKnown: probe.ipAddress === context.gatewayIp,
       isGateway: probe.ipAddress === context.gatewayIp,
-      openPorts: [
-        {
-          port: 80,
-          service: "HTTP",
-          state: "open",
-          risk: "medium"
-        }
-      ],
-      riskTags: probe.ipAddress === context.gatewayIp ? ["Router"] : ["HTTP-Dienst sichtbar"],
+      openPorts: probe.openPorts,
+      riskTags: Array.from(new Set([
+        ...(probe.ipAddress === context.gatewayIp ? ["Router"] : []),
+        ...probe.classification.signals.slice(0, 4),
+        ...probe.openPorts.filter((port) => port.state === "open").map((port) => port.service)
+      ])),
+      classification: probe.classification,
       lastSeen: new Date()
     }));
 
@@ -655,6 +807,17 @@ async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[
     riskTags: device.hostname ? ["Native Geräteerkennung"] : ["Unbekanntes Gerät"],
     lastSeen: new Date()
   }));
+
+  const deviceFindings = probes.flatMap((probe) => {
+    return assessDeviceSecurity({
+      host: probe.ipAddress,
+      tcp: probe.services.tcp,
+      http: probe.services.http,
+      classifications: [probe.classification]
+    });
+  });
+  context.securityFindings.push(...deviceFindings);
+  context.vulnerabilities.push(...securityFindingsToVulnerabilities(deviceFindings));
 
   return [...nativeDeviceInfos, ...responsiveDevices];
 }
@@ -681,7 +844,7 @@ function assessDns(dnsServers: string[]): Vulnerability[] {
 
 function assessTraffic(devices: DeviceInfo[]): Vulnerability[] {
   const httpDevices = devices.filter((device) =>
-    device.openPorts.some((port) => port.port === 80 && port.state === "open")
+    device.openPorts.some((port) => [80, 8080, 5000, 5001, 631].includes(port.port) && port.state === "open")
   );
 
   if (httpDevices.length === 0) return [];
@@ -723,13 +886,18 @@ function buildBaseDevices(ipAddress: string, gatewayIp: string): DeviceInfo[] {
   return devices;
 }
 
-function upsertGatewayPorts(devices: DeviceInfo[], gatewayIp: string, ports: PortProbe[]) {
+function upsertGatewayPorts(devices: DeviceInfo[], gatewayIp: string, ports: PortProbe[], classification?: DeviceClassification) {
   return devices.map((device) =>
     device.ipAddress === gatewayIp
       ? {
           ...device,
+          classification,
           openPorts: ports,
-          riskTags: [...device.riskTags, ...ports.filter((port) => port.state === "open").map((port) => port.service)]
+          riskTags: [
+            ...device.riskTags,
+            ...(classification?.signals.slice(0, 4) ?? []),
+            ...ports.filter((port) => port.state === "open").map((port) => port.service)
+          ]
         }
       : device
   );
@@ -756,6 +924,10 @@ function dedupePorts(ports: PortProbe[]) {
 
 function dedupeVulnerabilities(vulnerabilities: Vulnerability[]) {
   return Array.from(new Map(vulnerabilities.map((vulnerability) => [vulnerability.id, vulnerability])).values());
+}
+
+function dedupeSecurityFindings(findings: NetworkSecurityFinding[]) {
+  return Array.from(new Map(findings.map((finding) => [finding.id, finding])).values());
 }
 
 function makeVulnerability(
@@ -821,7 +993,10 @@ function inferDeviceTypeFromHostname(hostname?: string): DeviceInfo["deviceType"
   const normalized = hostname?.toLowerCase() ?? "";
   if (normalized.includes("print") || normalized.includes("druck")) return "printer";
   if (normalized.includes("iphone") || normalized.includes("android") || normalized.includes("phone")) return "phone";
-  if (normalized.includes("server") || normalized.includes("nas")) return "server";
+  if (normalized.includes("nas") || normalized.includes("synology") || normalized.includes("qnap")) return "nas";
+  if (normalized.includes("server")) return "server";
+  if (normalized.includes("dicom") || normalized.includes("med")) return "medical";
+  if (normalized.includes("db") || normalized.includes("mysql") || normalized.includes("postgres")) return "database";
   if (normalized.includes("pc") || normalized.includes("win") || normalized.includes("macbook")) return "workstation";
   if (normalized.includes("camera") || normalized.includes("iot")) return "iot";
   return "unknown";
@@ -857,8 +1032,10 @@ function isTrustedPublicDns(ipAddress: string) {
 function buildFindings(context: ScanContext): WlanScanResult["findings"] {
   const measuredAt = new Date();
   const gatewayPorts = context.devices.find((device) => device.ipAddress === context.gatewayIp)?.openPorts ?? [];
-  const securitySource: DataSource = context.visibleNetworks.length > 0 ? "measured" : "inferred";
+  const securitySource: DataSource = context.wifiSecurity.source;
   const deviceSource: DataSource = Platform.OS === "web" ? "unavailable" : "measured";
+  const securityChecks = dedupeSecurityFindings(context.securityFindings);
+  const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
 
   return {
     networkName: makeFinding("network_name", context.ssid, context.ssid ? "measured" : "unavailable", "NetInfo / native WiFi", context.ssid ? "high" : "low", measuredAt),
@@ -878,10 +1055,50 @@ function buildFindings(context: ScanContext): WlanScanResult["findings"] {
     openPorts: makeFinding("open_ports", gatewayPorts, context.gatewayIp ? "measured" : "unavailable", "HTTP probes against gateway and selected subnet hosts", "medium", measuredAt),
     upnpStatus: makeFinding(
       "upnp_status",
-      gatewayPorts.some((port) => port.port === 1900 && port.state === "open") ? true : null,
-      "inferred",
-      "Port 1900 probe; direct router UPnP API is not available in Expo",
-      "low",
+      context.gatewayProbe?.ssdp.active ?? null,
+      context.gatewayProbe?.ssdp.source ?? "unavailable",
+      "SSDP M-SEARCH via native UDP module when available",
+      context.gatewayProbe?.ssdp.confidence ?? "low",
+      measuredAt
+    ),
+    deviceClassifications: makeFinding(
+      "device_classifications",
+      classifications,
+      classifications.length > 0 ? "inferred" : "unavailable",
+      "Port, HTTP, mDNS, SSDP and limited SNMP metadata; no logins or content reads",
+      classifications.some((item) => item.confidence === "high") ? "high" : classifications.length > 0 ? "medium" : "low",
+      measuredAt
+    ),
+    ipv6Status: makeFinding(
+      "ipv6_status",
+      context.gatewayProbe?.ipv6 ?? null,
+      context.gatewayProbe?.ipv6.source ?? "unavailable",
+      "Native interface metadata and DNS server list; no IPv6 port scan",
+      context.gatewayProbe?.ipv6.confidence ?? "low",
+      measuredAt
+    ),
+    dnsResolverAssessments: makeFinding(
+      "dns_resolver_assessments",
+      context.gatewayProbe?.dnsResolvers ?? [],
+      context.gatewayProbe?.dnsResolvers.length ? "inferred" : "unavailable",
+      "Local DNS IP classification against private/router/public/security DNS lists",
+      context.gatewayProbe?.dnsResolvers.some((item) => item.confidence === "high") ? "high" : "medium",
+      measuredAt
+    ),
+    dhcpConsistency: makeFinding(
+      "dhcp_consistency",
+      context.gatewayProbe?.dhcpConsistency ?? null,
+      context.gatewayProbe ? "inferred" : "unavailable",
+      "Logical consistency check for IP, subnet, gateway and DNS",
+      context.gatewayProbe?.dhcpConsistency.confidence ?? "low",
+      measuredAt
+    ),
+    securityChecks: makeFinding(
+      "security_checks",
+      securityChecks,
+      securityChecks.some((finding) => finding.evidence.source === "measured") ? "measured" : "unavailable",
+      "Structured WLAN, HTTP, TCP and SSDP security probes",
+      securityChecks.some((finding) => finding.confidence === "high") ? "high" : "medium",
       measuredAt
     )
   };
@@ -950,24 +1167,60 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-type StoredWlanScanResult = Omit<WlanScanResult, "timestamp" | "connectedDevices"> & {
+type StoredWlanScanResult = Omit<WlanScanResult, "timestamp" | "connectedDevices" | "securityFindings" | "wifiSecurity" | "findings"> & {
   timestamp: string;
   connectedDevices: Array<Omit<DeviceInfo, "lastSeen"> & { lastSeen: string }>;
-  findings: {
+  securityFindings?: NetworkSecurityFinding[];
+  wifiSecurity?: WifiSecurityDetails;
+  findings: Partial<{
     [Key in keyof WlanScanResult["findings"]]: Omit<WlanScanResult["findings"][Key], "measured_at"> & {
       measured_at: string;
     };
-  };
+  }>;
 };
 
 function reviveScanResult(result: StoredWlanScanResult): WlanScanResult {
+  const findings = reviveFindings(result.findings);
+  const securityFindings = result.securityFindings ?? [];
+  findings.securityChecks =
+    findings.securityChecks ??
+    makeFinding("security_checks", securityFindings, "unavailable", "Legacy scan without structured security checks", "low", new Date());
+  findings.deviceClassifications =
+    findings.deviceClassifications ??
+    makeFinding("device_classifications", [], "unavailable", "Legacy scan without device classification metadata", "low", new Date());
+  findings.ipv6Status =
+    findings.ipv6Status ??
+    makeFinding("ipv6_status", null, "unavailable", "Legacy scan without IPv6 metadata", "low", new Date());
+  findings.dnsResolverAssessments =
+    findings.dnsResolverAssessments ??
+    makeFinding("dns_resolver_assessments", [], "unavailable", "Legacy scan without DNS resolver classification", "low", new Date());
+  findings.dhcpConsistency =
+    findings.dhcpConsistency ??
+    makeFinding("dhcp_consistency", null, "unavailable", "Legacy scan without DHCP consistency assessment", "low", new Date());
+
   return {
     ...result,
+    wifiSecurity: result.wifiSecurity ?? defaultWifiSecurity(result.securityProtocol),
+    securityFindings,
     timestamp: new Date(result.timestamp),
-    findings: reviveFindings(result.findings),
+    findings,
     connectedDevices: result.connectedDevices.map((device) => ({
       ...device,
       lastSeen: new Date(device.lastSeen)
     }))
+  };
+}
+
+function defaultWifiSecurity(protocol: SecurityProtocol): WifiSecurityDetails {
+  return {
+    protocol,
+    authMode: "unknown",
+    isEnterprise: false,
+    isPersonal: protocol === "WPA" || protocol === "WPA2" || protocol === "WPA3",
+    isMixedMode: false,
+    supportsWpa3: protocol === "WPA3",
+    source: "inferred",
+    confidence: "low",
+    platformLimitations: ["Legacy scan result without detailed WPA mode metadata."]
   };
 }
