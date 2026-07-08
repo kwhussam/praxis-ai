@@ -1,19 +1,26 @@
 import { useLocalSearchParams, router } from "expo-router";
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { BarChart } from "@/components/charts/BarChart";
 import { RadarChart } from "@/components/charts/RadarChart";
 import { AiReport } from "@/components/modules/AiReport";
+import { ReportFindings } from "@/components/modules/ReportFindings";
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
 import { useReportStore } from "@/lib/store/report";
 
 export default function ReportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const latestReport = useReportStore((state) => state.latest);
+  const scoreReport = useMemo(
+    () => (latestReport && latestReport.id === id ? buildReportScore(latestReport.source) : null),
+    [id, latestReport]
+  );
 
   if (!latestReport || latestReport.id !== id) {
     return (
@@ -44,6 +51,9 @@ export default function ReportDetailScreen() {
 
       <View style={styles.space} />
       <BarChart title="Kategorie-Scores" data={categoryBars(report)} />
+
+      <View style={styles.space} />
+      {scoreReport ? <ReportFindings scoreReport={scoreReport} /> : null}
 
       <View style={styles.space} />
       <GlassCard style={styles.card}>

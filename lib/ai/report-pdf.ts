@@ -1,11 +1,13 @@
 import RNHTMLtoPDF from "react-native-html-to-pdf";
 
 import type { Report } from "@/lib/ai/report";
+import type { ScoreReport } from "@/lib/security/scoring";
 
 type ExportOptions = {
   practiceName: string;
   domain?: string;
   report: Report;
+  scoreReport?: ScoreReport;
 };
 
 const ampelColors: Record<Report["ampel"], string> = {
@@ -14,10 +16,10 @@ const ampelColors: Record<Report["ampel"], string> = {
   grün: "#2ED573"
 };
 
-export async function exportReportPdf({ practiceName, domain, report }: ExportOptions) {
+export async function exportReportPdf({ practiceName, domain, report, scoreReport }: ExportOptions) {
   const fileName = `PraxisShield-Bericht-${slugify(practiceName)}-${new Date().toISOString().slice(0, 10)}`;
   const result = await RNHTMLtoPDF.convert({
-    html: buildReportHtml({ practiceName, domain, report }),
+    html: buildReportHtml({ practiceName, domain, report, scoreReport }),
     fileName,
     base64: false
   });
@@ -29,7 +31,7 @@ export async function exportReportPdf({ practiceName, domain, report }: ExportOp
   return result.filePath;
 }
 
-export function buildReportHtml({ practiceName, domain, report }: ExportOptions) {
+export function buildReportHtml({ practiceName, domain, report, scoreReport }: ExportOptions) {
   const ampelColor = ampelColors[report.ampel];
   const generatedAt = new Date().toLocaleDateString("de-DE", {
     day: "2-digit",
@@ -240,6 +242,8 @@ export function buildReportHtml({ practiceName, domain, report }: ExportOptions)
       </div>
     </section>
 
+    ${reportFindingsSection(scoreReport)}
+
     <section class="section">
       <h2>DSGVO und Dokumentation</h2>
       <p><strong>Status:</strong> ${escapeHtml(dsgvoStatusLabel(report.dsgvo_compliance.status))}</p>
@@ -264,6 +268,32 @@ export function buildReportHtml({ practiceName, domain, report }: ExportOptions)
 </html>`;
 }
 
+function reportFindingsSection(scoreReport?: ScoreReport) {
+  if (!scoreReport) return "";
+
+  return `<section class="section">
+      <h2>Befunde und Nachweisart</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Prüfmodul</th>
+            <th>Befund</th>
+            <th>Nachweisart</th>
+            <th>Punkte</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${scoreReport.rule_results.map((finding) => `<tr>
+            <td><strong>${escapeHtml(reportModuleLabel(finding.rule_id))}</strong></td>
+            <td>${escapeHtml(finding.finding)}<br /><span class="meta">${escapeHtml(finding.evidence_coverage.detail)}</span></td>
+            <td><span class="pill">${escapeHtml(finding.evidence_coverage.label)}</span></td>
+            <td>${finding.points_earned}/${finding.points_max}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </section>`;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -281,6 +311,22 @@ function categoryLabel(value: string) {
     network: "Netzwerk/WLAN",
     dsgvo: "DSGVO",
     updates: "Updates"
+  };
+
+  return labels[value] ?? value;
+}
+
+function reportModuleLabel(value: string) {
+  const labels: Record<string, string> = {
+    MFA_ENABLED: "MFA",
+    BACKUP_TESTED: "Backup",
+    DMARC_POLICY: "DMARC",
+    PATCHING_CURRENT: "Updates",
+    WLAN_ENCRYPTION: "WLAN-Verschlüsselung",
+    STAFF_TRAINING: "Schulung",
+    PRIVACY_DOCUMENTATION: "DSGVO-Dokumentation",
+    ACTIVE_FINDINGS: "Aktive Findings",
+    NETWORK_SECURITY_PROBES: "Netzwerkprüfungen"
   };
 
   return labels[value] ?? value;

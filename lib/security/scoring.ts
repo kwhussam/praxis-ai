@@ -1,11 +1,11 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 
-export const SCORING_VERSION = "1.1.0";
+export const SCORING_VERSION = "1.2.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
 export type SecurityCategory = "access_control" | "backup" | "email_security" | "network" | "dsgvo" | "updates";
-export type EvidenceSource = "measured" | "inferred" | "self_reported" | "unavailable";
+export type EvidenceSource = "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
 
 export type SecurityFinding = {
   id: string;
@@ -15,6 +15,7 @@ export type SecurityFinding = {
 
 export type ScoreInput = {
   questionnaire: Record<string, boolean>;
+  encryption?: CheckData["encryption"];
   externalFindings?: SecurityFinding[];
   wlanFindings?: SecurityFinding[];
   wlanSecurityFindings?: NetworkSecurityFinding[];
@@ -82,8 +83,9 @@ export type ScoreReport = {
 
 export const EVIDENCE_SOURCE_LABELS: Record<EvidenceSource, string> = {
   measured: "Gemessen",
-  inferred: "Abgeleitet",
+  inferred: "Heuristisch",
   self_reported: "Selbstauskunft",
+  not_checked: "Nicht geprüft",
   unavailable: "Nicht verfügbar"
 };
 
@@ -91,6 +93,7 @@ export const EVIDENCE_SOURCE_SCORES: Record<EvidenceSource, number> = {
   measured: 100,
   inferred: 70,
   self_reported: 45,
+  not_checked: 0,
   unavailable: 0
 };
 
@@ -132,7 +135,7 @@ export const SCORING_RULES: ScoringRule[] = [
         evidence: `questionnaire.backup_frequency=${frequency}; questionnaire.backup_tested=${String(data.backup_tested)}`,
         evidenceCoverage: data.backup_frequency !== undefined || data.backup_tested !== undefined
           ? coverage("self_reported", "Backup-Frequenz und Restore-Test wurden per Fragebogen erfasst.")
-          : coverage("unavailable", "Es liegen keine Backup-Angaben vor."),
+          : coverage("not_checked", "Es liegen keine Backup-Angaben vor."),
         recommendation: "Tägliche Backups mit quartalsweisem Restore-Test dokumentieren."
       });
     }
@@ -197,9 +200,12 @@ export const SCORING_RULES: ScoringRule[] = [
         passed: protocol === "WPA2" || protocol === "WPA3",
         finding: `WLAN-Verschlüsselung: ${protocol}.`,
         evidence: `wlan.security_protocol=${protocol}`,
-        evidenceCoverage: data.encryption && data.encryption !== "UNKNOWN"
-          ? coverage("measured", "WLAN-Verschlüsselung wurde technisch aus dem Scan übernommen.")
-          : coverage("unavailable", "WLAN-Verschlüsselung konnte nicht zuverlässig ausgelesen werden."),
+        evidenceCoverage:
+          data.encryption === undefined
+            ? coverage("not_checked", "WLAN-Verschlüsselung wurde nicht geprüft.")
+            : data.encryption !== "UNKNOWN"
+              ? coverage("measured", "WLAN-Verschlüsselung wurde technisch aus dem Scan übernommen.")
+              : coverage("unavailable", "WLAN-Verschlüsselung konnte nicht zuverlässig ausgelesen werden."),
         recommendation: "WPA3 oder mindestens WPA2-AES aktivieren; WEP und offene WLANs sofort ersetzen."
       });
     }
@@ -264,7 +270,7 @@ export const SCORING_RULES: ScoringRule[] = [
         evidence: `findings.critical=${critical}; findings.warning=${warning}`,
         evidenceCoverage: hasFindingInputs
           ? coverage("inferred", "Aktive Findings wurden aus technischen Prüf- und Scanbefunden abgeleitet.")
-          : coverage("unavailable", "Es liegen keine Finding-Quellen für diese Aggregation vor."),
+          : coverage("not_checked", "Es liegen keine Finding-Quellen für diese Aggregation vor."),
         recommendation: "Aktive Findings nach Kritikalität abarbeiten und erneut prüfen."
       });
     }
@@ -307,7 +313,7 @@ export const SCORING_RULES: ScoringRule[] = [
         evidence: `wlanSecurityFindings.detected=${detected.length}; wlanSecurityFindings.critical=${critical}`,
         evidenceCoverage: hasProbeInput
           ? coverage("measured", "Erweiterte lokale Netzwerkprüfungen wurden technisch ausgeführt.")
-          : coverage("unavailable", "Erweiterte lokale Netzwerkprüfungen wurden nicht ausgeführt oder nicht übergeben."),
+          : coverage("not_checked", "Erweiterte lokale Netzwerkprüfungen wurden nicht ausgeführt oder nicht übergeben."),
         recommendation: "Telnet/RDP deaktivieren, Router-HTTP auf HTTPS umstellen, SMB absichern und UPnP nur bei zwingendem Bedarf erlauben."
       });
     }
@@ -353,7 +359,7 @@ function scoreInputToCheckData(input: ScoreInput): CheckData {
     updates_current: questionnaire.patching,
     staff_training: questionnaire.staffTraining,
     privacy_documents_current: questionnaire.privacyDocuments,
-    encryption: "UNKNOWN",
+    encryption: input.encryption,
     externalFindings: input.externalFindings,
     wlanFindings: input.wlanFindings,
     wlanSecurityFindings: input.wlanSecurityFindings
@@ -396,23 +402,23 @@ function buildResult(input: {
   evidenceCoverage: EvidenceCoverage;
   recommendation: string;
 }): RuleEvaluation {
-  const unavailable = input.evidenceCoverage.source === "unavailable";
+  const missingEvidence = input.evidenceCoverage.source === "not_checked" || input.evidenceCoverage.source === "unavailable";
 
   return {
     rule_id: input.ruleId,
     category: input.category,
-    points_earned: unavailable ? 0 : Math.max(0, Math.min(input.max, input.earned)),
+    points_earned: missingEvidence ? 0 : Math.max(0, Math.min(input.max, input.earned)),
     points_max: input.max,
-    passed: unavailable ? false : input.passed,
+    passed: missingEvidence ? false : input.passed,
     finding: input.finding,
     evidence: input.evidence,
     evidence_coverage: input.evidenceCoverage,
-    recommendation: unavailable || !input.passed ? input.recommendation : undefined
+    recommendation: missingEvidence || !input.passed ? input.recommendation : undefined
   };
 }
 
 function booleanCoverage(value: boolean | undefined, detail: string) {
-  return value === undefined ? coverage("unavailable", "Für dieses Prüfmodul liegt keine Angabe vor.") : coverage("self_reported", detail);
+  return value === undefined ? coverage("not_checked", "Für dieses Prüfmodul liegt keine Angabe vor.") : coverage("self_reported", detail);
 }
 
 function coverage(source: EvidenceSource, detail: string): EvidenceCoverage {

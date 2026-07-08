@@ -74,12 +74,15 @@ describe("SecurityScoring", () => {
 
   it("weist Evidenzquellen pro Prüfmodul aus", () => {
     const result = calculateScore({ ...ALL_CHECKS_PASSING, wlanSecurityFindings: [] });
-    const unavailableResult = calculateScore({} as CheckData);
+    const notCheckedResult = calculateScore({} as CheckData);
+    const unavailableResult = calculateScore({ encryption: "UNKNOWN" } as CheckData);
 
     expect(result.rule_results.find((rule) => rule.rule_id === "MFA_ENABLED")?.evidence_coverage.source).toBe("self_reported");
     expect(result.rule_results.find((rule) => rule.rule_id === "DMARC_POLICY")?.evidence_coverage.source).toBe("measured");
     expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.source).toBe("inferred");
+    expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.label).toBe("Heuristisch");
     expect(result.rule_results.find((rule) => rule.rule_id === "NETWORK_SECURITY_PROBES")?.evidence_coverage.source).toBe("measured");
+    expect(notCheckedResult.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION")?.evidence_coverage.source).toBe("not_checked");
     expect(unavailableResult.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION")?.evidence_coverage.source).toBe("unavailable");
   });
 
@@ -123,10 +126,10 @@ describe("SecurityScoring", () => {
 
     expect(active?.passed).toBe(false);
     expect(active?.points_earned).toBe(0);
-    expect(active?.evidence_coverage.source).toBe("unavailable");
+    expect(active?.evidence_coverage.source).toBe("not_checked");
     expect(probes?.passed).toBe(false);
     expect(probes?.points_earned).toBe(0);
-    expect(probes?.evidence_coverage.source).toBe("unavailable");
+    expect(probes?.evidence_coverage.source).toBe("not_checked");
   });
 
   it("wertet ausgeführte technische Prüfungen ohne Befund weiterhin als bestanden", () => {

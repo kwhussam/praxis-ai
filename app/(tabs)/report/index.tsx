@@ -8,6 +8,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
+import { buildReportScore } from "@/lib/ai/report-findings";
 import { generateReport } from "@/lib/ai/report";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
@@ -58,7 +59,8 @@ export default function ReportsScreen() {
       const pdfPath = await exportReportPdf({
         practiceName: latestReport.source.practiceName ?? practice?.name ?? "Arztpraxis",
         domain: latestReport.source.domain ?? practice?.domain,
-        report: latestReport.report
+        report: latestReport.report,
+        scoreReport: buildReportScore(latestReport.source)
       });
       setPdfPath(latestReport.id, pdfPath);
       Alert.alert("PDF erstellt", `Der Bericht wurde gespeichert:\n${pdfPath}`);

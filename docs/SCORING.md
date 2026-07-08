@@ -1,4 +1,4 @@
-# PraxisShield Scoring 1.1.0
+# PraxisShield Scoring 1.2.0
 
 Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, technische Evidenz, Finding und Empfehlung.
 
@@ -8,7 +8,7 @@ Zusätzlich zum Sicherheitswert berechnet die Engine einen separaten `evidence_c
 
 Jedes `rule_results`-Element enthält `evidence_coverage` mit:
 
-- `source`: `measured`, `inferred`, `self_reported` oder `unavailable`.
+- `source`: `measured`, `inferred`, `self_reported`, `not_checked` oder `unavailable`.
 - `score`: Coverage-Wert von 0 bis 100 für dieses Prüfmodul.
 - `label`: deutschsprachige Anzeige für die UI.
 - `detail`: kurze Begründung der Einordnung.
@@ -16,11 +16,12 @@ Jedes `rule_results`-Element enthält `evidence_coverage` mit:
 Die Gewichtung erfolgt anhand der maximalen Regelpunkte:
 
 - `measured` = 100: technisch gemessen, z. B. WLAN-Verschlüsselung oder DMARC aus externem Check.
-- `inferred` = 70: aus anderen Befunden abgeleitet, z. B. aggregierte aktive Findings.
+- `inferred` = 70: heuristisch aus anderen Befunden abgeleitet, z. B. aggregierte aktive Findings.
 - `self_reported` = 45: per Fragebogen/Selbstauskunft erfasst.
-- `unavailable` = 0: nicht verfügbar oder nicht zuverlässig auslesbar.
+- `not_checked` = 0: nicht geprüft, weil die jeweilige Prüfung nicht ausgeführt oder keine Eingabe erfasst wurde.
+- `unavailable` = 0: technisch nicht verfügbar oder nicht zuverlässig auslesbar.
 
-Prüfmodule mit `unavailable`-Evidenz erhalten keine Punkte und werden nicht als bestanden markiert. Ausgeführte technische Prüfungen ohne Befund bleiben weiterhin positiv bewertbar, sofern die jeweilige Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
+Prüfmodule mit `not_checked`- oder `unavailable`-Evidenz erhalten keine Punkte und werden nicht als bestanden markiert. Ausgeführte technische Prüfungen ohne Befund bleiben weiterhin positiv bewertbar, sofern die jeweilige Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
 
 ## Kategorien
 

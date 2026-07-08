@@ -76,6 +76,7 @@ export function WlanScanner() {
       setResult(nextResult);
       setVisibleDevices(nextResult.connectedDevices);
       recalculateScore({
+        encryption: nextResult.securityProtocol,
         wlanFindings: mapWlanVulnerabilitiesToFindings(nextResult.vulnerabilities),
         wlanSecurityFindings: nextResult.securityFindings
       });

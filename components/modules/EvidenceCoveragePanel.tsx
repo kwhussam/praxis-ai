@@ -24,6 +24,7 @@ const sourceColors: Record<EvidenceSource, string> = {
   measured: colors.safe,
   inferred: colors.electric,
   self_reported: colors.warning,
+  not_checked: colors.muted,
   unavailable: colors.muted
 };
 

@@ -44,7 +44,7 @@ function checkDataFromAnswers(answers: Record<string, boolean>, input?: Partial<
     updates_current: answers.patching,
     staff_training: answers.staffTraining,
     privacy_documents_current: answers.privacyDocuments,
-    encryption: "UNKNOWN",
+    encryption: input?.encryption,
     externalFindings: input?.externalFindings,
     wlanFindings: input?.wlanFindings,
     wlanSecurityFindings: input?.wlanSecurityFindings
