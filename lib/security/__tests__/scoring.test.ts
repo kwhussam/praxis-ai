@@ -1,5 +1,9 @@
 import { calculateScore, calculateShieldScore, SCORING_VERSION, type CheckData } from "@/lib/security/scoring";
-import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
+import {
+  QUESTIONNAIRE_SECTIONS,
+  questionnaireAnswersToCheckData,
+  type QuestionnaireAnswerKey
+} from "@/lib/security/questionnaire";
 
 const ALL_CHECKS_PASSING: CheckData = {
   mfa_enabled: true,
@@ -121,22 +125,46 @@ describe("SecurityScoring", () => {
     const checkData = questionnaireAnswersToCheckData({
       mfa: true,
       mfaEvidence: true,
+      mfaEmail: true,
+      mfaPracticeSoftware: true,
+      mfaVpn: true,
+      mfaCloudServices: true,
+      mfaAdminAccounts: true,
+      mfaRemoteMaintenance: true,
       backups: true,
+      backupFrequencyDocumented: true,
+      backupTargetDocumented: true,
+      backupOfflineOrImmutable: true,
+      backupOwnerDocumented: true,
       backupDocumented: true,
       restoreTested: true,
+      lastRestoreTestDocumented: true,
       restoreTestEvidence: true,
       patching: true,
+      patchScopeDocumented: true,
+      patchFrequencyDefined: true,
+      patchOwnerDocumented: true,
+      lastPatchDateDocumented: true,
+      patchExceptionsDocumented: true,
       patchingEvidence: true,
       privacyDocuments: true,
+      avvAvailable: true,
+      tomsAvailable: true,
+      processingDirectoryAvailable: true,
+      deletionConceptAvailable: true,
+      accessConceptAvailable: true,
+      privacyTrainingDocumented: true,
       privacyReviewEvidence: true,
       securityOwnerAssigned: true,
-      responsibilityDocumented: true
+      responsibilityDocumented: true,
+      staffTraining: true
     });
 
     expect(checkData.mfa_enabled).toBe(true);
     expect(checkData.backup_frequency).toBe("daily");
     expect(checkData.backup_tested).toBe(true);
     expect(checkData.updates_current).toBe(true);
+    expect(checkData.staff_training).toBe(true);
     expect(checkData.privacy_documents_current).toBe(true);
     expect(checkData.responsibilities_defined).toBe(true);
   });
@@ -157,6 +185,38 @@ describe("SecurityScoring", () => {
     expect(checkData.updates_current).toBe(false);
     expect(checkData.privacy_documents_current).toBe(false);
     expect(checkData.responsibilities_defined).toBe(false);
+  });
+
+  it("enthält die angeforderten Detailfragen im Fragebogenmodell", () => {
+    const keys = QUESTIONNAIRE_SECTIONS.flatMap((section) => section.questions.map((question) => question.key));
+    const requiredKeys: QuestionnaireAnswerKey[] = [
+      "backupFrequencyDocumented",
+      "lastRestoreTestDocumented",
+      "backupTargetDocumented",
+      "backupOfflineOrImmutable",
+      "backupOwnerDocumented",
+      "mfaEmail",
+      "mfaPracticeSoftware",
+      "mfaVpn",
+      "mfaCloudServices",
+      "mfaAdminAccounts",
+      "mfaRemoteMaintenance",
+      "patchScopeDocumented",
+      "patchFrequencyDefined",
+      "patchOwnerDocumented",
+      "lastPatchDateDocumented",
+      "patchExceptionsDocumented",
+      "avvAvailable",
+      "tomsAvailable",
+      "processingDirectoryAvailable",
+      "deletionConceptAvailable",
+      "accessConceptAvailable",
+      "privacyTrainingDocumented"
+    ];
+
+    requiredKeys.forEach((key) => {
+      expect(keys.includes(key)).toBe(true);
+    });
   });
 
   it("wertet nicht ausgeführte technische Prüfungen nicht automatisch als bestanden", () => {

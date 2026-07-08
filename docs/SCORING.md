@@ -1,4 +1,4 @@
-# PraxisShield Scoring 1.3.0
+# PraxisShield Scoring 1.4.0
 
 Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, technische Evidenz, Finding und Empfehlung.
 
@@ -37,10 +37,11 @@ Prüfmodule mit `not_checked`- oder `unavailable`-Evidenz erhalten keine Punkte 
 Der Fragebogen trennt Statusangaben von konkreten Nachweisen. Kritische Selbstauskünfte zählen erst vollständig, wenn der passende Nachweis bestätigt wurde:
 
 - MFA zählt als aktiv, wenn MFA aktiviert ist und ein Nachweis wie Richtlinie, Screenshot oder Benutzerliste vorliegt.
-- Backups zählen als tägliche Backups, wenn tägliche Sicherung und Backup-Protokoll bestätigt sind.
-- Restore-Tests zählen nur mit dokumentiertem Testdatum, Ergebnis und Verantwortlichem.
-- Patchmanagement zählt nur mit festem Patchprozess und Update-Protokoll.
-- DSGVO-Dokumentation zählt nur mit vorhandenen Dokumenten und Review/Freigabe in den letzten 12 Monaten.
+- Der MFA-Fragebogen erfasst konkret E-Mail, Praxissoftware, VPN, Cloud-Dienste, Admin-Konten und Fernwartung.
+- Backups zählen als tägliche Backups, wenn tägliche Sicherung, Backup-Frequenz, Backup-Ziel, Offline-/Immutable-Backup, Verantwortlicher und Backup-Protokoll bestätigt sind.
+- Restore-Tests zählen nur mit dokumentiertem letztem Restore-Testdatum, Ergebnis und Verantwortlichem.
+- Patchmanagement zählt nur mit festem Patchprozess, dokumentiertem Systemumfang, Patch-Frequenz, Verantwortlichem, letztem Patchdatum, Ausnahmen und Update-Protokoll.
+- DSGVO-Dokumentation zählt nur mit AVV, TOMs, Verzeichnis von Verarbeitungstätigkeiten, Löschkonzept, Berechtigungskonzept, dokumentierter Datenschutzschulung und Review/Freigabe in den letzten 12 Monaten.
 - Verantwortlichkeiten zählen über `SECURITY_RESPONSIBILITIES`, wenn verantwortliche Person, Vertretung, Aufgaben und Eskalationswege dokumentiert sind.
 
 ## Ampel

@@ -1,7 +1,7 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
 
-export const SCORING_VERSION = "1.3.0";
+export const SCORING_VERSION = "1.4.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
