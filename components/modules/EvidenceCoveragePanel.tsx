@@ -16,6 +16,7 @@ const moduleLabels: Record<string, string> = {
   WLAN_ENCRYPTION: "WLAN",
   STAFF_TRAINING: "Schulung",
   PRIVACY_DOCUMENTATION: "DSGVO-Doku",
+  SECURITY_RESPONSIBILITIES: "Verantwortung",
   ACTIVE_FINDINGS: "Findings",
   NETWORK_SECURITY_PROBES: "Netzwerk"
 };

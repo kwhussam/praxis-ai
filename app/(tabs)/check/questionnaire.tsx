@@ -6,15 +6,8 @@ import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { QUESTIONNAIRE_SECTIONS } from "@/lib/security/questionnaire";
 import { useCheckStore } from "@/lib/store/check";
-
-const questions = [
-  ["backups", "Werden Praxisdaten täglich gesichert?"],
-  ["mfa", "Nutzen alle kritischen Konten MFA?"],
-  ["staffTraining", "Gab es in den letzten 12 Monaten Awareness-Schulung?"],
-  ["patching", "Gibt es einen festen Update-Prozess?"],
-  ["dmarc", "Ist DMARC für die Praxisdomain aktiv?"]
-] as const;
 
 export default function QuestionnaireScreen() {
   const answers = useCheckStore((state) => state.answers);
@@ -28,24 +21,31 @@ export default function QuestionnaireScreen() {
   return (
     <Screen>
       <Text style={styles.title}>5-Minuten-Fragebogen</Text>
-      <Text style={styles.copy}>Klar, schnell, ohne IT-Jargon.</Text>
+      <Text style={styles.copy}>Basisstatus plus konkrete Nachweise für auditierbare Ergebnisse.</Text>
       <View style={styles.list}>
-        {questions.map(([key, label]) => (
-          <GlassCard key={key}>
-            <Text style={styles.question}>{label}</Text>
-            <View style={styles.toggle}>
-              {[true, false].map((value) => {
-                const active = answers[key] === value;
-                return (
-                  <Pressable
-                    key={String(value)}
-                    onPress={() => setAnswer(key, value)}
-                    style={[styles.option, active ? styles.optionActive : null]}
-                  >
-                    <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>{value ? "Ja" : "Nein"}</Text>
-                  </Pressable>
-                );
-              })}
+        {QUESTIONNAIRE_SECTIONS.map((section) => (
+          <GlassCard key={section.title}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            <View style={styles.questions}>
+              {section.questions.map((question) => (
+                <View key={question.key} style={styles.questionBlock}>
+                  <Text style={styles.question}>{question.label}</Text>
+                  <View style={styles.toggle}>
+                    {[true, false].map((value) => {
+                      const active = answers[question.key] === value;
+                      return (
+                        <Pressable
+                          key={String(value)}
+                          onPress={() => setAnswer(question.key, value)}
+                          style={[styles.option, active ? styles.optionActive : null]}
+                        >
+                          <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>{value ? "Ja" : "Nein"}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
           </GlassCard>
         ))}
@@ -69,6 +69,21 @@ const styles = StyleSheet.create({
   list: {
     gap: 14,
     marginVertical: 22
+  },
+  sectionTitle: {
+    color: colors.electric,
+    fontSize: 13,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  questions: {
+    gap: 16,
+    marginTop: 16
+  },
+  questionBlock: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    paddingTop: 14
   },
   question: {
     color: colors.ink,

@@ -325,6 +325,7 @@ function reportModuleLabel(value: string) {
     WLAN_ENCRYPTION: "WLAN-Verschlüsselung",
     STAFF_TRAINING: "Schulung",
     PRIVACY_DOCUMENTATION: "DSGVO-Dokumentation",
+    SECURITY_RESPONSIBILITIES: "Verantwortlichkeiten",
     ACTIVE_FINDINGS: "Aktive Findings",
     NETWORK_SECURITY_PROBES: "Netzwerkprüfungen"
   };

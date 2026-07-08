@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { calculateScore, type CheckData, type ScoreInput, type ScoreReport } from "@/lib/security/scoring";
+import { DEFAULT_QUESTIONNAIRE_ANSWERS, questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
 
 type CheckState = {
   currentScore: number;
@@ -10,20 +11,12 @@ type CheckState = {
   recalculate: (input?: Partial<ScoreInput>) => void;
 };
 
-const defaultAnswers = {
-  backups: true,
-  mfa: false,
-  staffTraining: true,
-  patching: false,
-  dmarc: false
-};
-
-const initialScoreReport = calculateScore(checkDataFromAnswers(defaultAnswers));
+const initialScoreReport = calculateScore(checkDataFromAnswers(DEFAULT_QUESTIONNAIRE_ANSWERS));
 
 export const useCheckStore = create<CheckState>((set, get) => ({
   currentScore: initialScoreReport.score,
   currentScoreReport: initialScoreReport,
-  answers: defaultAnswers,
+  answers: DEFAULT_QUESTIONNAIRE_ANSWERS,
   setAnswer: (key, value) =>
     set((state) => ({
       answers: { ...state.answers, [key]: value }
@@ -37,13 +30,7 @@ export const useCheckStore = create<CheckState>((set, get) => ({
 
 function checkDataFromAnswers(answers: Record<string, boolean>, input?: Partial<ScoreInput>): CheckData {
   return {
-    mfa_enabled: answers.mfa,
-    backup_tested: answers.backups,
-    backup_frequency: answers.backups ? "daily" : "none",
-    dmarc_exists: answers.dmarc,
-    updates_current: answers.patching,
-    staff_training: answers.staffTraining,
-    privacy_documents_current: answers.privacyDocuments,
+    ...questionnaireAnswersToCheckData(answers),
     encryption: input?.encryption,
     externalFindings: input?.externalFindings,
     wlanFindings: input?.wlanFindings,

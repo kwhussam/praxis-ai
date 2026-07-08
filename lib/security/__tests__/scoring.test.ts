@@ -1,4 +1,5 @@
 import { calculateScore, calculateShieldScore, SCORING_VERSION, type CheckData } from "@/lib/security/scoring";
+import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
 
 const ALL_CHECKS_PASSING: CheckData = {
   mfa_enabled: true,
@@ -8,6 +9,7 @@ const ALL_CHECKS_PASSING: CheckData = {
   updates_current: true,
   staff_training: true,
   privacy_documents_current: true,
+  responsibilities_defined: true,
   encryption: "WPA3",
   external: {
     email_security: {
@@ -29,6 +31,7 @@ const ALL_CHECKS_FAILING: CheckData = {
   updates_current: false,
   staff_training: false,
   privacy_documents_current: false,
+  responsibilities_defined: false,
   encryption: "WEP",
   externalFindings: [{ id: "critical-external", severity: "critical", title: "Critical" }],
   wlanFindings: [{ id: "critical-wlan", severity: "critical", title: "Critical WLAN" }]
@@ -112,6 +115,48 @@ describe("SecurityScoring", () => {
     const wlan = result.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION");
     expect(wlan?.passed).toBe(false);
     expect(wlan?.points_earned).toBe(0);
+  });
+
+  it("wertet konkrete Nachweisfragen in Score-Daten um", () => {
+    const checkData = questionnaireAnswersToCheckData({
+      mfa: true,
+      mfaEvidence: true,
+      backups: true,
+      backupDocumented: true,
+      restoreTested: true,
+      restoreTestEvidence: true,
+      patching: true,
+      patchingEvidence: true,
+      privacyDocuments: true,
+      privacyReviewEvidence: true,
+      securityOwnerAssigned: true,
+      responsibilityDocumented: true
+    });
+
+    expect(checkData.mfa_enabled).toBe(true);
+    expect(checkData.backup_frequency).toBe("daily");
+    expect(checkData.backup_tested).toBe(true);
+    expect(checkData.updates_current).toBe(true);
+    expect(checkData.privacy_documents_current).toBe(true);
+    expect(checkData.responsibilities_defined).toBe(true);
+  });
+
+  it("wertet Status ohne Nachweis nicht als vollständig nachgewiesen", () => {
+    const checkData = questionnaireAnswersToCheckData({
+      mfa: true,
+      backups: true,
+      restoreTested: true,
+      patching: true,
+      privacyDocuments: true,
+      securityOwnerAssigned: true
+    });
+
+    expect(checkData.mfa_enabled).toBe(false);
+    expect(checkData.backup_frequency).toBe("weekly");
+    expect(checkData.backup_tested).toBe(false);
+    expect(checkData.updates_current).toBe(false);
+    expect(checkData.privacy_documents_current).toBe(false);
+    expect(checkData.responsibilities_defined).toBe(false);
   });
 
   it("wertet nicht ausgeführte technische Prüfungen nicht automatisch als bestanden", () => {

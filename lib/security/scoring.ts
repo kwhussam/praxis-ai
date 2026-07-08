@@ -1,6 +1,7 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
+import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
 
-export const SCORING_VERSION = "1.2.0";
+export const SCORING_VERSION = "1.3.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
@@ -29,6 +30,7 @@ export type CheckData = {
   updates_current?: boolean;
   staff_training?: boolean;
   privacy_documents_current?: boolean;
+  responsibilities_defined?: boolean;
   encryption?: "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
   external?: {
     email_security?: {
@@ -247,6 +249,26 @@ export const SCORING_RULES: ScoringRule[] = [
     })
   },
   {
+    id: "SECURITY_RESPONSIBILITIES",
+    category: "dsgvo",
+    weight: 5,
+    max_points: 5,
+    evaluate: (data) => buildResult({
+      data,
+      ruleId: "SECURITY_RESPONSIBILITIES",
+      category: "dsgvo",
+      earned: data.responsibilities_defined ? 5 : 0,
+      max: 5,
+      passed: data.responsibilities_defined === true,
+      finding: data.responsibilities_defined
+        ? "IT-/Datenschutz-Verantwortlichkeiten sind dokumentiert."
+        : "IT-/Datenschutz-Verantwortlichkeiten sind nicht vollständig dokumentiert.",
+      evidence: `questionnaire.responsibilities_defined=${String(data.responsibilities_defined)}`,
+      evidenceCoverage: booleanCoverage(data.responsibilities_defined, "Verantwortlichkeiten wurden per Fragebogen mit Dokumentationsnachweis erfasst."),
+      recommendation: "Verantwortliche, Vertretung und Eskalationswege schriftlich festlegen."
+    })
+  },
+  {
     id: "ACTIVE_FINDINGS",
     category: "network",
     weight: 5,
@@ -350,15 +372,8 @@ export function scoreTone(score: number) {
 }
 
 function scoreInputToCheckData(input: ScoreInput): CheckData {
-  const questionnaire = input.questionnaire;
   return {
-    mfa_enabled: questionnaire.mfa,
-    backup_tested: questionnaire.backups,
-    backup_frequency: questionnaire.backups ? "daily" : "none",
-    dmarc_exists: questionnaire.dmarc,
-    updates_current: questionnaire.patching,
-    staff_training: questionnaire.staffTraining,
-    privacy_documents_current: questionnaire.privacyDocuments,
+    ...questionnaireAnswersToCheckData(input.questionnaire),
     encryption: input.encryption,
     externalFindings: input.externalFindings,
     wlanFindings: input.wlanFindings,

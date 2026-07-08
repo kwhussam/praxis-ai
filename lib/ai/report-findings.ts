@@ -1,4 +1,5 @@
 import type { CheckData as ReportSource } from "@/lib/ai/report";
+import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
 import { calculateScore, type CheckData as SecurityCheckData, type ScoreReport } from "@/lib/security/scoring";
 import { mapWlanVulnerabilitiesToFindings } from "@/lib/security/wlan";
 
@@ -7,17 +8,10 @@ export function buildReportScore(source: ReportSource): ScoreReport {
 }
 
 function reportSourceToCheckData(source: ReportSource): SecurityCheckData {
-  const questionnaire = source.questionnaire ?? {};
   const dmarcPolicy = source.external?.checks?.email_security?.dmarc?.policy ?? null;
 
   return {
-    mfa_enabled: questionnaire.mfa,
-    backup_tested: questionnaire.backups,
-    backup_frequency: questionnaire.backups === undefined ? undefined : questionnaire.backups ? "daily" : "none",
-    dmarc_exists: questionnaire.dmarc,
-    updates_current: questionnaire.patching,
-    staff_training: questionnaire.staffTraining,
-    privacy_documents_current: questionnaire.privacyDocuments,
+    ...questionnaireAnswersToCheckData(source.questionnaire ?? {}),
     encryption: source.wlan?.securityProtocol,
     external:
       source.external?.checks?.email_security !== undefined
