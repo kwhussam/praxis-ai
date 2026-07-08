@@ -1,17 +1,22 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { createInventoryItem, createPracticeSeedInventory } from "@/lib/inventory/inventory";
-import type { InventoryDraft, InventoryItem } from "@/lib/inventory/types";
+import { createInventoryItem, createKnownDevice, createPracticeSeedInventory } from "@/lib/inventory/inventory";
+import type { InventoryDraft, InventoryItem, KnownDevice, KnownDeviceDraft } from "@/lib/inventory/types";
 import type { Practice } from "@/lib/store/session";
 import { createStringStorage } from "@/lib/store/storage";
 
 type InventoryState = {
   itemsByPractice: Record<string, InventoryItem[]>;
+  knownDevicesByPractice: Record<string, KnownDevice[]>;
   ensurePracticeInventory: (practice: Practice | null) => void;
   getItems: (practiceId?: string) => InventoryItem[];
+  getKnownDevices: (practiceId?: string) => KnownDevice[];
   addItem: (practiceId: string, draft: InventoryDraft) => void;
   removeItem: (practiceId: string, itemId: string) => void;
+  addKnownDevice: (practiceId: string, draft: KnownDeviceDraft) => void;
+  removeKnownDevice: (practiceId: string, deviceId: string) => void;
+  confirmKnownDevice: (practiceId: string, deviceId: string, confirmedAt?: Date) => void;
 };
 
 const storage = createStringStorage("praxisshield-inventory");
@@ -20,6 +25,7 @@ export const useInventoryStore = create<InventoryState>()(
   persist(
     (set, get) => ({
       itemsByPractice: {},
+      knownDevicesByPractice: {},
       ensurePracticeInventory: (practice) => {
         if (!practice) return;
         const existing = get().itemsByPractice[practice.id];
@@ -33,6 +39,7 @@ export const useInventoryStore = create<InventoryState>()(
         }));
       },
       getItems: (practiceId) => (practiceId ? get().itemsByPractice[practiceId] ?? [] : []),
+      getKnownDevices: (practiceId) => (practiceId ? get().knownDevicesByPractice[practiceId] ?? [] : []),
       addItem: (practiceId, draft) =>
         set((state) => ({
           itemsByPractice: {
@@ -45,6 +52,31 @@ export const useInventoryStore = create<InventoryState>()(
           itemsByPractice: {
             ...state.itemsByPractice,
             [practiceId]: (state.itemsByPractice[practiceId] ?? []).filter((item) => item.id !== itemId)
+          }
+        })),
+      addKnownDevice: (practiceId, draft) =>
+        set((state) => ({
+          knownDevicesByPractice: {
+            ...state.knownDevicesByPractice,
+            [practiceId]: [...(state.knownDevicesByPractice[practiceId] ?? []), createKnownDevice(draft)]
+          }
+        })),
+      removeKnownDevice: (practiceId, deviceId) =>
+        set((state) => ({
+          knownDevicesByPractice: {
+            ...state.knownDevicesByPractice,
+            [practiceId]: (state.knownDevicesByPractice[practiceId] ?? []).filter((device) => device.id !== deviceId)
+          }
+        })),
+      confirmKnownDevice: (practiceId, deviceId, confirmedAt = new Date()) =>
+        set((state) => ({
+          knownDevicesByPractice: {
+            ...state.knownDevicesByPractice,
+            [practiceId]: (state.knownDevicesByPractice[practiceId] ?? []).map((device) =>
+              device.id === deviceId
+                ? { ...device, lastConfirmedAt: confirmedAt.toISOString(), updatedAt: confirmedAt.toISOString() }
+                : device
+            )
           }
         }))
     }),

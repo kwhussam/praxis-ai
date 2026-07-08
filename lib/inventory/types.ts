@@ -8,6 +8,16 @@ export type InventoryItemType =
   | "critical_system";
 
 export type InventoryCriticality = "critical" | "high" | "medium" | "low";
+export type KnownDeviceType =
+  | "router"
+  | "workstation"
+  | "server"
+  | "printer"
+  | "phone"
+  | "tablet"
+  | "medical"
+  | "iot"
+  | "unknown";
 
 export type InventoryItem = {
   id: string;
@@ -26,6 +36,29 @@ export type InventoryDraft = {
   detail?: string;
   owner?: string;
   criticality: InventoryCriticality;
+};
+
+export type KnownDevice = {
+  id: string;
+  macAddress: string;
+  hostname: string;
+  deviceType: KnownDeviceType;
+  location: string;
+  owner: string;
+  criticality: InventoryCriticality;
+  lastConfirmedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnownDeviceDraft = {
+  macAddress: string;
+  hostname: string;
+  deviceType: KnownDeviceType;
+  location: string;
+  owner: string;
+  criticality: InventoryCriticality;
+  lastConfirmedAt: string;
 };
 
 export type InventoryCategory = {
@@ -51,6 +84,18 @@ export const INVENTORY_CRITICALITIES: Array<{ value: InventoryCriticality; label
   { value: "low", label: "Niedrig" }
 ];
 
+export const KNOWN_DEVICE_TYPES: Array<{ value: KnownDeviceType; label: string }> = [
+  { value: "router", label: "Router" },
+  { value: "workstation", label: "Arbeitsplatz" },
+  { value: "server", label: "Server" },
+  { value: "printer", label: "Drucker" },
+  { value: "phone", label: "Telefon" },
+  { value: "tablet", label: "Tablet" },
+  { value: "medical", label: "Medizingerät" },
+  { value: "iot", label: "IoT" },
+  { value: "unknown", label: "Unbekannt" }
+];
+
 export function inventoryCategoryLabel(type: InventoryItemType) {
   return INVENTORY_CATEGORIES.find((category) => category.type === type)?.label ?? type;
 }
@@ -61,4 +106,8 @@ export function inventoryCategoryPluralLabel(type: InventoryItemType) {
 
 export function inventoryCriticalityLabel(value: InventoryCriticality) {
   return INVENTORY_CRITICALITIES.find((criticality) => criticality.value === value)?.label ?? value;
+}
+
+export function knownDeviceTypeLabel(value: KnownDeviceType) {
+  return KNOWN_DEVICE_TYPES.find((deviceType) => deviceType.value === value)?.label ?? value;
 }
