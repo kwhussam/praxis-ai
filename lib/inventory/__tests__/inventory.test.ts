@@ -1,8 +1,10 @@
 import {
+  createAccessPoint,
   createKnownDevice,
   createPracticeSeedInventory,
   isKnownDeviceStale,
   normalizeMacAddress,
+  summarizeAccessPoints,
   summarizeInventory,
   summarizeKnownDevices
 } from "@/lib/inventory/inventory";
@@ -88,6 +90,23 @@ describe("PracticeInventory", () => {
     expect(isKnownDeviceStale(fresh, current)).toBe(false);
     expect(isKnownDeviceStale(stale, current)).toBe(true);
     expect(summarizeKnownDevices([fresh, stale], current)).toEqual({ total: 2, critical: 1, stale: 1 });
+  });
+
+  it("erstellt Access Points mit normalisierter BSSID", () => {
+    const accessPoint = createAccessPoint(
+      {
+        ssid: "Praxis",
+        bssid: "aabb.ccdd.eeff",
+        location: "Empfang",
+        vendor: "Ubiquiti",
+        channel: "6",
+        expectedEncryption: "WPA2_AES"
+      },
+      new Date("2026-07-08T00:00:00.000Z")
+    );
+
+    expect(accessPoint.bssid).toBe("AA:BB:CC:DD:EE:FF");
+    expect(summarizeAccessPoints([accessPoint])).toEqual({ total: 1, openExpected: 0 });
   });
 });
 

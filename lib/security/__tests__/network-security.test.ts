@@ -130,12 +130,63 @@ describe("network security assessment", () => {
     expect(assessment.status).toBe("suspicious");
   });
 
+  it("findet Rogue-AP-Hinweise bei unbekannter BSSID im AP-Inventar-Abgleich", () => {
+    const assessment = assessRogueAccessPoints({
+      currentSsid: "Praxis",
+      visibleNetworks: [
+        { ssid: "Praxis", bssid: "00:11:22:33:44:55", capabilities: "[WPA2-PSK-CCMP][ESS]", level: -60 },
+        { ssid: "Praxis", bssid: "66:77:88:99:AA:BB", capabilities: "[WPA2-PSK-CCMP][ESS]", level: -70 }
+      ],
+      accessPoints: [
+        {
+          id: "ap-1",
+          ssid: "Praxis",
+          bssid: "00:11:22:33:44:55",
+          location: "Empfang",
+          vendor: "Ubiquiti",
+          channel: "6",
+          expectedEncryption: "WPA2_AES",
+          createdAt: "2026-07-09T00:00:00.000Z",
+          updatedAt: "2026-07-09T00:00:00.000Z"
+        }
+      ]
+    });
+    expect(assessment.status).toBe("suspicious");
+    expect(assessment.confidence).toBe("high");
+    expect(assessment.candidates.some((candidate) => candidate.reason.join(" ").includes("offiziellen Access-Point-Inventar"))).toBe(true);
+  });
+
   it("markiert unbekannte Geräte mit kritischen Ports als verdächtig", () => {
     const assessment = assessRogueDevices(
       [{ ipAddress: "192.168.1.99", deviceType: "unknown", openPorts: [{ port: 3389, state: "open", risk: "critical" }] }],
       []
     );
     expect(assessment.status).toBe("suspicious");
+  });
+
+  it("gleicht Rogue Devices gegen die Known-Device-Liste ab", () => {
+    const assessment = assessRogueDevices(
+      [{ ipAddress: "192.168.1.20", hostname: "empfang-pc", macAddress: "aa-bb-cc-dd-ee-ff", deviceType: "workstation" }],
+      [],
+      [
+        {
+          id: "device-1",
+          macAddress: "AA:BB:CC:DD:EE:FF",
+          hostname: "empfang-pc",
+          deviceType: "workstation",
+          location: "Empfang",
+          owner: "Praxis",
+          criticality: "high",
+          lastConfirmedAt: "2026-07-01T00:00:00.000Z",
+          createdAt: "2026-07-01T00:00:00.000Z",
+          updatedAt: "2026-07-01T00:00:00.000Z"
+        }
+      ]
+    );
+
+    expect(assessment.status).toBe("clean");
+    expect(assessment.knownDevices).toBe(1);
+    expect(assessment.confidence).toBe("high");
   });
 
   it("fingerprinted Router aus Header-Signalen", () => {

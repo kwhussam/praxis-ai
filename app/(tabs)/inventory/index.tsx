@@ -6,15 +6,19 @@ import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
-import { isKnownDeviceStale, summarizeInventory, summarizeKnownDevices } from "@/lib/inventory/inventory";
+import { isKnownDeviceStale, summarizeAccessPoints, summarizeInventory, summarizeKnownDevices } from "@/lib/inventory/inventory";
 import {
+  ACCESS_POINT_ENCRYPTIONS,
   INVENTORY_CATEGORIES,
   INVENTORY_CRITICALITIES,
   KNOWN_DEVICE_TYPES,
+  accessPointEncryptionLabel,
   inventoryCategoryLabel,
   inventoryCategoryPluralLabel,
   inventoryCriticalityLabel,
   knownDeviceTypeLabel,
+  type AccessPoint,
+  type AccessPointExpectedEncryption,
   type InventoryCriticality,
   type InventoryItem,
   type InventoryItemType,
@@ -48,16 +52,22 @@ export default function InventoryScreen() {
   const ensurePracticeInventory = useInventoryStore((state) => state.ensurePracticeInventory);
   const items = useInventoryStore((state) => state.getItems(practice?.id));
   const knownDevices = useInventoryStore((state) => state.getKnownDevices(practice?.id));
+  const accessPoints = useInventoryStore((state) => state.getAccessPoints(practice?.id));
+  const routerWifiConfig = useInventoryStore((state) => state.getRouterWifiConfig(practice?.id));
   const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const addKnownDevice = useInventoryStore((state) => state.addKnownDevice);
   const removeKnownDevice = useInventoryStore((state) => state.removeKnownDevice);
   const confirmKnownDevice = useInventoryStore((state) => state.confirmKnownDevice);
+  const addAccessPoint = useInventoryStore((state) => state.addAccessPoint);
+  const removeAccessPoint = useInventoryStore((state) => state.removeAccessPoint);
+  const updateRouterWifiConfig = useInventoryStore((state) => state.updateRouterWifiConfig);
   const [filter, setFilter] = useState<FilterType>("all");
   const [draftType, setDraftType] = useState<InventoryItemType>("device");
   const [draftCriticality, setDraftCriticality] = useState<InventoryCriticality>("medium");
   const [deviceType, setDeviceType] = useState<KnownDeviceType>("workstation");
   const [deviceCriticality, setDeviceCriticality] = useState<InventoryCriticality>("medium");
+  const [apExpectedEncryption, setApExpectedEncryption] = useState<AccessPointExpectedEncryption>("WPA2_AES");
   const [name, setName] = useState("");
   const [detail, setDetail] = useState("");
   const [owner, setOwner] = useState("");
@@ -66,18 +76,45 @@ export default function InventoryScreen() {
   const [location, setLocation] = useState("");
   const [deviceOwner, setDeviceOwner] = useState("");
   const [lastConfirmedAt, setLastConfirmedAt] = useState(toDateInputValue(new Date()));
+  const [apSsid, setApSsid] = useState("");
+  const [apBssid, setApBssid] = useState("");
+  const [apLocation, setApLocation] = useState("");
+  const [apVendor, setApVendor] = useState("");
+  const [apChannel, setApChannel] = useState("");
+  const [routerConfig, setRouterConfig] = useState({
+    wpa2Aes: routerWifiConfig?.wpa2Aes ?? true,
+    wpa2Wpa3MixedMode: routerWifiConfig?.wpa2Wpa3MixedMode ?? false,
+    wpa3: routerWifiConfig?.wpa3 ?? false,
+    tkip: routerWifiConfig?.tkip ?? false,
+    openWifi: routerWifiConfig?.openWifi ?? false,
+    wps: routerWifiConfig?.wps ?? false
+  });
 
   useEffect(() => {
     ensurePracticeInventory(practice);
   }, [ensurePracticeInventory, practice]);
 
+  useEffect(() => {
+    if (!routerWifiConfig) return;
+    setRouterConfig({
+      wpa2Aes: routerWifiConfig.wpa2Aes,
+      wpa2Wpa3MixedMode: routerWifiConfig.wpa2Wpa3MixedMode,
+      wpa3: routerWifiConfig.wpa3,
+      tkip: routerWifiConfig.tkip,
+      openWifi: routerWifiConfig.openWifi,
+      wps: routerWifiConfig.wps
+    });
+  }, [routerWifiConfig]);
+
   const summary = useMemo(() => summarizeInventory(items), [items]);
   const knownDeviceSummary = useMemo(() => summarizeKnownDevices(knownDevices), [knownDevices]);
+  const accessPointSummary = useMemo(() => summarizeAccessPoints(accessPoints), [accessPoints]);
   const visibleItems = useMemo(
     () => items.filter((item) => filter === "all" || item.type === filter).sort(sortInventoryItems),
     [filter, items]
   );
   const sortedKnownDevices = useMemo(() => [...knownDevices].sort(sortKnownDevices), [knownDevices]);
+  const sortedAccessPoints = useMemo(() => [...accessPoints].sort(sortAccessPoints), [accessPoints]);
 
   function handleAdd() {
     if (!practice) return;
@@ -138,6 +175,34 @@ export default function InventoryScreen() {
     confirmKnownDevice(practice.id, device.id);
   }
 
+  function handleAddAccessPoint() {
+    if (!practice) return;
+    if (!apSsid.trim() || !apBssid.trim()) {
+      Alert.alert("Access Point", "Bitte SSID und BSSID eintragen.");
+      return;
+    }
+
+    addAccessPoint(practice.id, {
+      ssid: apSsid,
+      bssid: apBssid,
+      location: apLocation,
+      vendor: apVendor,
+      channel: apChannel,
+      expectedEncryption: apExpectedEncryption
+    });
+    setApSsid("");
+    setApBssid("");
+    setApLocation("");
+    setApVendor("");
+    setApChannel("");
+  }
+
+  function handleSaveRouterConfig() {
+    if (!practice) return;
+    updateRouterWifiConfig(practice.id, routerConfig);
+    Alert.alert("WLAN-Konfiguration", "Manuelle Router-/WLAN-Konfiguration gespeichert.");
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -155,6 +220,7 @@ export default function InventoryScreen() {
         <Metric label="Kritisch" value={summary.critical} tone="critical" />
         <Metric label="Bekannte Geräte" value={knownDeviceSummary.total} />
         <Metric label="Überfällig" value={knownDeviceSummary.stale} tone="critical" />
+        <Metric label="Access Points" value={accessPointSummary.total} />
       </View>
 
       <View style={styles.filters}>
@@ -319,6 +385,122 @@ export default function InventoryScreen() {
         )}
       </View>
 
+      <GlassCard style={styles.card}>
+        <Text style={styles.sectionTitle}>Access-Point-Inventar</Text>
+        <Text style={styles.sectionCopy}>Offizielle Access Points als Referenz für Rogue-AP-Erkennung per BSSID-Abgleich.</Text>
+
+        <TextInput
+          value={apSsid}
+          onChangeText={setApSsid}
+          placeholder="SSID"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={apBssid}
+          onChangeText={setApBssid}
+          placeholder="BSSID, z. B. AA:BB:CC:DD:EE:FF"
+          placeholderTextColor={colors.muted}
+          autoCapitalize="characters"
+          style={styles.input}
+        />
+        <TextInput
+          value={apLocation}
+          onChangeText={setApLocation}
+          placeholder="Standort"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={apVendor}
+          onChangeText={setApVendor}
+          placeholder="Hersteller"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+        />
+        <TextInput
+          value={apChannel}
+          onChangeText={setApChannel}
+          placeholder="Kanal"
+          placeholderTextColor={colors.muted}
+          keyboardType="number-pad"
+          style={styles.input}
+        />
+
+        <View style={styles.segmentWrap}>
+          {ACCESS_POINT_ENCRYPTIONS.map((encryption) => (
+            <Pressable
+              key={encryption.value}
+              onPress={() => setApExpectedEncryption(encryption.value)}
+              style={[styles.segment, apExpectedEncryption === encryption.value ? styles.segmentActive : null]}
+            >
+              <Text style={[styles.segmentText, apExpectedEncryption === encryption.value ? styles.segmentTextActive : null]}>
+                {encryption.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <AnimatedButton label="Access Point hinzufügen" onPress={handleAddAccessPoint} icon={<Plus color={colors.ink} size={18} />} />
+      </GlassCard>
+
+      <View style={styles.listHeader}>
+        <Text style={styles.sectionTitle}>Offizielle Access Points</Text>
+        <Text style={styles.count}>{sortedAccessPoints.length}</Text>
+      </View>
+
+      <View style={styles.list}>
+        {sortedAccessPoints.length === 0 ? (
+          <GlassCard>
+            <Text style={styles.emptyTitle}>Keine Access Points erfasst</Text>
+          </GlassCard>
+        ) : (
+          sortedAccessPoints.map((accessPoint) => (
+            <AccessPointRow
+              key={accessPoint.id}
+              accessPoint={accessPoint}
+              onRemove={() => practice && removeAccessPoint(practice.id, accessPoint.id)}
+            />
+          ))
+        )}
+      </View>
+
+      <GlassCard style={styles.card}>
+        <Text style={styles.sectionTitle}>Router-/WLAN-Konfiguration</Text>
+        <Text style={styles.sectionCopy}>Manuelle Abfrage, wenn Routerdaten technisch nicht sicher auslesbar sind.</Text>
+        <ConfigToggle
+          label="WPA2-AES aktiv"
+          value={routerConfig.wpa2Aes}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Aes: value }))}
+        />
+        <ConfigToggle
+          label="WPA2/WPA3 Mixed Mode aktiv"
+          value={routerConfig.wpa2Wpa3MixedMode}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Wpa3MixedMode: value }))}
+        />
+        <ConfigToggle
+          label="WPA3 aktiv"
+          value={routerConfig.wpa3}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa3: value }))}
+        />
+        <ConfigToggle
+          label="TKIP aktiviert"
+          value={routerConfig.tkip}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, tkip: value }))}
+        />
+        <ConfigToggle
+          label="Offenes WLAN aktiviert"
+          value={routerConfig.openWifi}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, openWifi: value }))}
+        />
+        <ConfigToggle
+          label="WPS aktiviert"
+          value={routerConfig.wps}
+          onChange={(value) => setRouterConfig((current) => ({ ...current, wps: value }))}
+        />
+        <AnimatedButton label="Konfiguration speichern" onPress={handleSaveRouterConfig} variant="ghost" />
+      </GlassCard>
+
       <View style={styles.listHeader}>
         <Text style={styles.sectionTitle}>{filter === "all" ? "Inventar" : inventoryCategoryPluralLabel(filter)}</Text>
         <Text style={styles.count}>{visibleItems.length}</Text>
@@ -431,6 +613,31 @@ function KnownDeviceRow({
   );
 }
 
+function AccessPointRow({ accessPoint, onRemove }: { accessPoint: AccessPoint; onRemove: () => void }) {
+  return (
+    <GlassCard style={styles.itemCard}>
+      <View style={styles.itemHeader}>
+        <View style={styles.itemIcon}>
+          <Network color={colors.electric} size={20} />
+        </View>
+        <View style={styles.itemText}>
+          <Text style={styles.itemName}>{accessPoint.ssid}</Text>
+          <Text style={styles.itemMeta}>{accessPoint.bssid}</Text>
+        </View>
+        <Pressable onPress={onRemove} style={styles.deleteButton}>
+          <Trash2 color={colors.muted} size={18} />
+        </Pressable>
+      </View>
+      <View style={styles.deviceGrid}>
+        <DeviceMeta label="Standort" value={accessPoint.location} />
+        <DeviceMeta label="Hersteller" value={accessPoint.vendor} />
+        <DeviceMeta label="Kanal" value={accessPoint.channel} />
+        <DeviceMeta label="Verschlüsselung" value={accessPointEncryptionLabel(accessPoint.expectedEncryption)} />
+      </View>
+    </GlassCard>
+  );
+}
+
 function DeviceMeta({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.deviceMeta}>
@@ -452,6 +659,35 @@ function sortKnownDevices(left: KnownDevice, right: KnownDevice) {
   const rightCriticality = INVENTORY_CRITICALITIES.findIndex((criticality) => criticality.value === right.criticality);
   if (leftCriticality !== rightCriticality) return leftCriticality - rightCriticality;
   return left.hostname.localeCompare(right.hostname, "de");
+}
+
+function sortAccessPoints(left: AccessPoint, right: AccessPoint) {
+  if (left.ssid !== right.ssid) return left.ssid.localeCompare(right.ssid, "de");
+  return left.bssid.localeCompare(right.bssid, "de");
+}
+
+function ConfigToggle({ label, value, onChange }: { label: string; value: boolean; onChange: (value: boolean) => void }) {
+  return (
+    <View style={styles.configRow}>
+      <Text style={styles.configLabel}>{label}</Text>
+      <View style={styles.configOptions}>
+        {[true, false].map((nextValue) => {
+          const active = value === nextValue;
+          return (
+            <Pressable
+              key={String(nextValue)}
+              onPress={() => onChange(nextValue)}
+              style={[styles.configOption, active ? styles.configOptionActive : null]}
+            >
+              <Text style={[styles.configOptionText, active ? styles.configOptionTextActive : null]}>
+                {nextValue ? "Ja" : "Nein"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 function toDateInputValue(date: Date) {
@@ -710,5 +946,41 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 11,
     fontWeight: "900"
+  },
+  configRow: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    gap: 10,
+    paddingVertical: 12
+  },
+  configLabel: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 20
+  },
+  configOptions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  configOption: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 10
+  },
+  configOptionActive: {
+    backgroundColor: colors.electric,
+    borderColor: colors.electric
+  },
+  configOptionText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  configOptionTextActive: {
+    color: colors.ink
   }
 });

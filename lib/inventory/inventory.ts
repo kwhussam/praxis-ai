@@ -1,5 +1,13 @@
 import type { Practice } from "@/lib/store/session";
-import type { InventoryDraft, InventoryItem, InventoryItemType, KnownDevice, KnownDeviceDraft } from "@/lib/inventory/types";
+import type {
+  AccessPoint,
+  AccessPointDraft,
+  InventoryDraft,
+  InventoryItem,
+  InventoryItemType,
+  KnownDevice,
+  KnownDeviceDraft
+} from "@/lib/inventory/types";
 
 export type InventorySummary = {
   total: number;
@@ -11,6 +19,11 @@ export type KnownDeviceSummary = {
   total: number;
   critical: number;
   stale: number;
+};
+
+export type AccessPointSummary = {
+  total: number;
+  openExpected: number;
 };
 
 const emptyCounts: Record<InventoryItemType, number> = {
@@ -69,6 +82,22 @@ export function createKnownDevice(draft: KnownDeviceDraft, now = new Date()): Kn
   };
 }
 
+export function createAccessPoint(draft: AccessPointDraft, now = new Date()): AccessPoint {
+  const timestamp = now.toISOString();
+
+  return {
+    id: `access-point-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    ssid: draft.ssid.trim(),
+    bssid: normalizeMacAddress(draft.bssid),
+    location: draft.location.trim(),
+    vendor: draft.vendor.trim(),
+    channel: draft.channel.trim(),
+    expectedEncryption: draft.expectedEncryption,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+}
+
 export function summarizeKnownDevices(devices: KnownDevice[], now = new Date()): KnownDeviceSummary {
   return devices.reduce<KnownDeviceSummary>(
     (summary, device) => ({
@@ -78,6 +107,13 @@ export function summarizeKnownDevices(devices: KnownDevice[], now = new Date()):
     }),
     { total: 0, critical: 0, stale: 0 }
   );
+}
+
+export function summarizeAccessPoints(accessPoints: AccessPoint[]): AccessPointSummary {
+  return {
+    total: accessPoints.length,
+    openExpected: accessPoints.filter((accessPoint) => accessPoint.expectedEncryption === "OPEN").length
+  };
 }
 
 export function isKnownDeviceStale(device: KnownDevice, now = new Date()) {

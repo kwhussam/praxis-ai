@@ -1,4 +1,5 @@
 import type { NetworkSecurityFinding, RogueDeviceAssessment } from "@/lib/security/networkProbeTypes";
+import type { KnownDevice } from "@/lib/inventory/types";
 
 type DeviceSnapshot = {
   ipAddress: string;
@@ -11,13 +12,19 @@ type DeviceSnapshot = {
 
 const SUSPICIOUS_PORTS = new Set([23, 3389, 3306, 5432, 2049]);
 
-export function assessRogueDevices(currentDevices: DeviceSnapshot[], previousDevices: DeviceSnapshot[]): RogueDeviceAssessment {
+export function assessRogueDevices(
+  currentDevices: DeviceSnapshot[],
+  previousDevices: DeviceSnapshot[],
+  knownDevices: KnownDevice[] = []
+): RogueDeviceAssessment {
   const previousKeys = new Set(previousDevices.map(deviceKey));
-  const unknownDevices = currentDevices.filter((device) => !device.isKnown && (device.deviceType === "unknown" || !device.deviceType));
-  const newDevices = currentDevices.filter((device) => !previousKeys.has(deviceKey(device)) && !device.isKnown);
+  const knownMacs = new Set(knownDevices.map((device) => normalizeMac(device.macAddress)).filter(Boolean));
+  const knownHostnames = new Set(knownDevices.map((device) => device.hostname.trim().toLowerCase()).filter(Boolean));
+  const unknownDevices = currentDevices.filter((device) => !isKnownDevice(device, knownMacs, knownHostnames));
+  const newDevices = currentDevices.filter((device) => !previousKeys.has(deviceKey(device)) && !isKnownDevice(device, knownMacs, knownHostnames));
   const suspiciousDevices = currentDevices.filter((device) => {
     return (
-      !device.isKnown &&
+      !isKnownDevice(device, knownMacs, knownHostnames) &&
       (device.openPorts ?? []).some((port) => port.state === "open" && (SUSPICIOUS_PORTS.has(port.port) || port.risk === "critical"))
     );
   });
@@ -29,7 +36,7 @@ export function assessRogueDevices(currentDevices: DeviceSnapshot[], previousDev
     newDevices: newDevices.map((device) => device.ipAddress),
     status: suspiciousDevices.length > 0 ? "suspicious" : unknownDevices.length > 0 || newDevices.length > 0 ? "unknown_devices" : "clean",
     source: "inferred",
-    confidence: previousDevices.length > 0 ? "medium" : "low"
+    confidence: knownDevices.length > 0 ? "high" : previousDevices.length > 0 ? "medium" : "low"
   };
 }
 
@@ -72,4 +79,18 @@ export function rogueDeviceFinding(assessment: RogueDeviceAssessment): NetworkSe
 
 function deviceKey(device: DeviceSnapshot) {
   return device.macAddress || `${device.hostname ?? "unknown"}@${device.ipAddress}`;
+}
+
+function isKnownDevice(device: DeviceSnapshot, knownMacs: Set<string>, knownHostnames: Set<string>) {
+  if (device.isKnown) return true;
+  const mac = normalizeMac(device.macAddress);
+  if (mac && knownMacs.has(mac)) return true;
+  const hostname = device.hostname?.trim().toLowerCase();
+  return Boolean(hostname && knownHostnames.has(hostname));
+}
+
+function normalizeMac(value?: string) {
+  const cleaned = value?.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  if (!cleaned || cleaned.length !== 12) return "";
+  return cleaned.match(/.{1,2}/g)?.join(":") ?? "";
 }

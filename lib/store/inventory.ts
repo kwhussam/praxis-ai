@@ -1,22 +1,37 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { createInventoryItem, createKnownDevice, createPracticeSeedInventory } from "@/lib/inventory/inventory";
-import type { InventoryDraft, InventoryItem, KnownDevice, KnownDeviceDraft } from "@/lib/inventory/types";
+import { createAccessPoint, createInventoryItem, createKnownDevice, createPracticeSeedInventory } from "@/lib/inventory/inventory";
+import type {
+  AccessPoint,
+  AccessPointDraft,
+  InventoryDraft,
+  InventoryItem,
+  KnownDevice,
+  KnownDeviceDraft,
+  RouterWifiConfiguration
+} from "@/lib/inventory/types";
 import type { Practice } from "@/lib/store/session";
 import { createStringStorage } from "@/lib/store/storage";
 
 type InventoryState = {
   itemsByPractice: Record<string, InventoryItem[]>;
   knownDevicesByPractice: Record<string, KnownDevice[]>;
+  accessPointsByPractice: Record<string, AccessPoint[]>;
+  routerWifiConfigByPractice: Record<string, RouterWifiConfiguration>;
   ensurePracticeInventory: (practice: Practice | null) => void;
   getItems: (practiceId?: string) => InventoryItem[];
   getKnownDevices: (practiceId?: string) => KnownDevice[];
+  getAccessPoints: (practiceId?: string) => AccessPoint[];
+  getRouterWifiConfig: (practiceId?: string) => RouterWifiConfiguration | null;
   addItem: (practiceId: string, draft: InventoryDraft) => void;
   removeItem: (practiceId: string, itemId: string) => void;
   addKnownDevice: (practiceId: string, draft: KnownDeviceDraft) => void;
   removeKnownDevice: (practiceId: string, deviceId: string) => void;
   confirmKnownDevice: (practiceId: string, deviceId: string, confirmedAt?: Date) => void;
+  addAccessPoint: (practiceId: string, draft: AccessPointDraft) => void;
+  removeAccessPoint: (practiceId: string, accessPointId: string) => void;
+  updateRouterWifiConfig: (practiceId: string, config: Omit<RouterWifiConfiguration, "updatedAt">) => void;
 };
 
 const storage = createStringStorage("praxisshield-inventory");
@@ -26,6 +41,8 @@ export const useInventoryStore = create<InventoryState>()(
     (set, get) => ({
       itemsByPractice: {},
       knownDevicesByPractice: {},
+      accessPointsByPractice: {},
+      routerWifiConfigByPractice: {},
       ensurePracticeInventory: (practice) => {
         if (!practice) return;
         const existing = get().itemsByPractice[practice.id];
@@ -40,6 +57,8 @@ export const useInventoryStore = create<InventoryState>()(
       },
       getItems: (practiceId) => (practiceId ? get().itemsByPractice[practiceId] ?? [] : []),
       getKnownDevices: (practiceId) => (practiceId ? get().knownDevicesByPractice[practiceId] ?? [] : []),
+      getAccessPoints: (practiceId) => (practiceId ? get().accessPointsByPractice[practiceId] ?? [] : []),
+      getRouterWifiConfig: (practiceId) => (practiceId ? get().routerWifiConfigByPractice[practiceId] ?? null : null),
       addItem: (practiceId, draft) =>
         set((state) => ({
           itemsByPractice: {
@@ -77,6 +96,30 @@ export const useInventoryStore = create<InventoryState>()(
                 ? { ...device, lastConfirmedAt: confirmedAt.toISOString(), updatedAt: confirmedAt.toISOString() }
                 : device
             )
+          }
+        })),
+      addAccessPoint: (practiceId, draft) =>
+        set((state) => ({
+          accessPointsByPractice: {
+            ...state.accessPointsByPractice,
+            [practiceId]: [...(state.accessPointsByPractice[practiceId] ?? []), createAccessPoint(draft)]
+          }
+        })),
+      removeAccessPoint: (practiceId, accessPointId) =>
+        set((state) => ({
+          accessPointsByPractice: {
+            ...state.accessPointsByPractice,
+            [practiceId]: (state.accessPointsByPractice[practiceId] ?? []).filter((accessPoint) => accessPoint.id !== accessPointId)
+          }
+        })),
+      updateRouterWifiConfig: (practiceId, config) =>
+        set((state) => ({
+          routerWifiConfigByPractice: {
+            ...state.routerWifiConfigByPractice,
+            [practiceId]: {
+              ...config,
+              updatedAt: new Date().toISOString()
+            }
           }
         }))
     }),

@@ -1,10 +1,12 @@
 import type { NativeWifiNetwork } from "@/lib/security/nativeWifi";
+import type { AccessPoint } from "@/lib/inventory/types";
 import type { NetworkSecurityFinding, RogueApAssessment, RogueApCandidate } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
 
 export function assessRogueAccessPoints(input: {
   currentSsid: string;
   visibleNetworks: NativeWifiNetwork[];
+  accessPoints?: AccessPoint[];
 }): RogueApAssessment {
   const sameSsid = input.visibleNetworks.filter((network) => stripWifiQuotes(network.ssid ?? "") === input.currentSsid);
   if (sameSsid.length === 0) {
@@ -12,10 +14,23 @@ export function assessRogueAccessPoints(input: {
   }
 
   const protocols = new Set(sameSsid.map((network) => parseWifiCapabilities(network.capabilities ?? "").protocol));
+  const officialAccessPoints = (input.accessPoints ?? []).filter((accessPoint) => accessPoint.ssid === input.currentSsid);
+  const officialBssids = new Set(officialAccessPoints.map((accessPoint) => normalizeBssid(accessPoint.bssid)).filter(Boolean));
   const candidates: RogueApCandidate[] = sameSsid
     .map((network) => {
       const reasons: string[] = [];
       const parsed = parseWifiCapabilities(network.capabilities ?? "");
+      const normalizedBssid = normalizeBssid(network.bssid);
+      const officialAccessPoint = normalizedBssid
+        ? officialAccessPoints.find((accessPoint) => normalizeBssid(accessPoint.bssid) === normalizedBssid)
+        : undefined;
+
+      if (officialBssids.size > 0 && normalizedBssid && !officialBssids.has(normalizedBssid)) {
+        reasons.push("BSSID ist nicht im offiziellen Access-Point-Inventar dokumentiert.");
+      }
+      if (officialAccessPoint && !matchesExpectedEncryption(network.capabilities ?? "", officialAccessPoint.expectedEncryption)) {
+        reasons.push("Sichtbare Verschlüsselung weicht vom Access-Point-Inventar ab.");
+      }
       if (protocols.size > 1) reasons.push("Gleiche SSID mit abweichender Verschlüsselung sichtbar.");
       if ((network.level ?? -100) > -35) reasons.push("Sehr starkes Signal; Access Point befindet sich wahrscheinlich sehr nah.");
       if (!network.bssid) reasons.push("BSSID konnte nicht ausgelesen werden.");
@@ -26,7 +41,7 @@ export function assessRogueAccessPoints(input: {
         frequency: network.frequency,
         securityProtocol: parsed.protocol,
         reason: reasons,
-        confidence: reasons.length > 1 ? ("medium" as const) : ("low" as const)
+        confidence: officialBssids.size > 0 && reasons.length > 0 ? ("high" as const) : reasons.length > 1 ? ("medium" as const) : ("low" as const)
       };
     })
     .filter((candidate) => candidate.reason.length > 0);
@@ -35,7 +50,11 @@ export function assessRogueAccessPoints(input: {
     candidates,
     status: candidates.length > 0 ? "suspicious" : "none",
     source: "measured",
-    confidence: candidates.some((candidate) => candidate.confidence === "medium") ? "medium" : "low"
+    confidence: candidates.some((candidate) => candidate.confidence === "high")
+      ? "high"
+      : candidates.some((candidate) => candidate.confidence === "medium")
+        ? "medium"
+        : "low"
   };
 }
 
@@ -69,4 +88,21 @@ export function rogueApFinding(assessment: RogueApAssessment): NetworkSecurityFi
 
 function stripWifiQuotes(value: string) {
   return value.replace(/^"|"$/g, "");
+}
+
+function normalizeBssid(value?: string) {
+  const cleaned = value?.trim().replace(/[^a-fA-F0-9]/g, "").toUpperCase();
+  if (!cleaned || cleaned.length !== 12) return "";
+  return cleaned.match(/.{1,2}/g)?.join(":") ?? "";
+}
+
+function matchesExpectedEncryption(capabilities: string, expected: AccessPoint["expectedEncryption"]) {
+  const parsed = parseWifiCapabilities(capabilities);
+  const normalizedCapabilities = capabilities.toUpperCase();
+  if (expected === "UNKNOWN") return true;
+  if (expected === "OPEN") return parsed.protocol === "OPEN";
+  if (expected === "WPA3") return parsed.protocol === "WPA3" && !parsed.isMixedMode;
+  if (expected === "WPA2_WPA3_MIXED") return parsed.protocol === "WPA3" && parsed.isMixedMode;
+  if (expected === "WPA2_AES") return parsed.protocol === "WPA2" && normalizedCapabilities.includes("CCMP") && !normalizedCapabilities.includes("TKIP");
+  return false;
 }

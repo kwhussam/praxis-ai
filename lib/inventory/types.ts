@@ -18,6 +18,7 @@ export type KnownDeviceType =
   | "medical"
   | "iot"
   | "unknown";
+export type AccessPointExpectedEncryption = "WPA2_AES" | "WPA2_WPA3_MIXED" | "WPA3" | "OPEN" | "UNKNOWN";
 
 export type InventoryItem = {
   id: string;
@@ -61,6 +62,37 @@ export type KnownDeviceDraft = {
   lastConfirmedAt: string;
 };
 
+export type AccessPoint = {
+  id: string;
+  ssid: string;
+  bssid: string;
+  location: string;
+  vendor: string;
+  channel: string;
+  expectedEncryption: AccessPointExpectedEncryption;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AccessPointDraft = {
+  ssid: string;
+  bssid: string;
+  location: string;
+  vendor: string;
+  channel: string;
+  expectedEncryption: AccessPointExpectedEncryption;
+};
+
+export type RouterWifiConfiguration = {
+  wpa2Aes: boolean;
+  wpa2Wpa3MixedMode: boolean;
+  wpa3: boolean;
+  tkip: boolean;
+  openWifi: boolean;
+  wps: boolean;
+  updatedAt?: string;
+};
+
 export type InventoryCategory = {
   type: InventoryItemType;
   label: string;
@@ -96,6 +128,14 @@ export const KNOWN_DEVICE_TYPES: Array<{ value: KnownDeviceType; label: string }
   { value: "unknown", label: "Unbekannt" }
 ];
 
+export const ACCESS_POINT_ENCRYPTIONS: Array<{ value: AccessPointExpectedEncryption; label: string }> = [
+  { value: "WPA2_AES", label: "WPA2-AES" },
+  { value: "WPA2_WPA3_MIXED", label: "WPA2/WPA3 Mixed" },
+  { value: "WPA3", label: "WPA3" },
+  { value: "OPEN", label: "Offen" },
+  { value: "UNKNOWN", label: "Unbekannt" }
+];
+
 export function inventoryCategoryLabel(type: InventoryItemType) {
   return INVENTORY_CATEGORIES.find((category) => category.type === type)?.label ?? type;
 }
@@ -110,4 +150,8 @@ export function inventoryCriticalityLabel(value: InventoryCriticality) {
 
 export function knownDeviceTypeLabel(value: KnownDeviceType) {
   return KNOWN_DEVICE_TYPES.find((deviceType) => deviceType.value === value)?.label ?? value;
+}
+
+export function accessPointEncryptionLabel(value: AccessPointExpectedEncryption) {
+  return ACCESS_POINT_ENCRYPTIONS.find((encryption) => encryption.value === value)?.label ?? value;
 }

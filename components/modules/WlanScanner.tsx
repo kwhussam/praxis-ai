@@ -13,6 +13,7 @@ import { ScoreRing } from "@/components/ui/ScoreRing";
 import { VulnerabilityCard } from "@/components/ui/VulnerabilityCard";
 import { colors, type RiskTone } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
+import { useInventoryStore } from "@/lib/store/inventory";
 import { useCheckStore } from "@/lib/store/check";
 import {
   mapWlanVulnerabilitiesToFindings,
@@ -33,6 +34,8 @@ type IoniconName = ComponentProps<typeof Ionicons>["name"];
 export function WlanScanner() {
   const recalculateScore = useCheckStore((store) => store.recalculate);
   const practiceId = useSessionStore((store) => store.practice?.id);
+  const knownDevices = useInventoryStore((store) => store.getKnownDevices(practiceId));
+  const accessPoints = useInventoryStore((store) => store.getAccessPoints(practiceId));
   const [state, setState] = useState<ScannerState>("consent");
   const [accepted, setAccepted] = useState(false);
   const [progress, setProgress] = useState<WlanScanProgress | null>(null);
@@ -65,6 +68,8 @@ export function WlanScanner() {
 
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
+        knownDevices,
+        accessPoints,
         onProgress: (nextProgress) => {
           setProgress(nextProgress);
           if (nextProgress.discoveredDevices.length > 0) {

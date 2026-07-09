@@ -3,6 +3,7 @@ import * as Device from "expo-device";
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
+import type { AccessPoint, KnownDevice } from "@/lib/inventory/types";
 import {
   getCurrentWifiSsid,
   scanLocalDevices,
@@ -347,10 +348,14 @@ type ScanContext = {
   gatewayProbe: GatewaySecurityProbeResult | null;
 };
 
-export async function runWlanSecurityScan(options?: {
+type WlanSecurityScanOptions = {
   onProgress?: (progress: WlanScanProgress) => void;
   phaseDelayMs?: number;
-}): Promise<WlanScanResult> {
+  knownDevices?: KnownDevice[];
+  accessPoints?: AccessPoint[];
+};
+
+export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Promise<WlanScanResult> {
   const delayMs = options?.phaseDelayMs ?? 420;
   let context: ScanContext | null = null;
 
@@ -417,7 +422,10 @@ export async function runWlanSecurityScan(options?: {
   }
 
   const previousResult = getLatestWlanScanResult();
-  const advancedFindings = buildAdvancedNetworkFindings(context, previousResult?.connectedDevices ?? []);
+  const advancedFindings = buildAdvancedNetworkFindings(context, previousResult?.connectedDevices ?? [], {
+    accessPoints: options?.accessPoints ?? [],
+    knownDevices: options?.knownDevices ?? []
+  });
   context.securityFindings.push(...advancedFindings);
   context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
 
@@ -630,7 +638,11 @@ function deviceTypeFromClassification(classification: DeviceClassification): Dev
   return null;
 }
 
-function buildAdvancedNetworkFindings(context: ScanContext, previousDevices: DeviceInfo[]) {
+function buildAdvancedNetworkFindings(
+  context: ScanContext,
+  previousDevices: DeviceInfo[],
+  inventory: { accessPoints: AccessPoint[]; knownDevices: KnownDevice[] }
+) {
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
   const gatewayDevice = context.devices.find((device) => device.ipAddress === context.gatewayIp);
   const gatewayPorts = gatewayDevice?.openPorts ?? [];
@@ -652,10 +664,11 @@ function buildAdvancedNetworkFindings(context: ScanContext, previousDevices: Dev
 
   const rogueApAssessment = assessRogueAccessPoints({
     currentSsid: context.ssid,
-    visibleNetworks: context.visibleNetworks
+    visibleNetworks: context.visibleNetworks,
+    accessPoints: inventory.accessPoints
   });
 
-  const rogueDeviceAssessment = assessRogueDevices(context.devices, previousDevices);
+  const rogueDeviceAssessment = assessRogueDevices(context.devices, previousDevices, inventory.knownDevices);
   const findings = [
     guestNetworkFinding(guestAssessment),
     segmentationFinding(segmentationAssessment),
