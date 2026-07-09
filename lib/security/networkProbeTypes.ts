@@ -18,6 +18,7 @@ export type ProbeState = "open" | "closed" | "filtered" | "unknown";
 
 export type SecurityCheckId =
   | "wifi_encryption"
+  | "wps_status"
   | "wpa3_upgrade"
   | "router_http"
   | "telnet"
@@ -274,6 +275,7 @@ export interface NetworkSecurityFinding {
   confidence: ProbeConfidence;
   details: string;
   recommendation: string;
+  contextQuestions?: string[];
   scoreImpact: number;
   complianceImpact: "none" | "documentation" | "technical_measure" | "urgent_action";
   evidence: {

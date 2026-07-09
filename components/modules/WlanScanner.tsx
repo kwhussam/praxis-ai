@@ -42,10 +42,13 @@ export function WlanScanner() {
   const [result, setResult] = useState<WlanScanResult | null>(null);
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [auditMode, setAuditMode] = useState(false);
+  const [auditAccepted, setAuditAccepted] = useState(false);
 
   const phase = progress ? SCAN_PHASES[progress.phaseIndex] : SCAN_PHASES[0];
   const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
   const sortedVulnerabilities = useMemo(() => sortVulnerabilities(result?.vulnerabilities ?? []), [result]);
+  const scanDisabled = state === "scanning" || (auditMode && !auditAccepted);
   const scanNodes = useMemo(
     () => mapDevicesToScanNodes(displayedDevices, progress?.vulnerabilities ?? result?.vulnerabilities ?? []),
     [displayedDevices, progress, result]
@@ -64,12 +67,16 @@ export function WlanScanner() {
     setVisibleDevices([]);
 
     try {
-      void recordWlanScanConsent(practiceId);
+      void recordWlanScanConsent(practiceId, auditMode && auditAccepted);
 
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
         knownDevices,
         accessPoints,
+        auditMode: {
+          enabled: auditMode,
+          consentAccepted: auditAccepted
+        },
         onProgress: (nextProgress) => {
           setProgress(nextProgress);
           if (nextProgress.discoveredDevices.length > 0) {
@@ -147,6 +154,34 @@ export function WlanScanner() {
         Lokaler Best-Effort-Scan für das verbundene Praxis-WLAN. Keine Inhalte, Dateien oder Patientendaten werden gelesen.
       </Text>
 
+      <View style={styles.auditBox}>
+        <Pressable
+          style={styles.consentRow}
+          onPress={() => {
+            setAuditMode((current) => {
+              if (current) setAuditAccepted(false);
+              return !current;
+            });
+          }}
+        >
+          <View style={[styles.checkbox, auditMode ? styles.checkboxActive : null]}>
+            {auditMode ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
+          </View>
+          <View style={styles.auditText}>
+            <Text style={styles.auditTitle}>Audit-Modus</Text>
+            <Text style={styles.auditDescription}>Langsamer TCP-Connect-Scan über das erkannte lokale IPv4-Subnetz.</Text>
+          </View>
+        </Pressable>
+        {auditMode ? (
+          <Pressable style={styles.consentRow} onPress={() => setAuditAccepted((current) => !current)}>
+            <View style={[styles.checkbox, auditAccepted ? styles.checkboxActive : null]}>
+              {auditAccepted ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
+            </View>
+            <Text style={styles.consentText}>Ich habe die Berechtigung für einen vollständigen lokalen Audit-Scan.</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
       <View style={styles.scannerGrid}>
         <ScanAnimation
           nodes={scanNodes}
@@ -168,11 +203,16 @@ export function WlanScanner() {
 
       {state === "idle" ? (
         <AnimatedButton
-          label="WLAN jetzt prüfen"
-          onPress={scan}
-          style={styles.button}
+          label={auditMode ? "Audit-Scan starten" : "WLAN jetzt prüfen"}
+          onPress={() => {
+            if (!scanDisabled) void scan();
+          }}
+          style={[styles.button, scanDisabled ? styles.buttonDisabled : null]}
           icon={<Ionicons name="scan" size={18} color={colors.ink} />}
         />
+      ) : null}
+      {state === "idle" && auditMode && !auditAccepted ? (
+        <Text style={styles.helper}>Für den Audit-Modus ist eine separate Einwilligung erforderlich.</Text>
       ) : null}
 
       {state === "scanning" ? (
@@ -196,6 +236,7 @@ export function WlanScanner() {
               <FindingRow label={`Gateway ${result.gatewayIp || "unbekannt"}`} source={result.findings.gatewayIp.source} />
               <FindingRow label={`Verschlüsselung: ${result.securityProtocol}`} source={result.findings.securityProtocol.source} />
               <FindingRow label={`Geräte: ${result.connectedDevices.length}`} source={result.findings.connectedDevices.source} />
+              <FindingRow label={`Scanmodus: ${result.scanMode === "audit" ? "Audit" : "Standard"}`} source={result.findings.openPorts.source} />
             </View>
           </View>
 
@@ -216,7 +257,7 @@ export function WlanScanner() {
   );
 }
 
-async function recordWlanScanConsent(practiceId: string) {
+async function recordWlanScanConsent(practiceId: string, auditConsent: boolean) {
   try {
     await apiRequest("/api/legal/consent", {
       method: "POST",
@@ -227,6 +268,17 @@ async function recordWlanScanConsent(practiceId: string) {
         accepted: true
       }
     });
+    if (auditConsent) {
+      await apiRequest("/api/legal/consent", {
+        method: "POST",
+        body: {
+          practiceId,
+          type: "wlan_audit_scan",
+          version: "1.0",
+          accepted: true
+        }
+      });
+    }
   } catch {
     // Local-first scan: API consent sync must not block diagnostics when the worker is offline.
   }
@@ -255,6 +307,10 @@ function Methodology({ result }: { result: WlanScanResult }) {
       <Text style={styles.methodologyTitle}>Methodik & Einschränkungen</Text>
       <FindingRow label={`DNS-Server: ${result.dnsServers.length || "nicht sichtbar"}`} source={result.findings.dnsServers.source} />
       <FindingRow label={`Gateway-Ports: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
+      <FindingRow
+        label={`Subnetz-Hosts: ${result.subnetScan.scannedHosts}/${result.subnetScan.candidateHosts || result.subnetScan.scannedHosts}`}
+        source={result.findings.openPorts.source}
+      />
       {result.methodology.slice(0, 3).map((item) => (
         <Text key={item} style={styles.methodologyText}>{item}</Text>
       ))}
@@ -280,6 +336,13 @@ function SecurityCheckList({ findings }: { findings: NetworkSecurityFinding[] })
             </View>
             <Text style={styles.securityCheckDetails}>{finding.details}</Text>
             {finding.detected ? <Text style={styles.securityCheckRecommendation}>{finding.recommendation}</Text> : null}
+            {finding.contextQuestions && finding.contextQuestions.length > 0 ? (
+              <View style={styles.contextQuestionBox}>
+                {finding.contextQuestions.map((question) => (
+                  <Text key={question} style={styles.contextQuestionText}>{question}</Text>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
       ))}
@@ -374,6 +437,7 @@ function stateLabel(state: ScannerState, result: WlanScanResult | null) {
 
 function securityCheckIcon(finding: NetworkSecurityFinding): IoniconName {
   if (finding.checkId === "wifi_encryption" || finding.checkId === "wpa3_upgrade") return finding.status === "secure" ? "lock-closed" : "lock-open";
+  if (finding.checkId === "wps_status") return "help-circle";
   if (finding.checkId === "router_http") return "globe";
   if (finding.checkId === "telnet") return "terminal";
   if (finding.checkId === "smb") return "file-tray-stacked";
@@ -422,7 +486,7 @@ function statusLabel(finding: NetworkSecurityFinding) {
   if (finding.status === "critical") return "Kritisch";
   if (finding.status === "warning") return "Prüfen";
   if (finding.status === "secure") return "Sicher";
-  if (finding.status === "not_supported") return "Nicht unterstützt";
+  if (finding.status === "not_supported") return "Nicht geprüft";
   return "Unbekannt";
 }
 
@@ -547,6 +611,29 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.45
+  },
+  auditBox: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    marginTop: 16,
+    padding: 12
+  },
+  auditText: {
+    flex: 1
+  },
+  auditTitle: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  auditDescription: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 3
   },
   scannerGrid: {
     gap: 18,
@@ -740,6 +827,21 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 18,
     marginTop: 8
+  },
+  contextQuestionBox: {
+    backgroundColor: "rgba(45, 126, 248, 0.1)",
+    borderColor: "rgba(45, 126, 248, 0.28)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    marginTop: 10,
+    padding: 10
+  },
+  contextQuestionText: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17
   },
   vulnerabilityCard: {
     marginBottom: 12

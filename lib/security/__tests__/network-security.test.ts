@@ -11,6 +11,7 @@ import { fingerprintRouter } from "@/lib/security/routerFingerprint";
 import { assessNetworkSegmentation } from "@/lib/security/segmentationAssessment";
 import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
+import { buildIpv4SubnetCandidates } from "@/lib/security/ipv4Subnet";
 
 describe("wifi capability parsing", () => {
   it("erkennt offene WLANs", () => {
@@ -49,10 +50,34 @@ describe("network security assessment", () => {
     expect(findings.some((finding) => finding.checkId === "wpa3_upgrade" && finding.detected)).toBe(true);
   });
 
+  it("kennzeichnet WPS als nicht geprüft ohne Score-Abzug", () => {
+    const details = parseWifiCapabilities("[WPA2-PSK-CCMP][ESS]");
+    const finding = assessWifiSecurity(details).find((item) => item.checkId === "wps_status");
+    expect(finding?.status).toBe("not_supported");
+    expect(finding?.evidence.source).toBe("unavailable");
+    expect(finding?.scoreImpact).toBe(0);
+  });
+
   it("bewertet Telnet und RDP als kritisch", () => {
     const findings = assessGatewaySecurity(gatewayProbe([23, 3389]));
     expect(findings.find((finding) => finding.checkId === "telnet")?.severity).toBe("critical");
     expect(findings.find((finding) => finding.checkId === "rdp")?.severity).toBe("critical");
+  });
+
+  it("ergänzt Kontextfragen für offene Portbefunde", () => {
+    const findings = assessGatewaySecurity(gatewayProbe([445]));
+    const smb = findings.find((finding) => finding.checkId === "smb");
+    const questions = smb?.contextQuestions ?? [];
+    expect(questions.some((question) => question.includes("Port 445"))).toBe(true);
+    expect(questions.some((question) => question.includes("Quellgeräte"))).toBe(true);
+  });
+
+  it("berechnet Kandidaten für den vollständigen IPv4-Subnetzscan", () => {
+    const candidates = buildIpv4SubnetCandidates("192.168.10.20", "255.255.255.0", "192.168.10.1") ?? [];
+    expect(candidates).toHaveLength(253);
+    expect(candidates.includes("192.168.10.1")).toBe(true);
+    expect(candidates.includes("192.168.10.254")).toBe(true);
+    expect(candidates.includes("192.168.10.20")).toBe(false);
   });
 
   it("nutzt explizite Score-Impacts für den WLAN-Risikoscore", () => {

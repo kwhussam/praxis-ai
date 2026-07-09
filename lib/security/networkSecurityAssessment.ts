@@ -15,9 +15,10 @@ import type {
 import { assessDnsResolvers } from "@/lib/security/dnsAssessment";
 import { dhcpConsistencyFinding } from "@/lib/security/dhcpConsistency";
 import { assessIpv6 } from "@/lib/security/ipv6Assessment";
+import { serviceForPort } from "@/lib/security/servicePortCatalog";
 
 export function assessWifiSecurity(details: WifiSecurityDetails): NetworkSecurityFinding[] {
-  return [wifiEncryptionFinding(details), wpa3UpgradeFinding(details)];
+  return [wifiEncryptionFinding(details), wpsStatusFinding(), wpa3UpgradeFinding(details)];
 }
 
 export function assessGatewaySecurity(result: GatewaySecurityProbeResult): NetworkSecurityFinding[] {
@@ -225,6 +226,27 @@ function wpa3UpgradeFinding(details: WifiSecurityDetails): NetworkSecurityFindin
     source: details.source,
     protocol: details.protocol,
     raw: { authMode: details.authMode, supportsWpa3: details.supportsWpa3, capabilities: details.capabilities ?? null },
+    measuredAt
+  });
+}
+
+function wpsStatusFinding(): NetworkSecurityFinding {
+  const measuredAt = new Date().toISOString();
+
+  return finding({
+    id: "wps_status_not_checked",
+    checkId: "wps_status",
+    title: "WPS-Status nicht geprüft",
+    severity: "low",
+    status: "not_supported",
+    detected: false,
+    confidence: "low",
+    details: "Der WPS-Status wird nicht als technisches Ergebnis bewertet, weil er auf dieser Plattform nicht zuverlässig ausgelesen werden kann.",
+    recommendation: "Prüfen Sie WPS manuell im Router-Menü und deaktivieren Sie WPS, sofern es nicht zwingend benötigt wird.",
+    scoreImpact: 0,
+    complianceImpact: "documentation",
+    source: "unavailable",
+    raw: { reason: "wps_not_reliably_readable" },
     measuredAt
   });
 }
@@ -633,6 +655,7 @@ function finding(input: {
     confidence: input.confidence,
     details: input.details,
     recommendation: input.recommendation,
+    contextQuestions: buildPortContextQuestions(input.detected, input.ports),
     scoreImpact: input.scoreImpact,
     complianceImpact: input.complianceImpact,
     evidence: {
@@ -644,6 +667,18 @@ function finding(input: {
       measuredAt: input.measuredAt
     }
   };
+}
+
+function buildPortContextQuestions(detected: boolean, ports?: number[]) {
+  if (!detected || !ports || ports.length === 0) return undefined;
+
+  return ports.flatMap((port) => {
+    const service = serviceForPort(port)?.service ?? `TCP ${port}`;
+    return [
+      `Ist ${service} auf Port ${port} absichtlich aus dem Praxisnetz erreichbar?`,
+      `Auf welche Quellgeräte oder Quell-IP-Adressen sollte Port ${port} beschränkt sein?`
+    ];
+  });
 }
 
 function dedupeFindings(findings: NetworkSecurityFinding[]) {

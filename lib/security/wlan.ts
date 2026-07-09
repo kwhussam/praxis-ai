@@ -12,6 +12,7 @@ import {
 } from "@/lib/security/nativeWifi";
 import { assessFirewallBaseline, firewallBaselineFinding } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork, guestNetworkFinding } from "@/lib/security/guestNetworkAssessment";
+import { buildIpv4SubnetCandidates, MAX_AUDIT_SUBNET_HOSTS, usableSubnetHostCount } from "@/lib/security/ipv4Subnet";
 import { classifyDevice } from "@/lib/security/deviceClassification";
 import { assessGatewaySecurity, assessDeviceSecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
 import { getNativeWifiSecurityDetails, probeDeviceServices, probeGatewaySecurity } from "@/lib/security/networkProbes";
@@ -58,7 +59,6 @@ export type WlanVulnCategory =
   | "guest_network"
   | "firmware_outdated"
   | "upnp_enabled"
-  | "wps_enabled"
   | "device_inventory"
   | "ipv6"
   | "dhcp";
@@ -108,6 +108,8 @@ export interface WlanScanResult {
   vulnerabilities: Vulnerability[];
   securityFindings: NetworkSecurityFinding[];
   riskScore: number;
+  scanMode: WlanScanMode;
+  subnetScan: SubnetScanSummary;
   timestamp: Date;
   findings: {
     networkName: WlanFinding<string>;
@@ -138,6 +140,16 @@ export type WlanScanProgress = {
   vulnerabilities: Vulnerability[];
 };
 
+export type WlanScanMode = "standard" | "audit";
+
+export type SubnetScanSummary = {
+  mode: WlanScanMode;
+  candidateHosts: number;
+  scannedHosts: number;
+  scannedEntireRecognizedSubnet: boolean;
+  limitation?: string;
+};
+
 export const SCAN_PHASES = [
   {
     id: "network_info",
@@ -157,7 +169,7 @@ export const SCAN_PHASES = [
     icon: "lock",
     checks: [
       "WLAN-Protokoll auf Schwachstellen prüfen",
-      "WPS-Status ermitteln (Brute-Force-Risiko)",
+      "WPS-Status als nicht geprüft kennzeichnen",
       "Offenes WLAN ohne Passwort erkennen"
     ]
   },
@@ -250,14 +262,6 @@ export const WLAN_VULNERABILITIES = {
     cvss: 7.4,
     category: "encryption"
   },
-  WPS_ENABLED: {
-    title: "WPS ist aktiviert",
-    severity: "high",
-    description: "WPS (Wi-Fi Protected Setup) ermöglicht Brute-Force-Angriffe auf das WLAN-Passwort.",
-    remediation: "WPS im Router-Menü deaktivieren. Pfad: Router-IP -> Wireless -> WPS -> Disable.",
-    cvss: 7.0,
-    category: "wps_enabled"
-  },
   OPEN_TELNET: {
     title: "Telnet-Port offen (Port 23)",
     severity: "critical",
@@ -346,6 +350,8 @@ type ScanContext = {
   vulnerabilities: Vulnerability[];
   securityFindings: NetworkSecurityFinding[];
   gatewayProbe: GatewaySecurityProbeResult | null;
+  scanMode: WlanScanMode;
+  subnetScan: SubnetScanSummary;
 };
 
 type WlanSecurityScanOptions = {
@@ -353,6 +359,10 @@ type WlanSecurityScanOptions = {
   phaseDelayMs?: number;
   knownDevices?: KnownDevice[];
   accessPoints?: AccessPoint[];
+  auditMode?: {
+    enabled: boolean;
+    consentAccepted: boolean;
+  };
 };
 
 export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Promise<WlanScanResult> {
@@ -368,7 +378,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     }
 
     if (phase.id === "network_info") {
-      context = await readNetworkContext();
+      context = await readNetworkContext(scanModeFromOptions(options));
     }
 
     if (phase.id === "encryption_check" && context) {
@@ -418,7 +428,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
   }
 
   if (!context) {
-    context = await readNetworkContext();
+    context = await readNetworkContext(scanModeFromOptions(options));
   }
 
   const previousResult = getLatestWlanScanResult();
@@ -441,9 +451,11 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     vulnerabilities: dedupeVulnerabilities(context.vulnerabilities),
     securityFindings: dedupeSecurityFindings(context.securityFindings),
     riskScore: calculateWlanRiskScore(context.vulnerabilities, context.securityFindings),
+    scanMode: context.scanMode,
+    subnetScan: context.subnetScan,
     timestamp: new Date(),
     findings: buildFindings(context),
-    methodology: getPlatformLimitations()
+    methodology: [...scanMethodology(context), ...getPlatformLimitations()]
   };
 
   persistWlanScanResultLocally(result);
@@ -713,7 +725,7 @@ function emitProgress(
   });
 }
 
-async function readNetworkContext(): Promise<ScanContext> {
+async function readNetworkContext(scanMode: WlanScanMode): Promise<ScanContext> {
   const state = await NetInfo.fetch();
   const details = (state.details && typeof state.details === "object" ? state.details : {}) as Record<string, unknown>;
   const detailIp = getStringProperty(details, "ipAddress");
@@ -742,7 +754,14 @@ async function readNetworkContext(): Promise<ScanContext> {
     devices,
     vulnerabilities: [],
     securityFindings: [],
-    gatewayProbe: null
+    gatewayProbe: null,
+    scanMode,
+    subnetScan: {
+      mode: scanMode,
+      candidateHosts: 0,
+      scannedHosts: 0,
+      scannedEntireRecognizedSubnet: false
+    }
   };
 }
 
@@ -759,9 +778,12 @@ async function getCurrentSsid(state: NetInfoState) {
 
 async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[]> {
   const nativeDevices = await scanLocalDevices();
-  const candidates = candidateIps(context.ipAddress, context.gatewayIp);
-  const probes = await Promise.all(
-    candidates.map(async (ipAddress) => {
+  const candidates = candidateIps(context.ipAddress, context.gatewayIp, context.subnetMask, context.scanMode);
+  context.subnetScan = summarizeSubnetScan(context, candidates.length);
+  const probes = await mapWithConcurrency(
+    candidates,
+    context.scanMode === "audit" ? 4 : candidates.length || 1,
+    async (ipAddress) => {
       const services = await probeDeviceServices(ipAddress, 1200);
       const nativeDevice = nativeDevices.find((device) => device.ip === ipAddress);
       const classification = classifyDevice({
@@ -784,7 +806,7 @@ async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[
         openPorts,
         isVisible
       };
-    })
+    }
   );
 
   const responsiveDevices: DeviceInfo[] = probes
@@ -958,7 +980,11 @@ function makeVulnerability(
   };
 }
 
-function candidateIps(ipAddress: string, gatewayIp: string) {
+function candidateIps(ipAddress: string, gatewayIp: string, subnetMask: string, scanMode: WlanScanMode): string[] {
+  if (scanMode === "audit") {
+    return buildIpv4SubnetCandidates(ipAddress, subnetMask, gatewayIp) ?? candidateIps(ipAddress, gatewayIp, subnetMask, "standard");
+  }
+
   const prefix = ipAddress.split(".").slice(0, 3).join(".");
   if (!prefix || prefix === "0.0.0") return [];
 
@@ -1042,6 +1068,49 @@ function isTrustedPublicDns(ipAddress: string) {
   return ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "149.112.112.112"].includes(ipAddress);
 }
 
+function summarizeSubnetScan(context: ScanContext, scannedHosts: number): SubnetScanSummary {
+  const totalHosts = usableSubnetHostCount(context.ipAddress, context.subnetMask);
+  const auditLimited = context.scanMode === "audit" && totalHosts !== null && totalHosts > MAX_AUDIT_SUBNET_HOSTS;
+
+  return {
+    mode: context.scanMode,
+    candidateHosts: totalHosts ?? scannedHosts,
+    scannedHosts,
+    scannedEntireRecognizedSubnet: context.scanMode === "audit" && totalHosts !== null && !auditLimited,
+    limitation: auditLimited
+      ? `Subnetz umfasst ${totalHosts} Hosts; aus Sicherheitsgründen wurden ${MAX_AUDIT_SUBNET_HOSTS} Hosts geprüft.`
+      : context.scanMode === "standard"
+        ? "Standardmodus prüft nur Gateway und bekannte Kandidaten-IP-Adressen."
+        : undefined
+  };
+}
+
+function scanModeFromOptions(options?: WlanSecurityScanOptions): WlanScanMode {
+  return options?.auditMode?.enabled && options.auditMode.consentAccepted ? "audit" : "standard";
+}
+
+async function mapWithConcurrency<TInput, TResult>(
+  items: TInput[],
+  concurrency: number,
+  mapper: (item: TInput) => Promise<TResult>
+) {
+  const results: TResult[] = [];
+  let index = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length || 1));
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (index < items.length) {
+        const currentIndex = index;
+        index += 1;
+        results[currentIndex] = await mapper(items[currentIndex]);
+      }
+    })
+  );
+
+  return results;
+}
+
 function buildFindings(context: ScanContext): WlanScanResult["findings"] {
   const measuredAt = new Date();
   const gatewayPorts = context.devices.find((device) => device.ipAddress === context.gatewayIp)?.openPorts ?? [];
@@ -1065,7 +1134,16 @@ function buildFindings(context: ScanContext): WlanScanResult["findings"] {
     gatewayIp: makeFinding("gateway_ip", context.gatewayIp, context.gatewayIp ? "inferred" : "unavailable", "NetInfo gateway or subnet inference", context.gatewayIp ? "medium" : "low", measuredAt),
     dnsServers: makeFinding("dns_servers", context.dnsServers, context.dnsServers.length > 0 ? "measured" : "unavailable", "NetInfo DNS details", context.dnsServers.length > 0 ? "high" : "low", measuredAt),
     connectedDevices: makeFinding("connected_devices", context.devices, deviceSource, "Native discovery and HTTP probes", Platform.OS === "ios" ? "low" : "medium", measuredAt),
-    openPorts: makeFinding("open_ports", gatewayPorts, context.gatewayIp ? "measured" : "unavailable", "HTTP probes against gateway and selected subnet hosts", "medium", measuredAt),
+    openPorts: makeFinding(
+      "open_ports",
+      gatewayPorts,
+      context.gatewayIp ? "measured" : "unavailable",
+      context.scanMode === "audit"
+        ? "Audit mode TCP connect probes across the recognized IPv4 subnet"
+        : "HTTP probes against gateway and selected subnet hosts",
+      "medium",
+      measuredAt
+    ),
     upnpStatus: makeFinding(
       "upnp_status",
       context.gatewayProbe?.ssdp.active ?? null,
@@ -1166,6 +1244,16 @@ function getPlatformLimitations() {
   return [...PLATFORM_LIMITATIONS.default];
 }
 
+function scanMethodology(context: ScanContext) {
+  const summary = context.subnetScan;
+  const modeText =
+    summary.mode === "audit"
+      ? `Audit-Modus: langsamer TCP-Connect-Scan über ${summary.scannedHosts} Hosts im erkannten IPv4-Subnetz.`
+      : "Standardmodus: schneller lokaler Scan gegen Gateway und ausgewählte Kandidaten-IP-Adressen.";
+
+  return summary.limitation ? [modeText, summary.limitation] : [modeText];
+}
+
 function riskLevelFromScore(score: number) {
   if (score >= 80) return "low";
   if (score >= 55) return "medium";
@@ -1215,6 +1303,14 @@ function reviveScanResult(result: StoredWlanScanResult): WlanScanResult {
     ...result,
     wifiSecurity: result.wifiSecurity ?? defaultWifiSecurity(result.securityProtocol),
     securityFindings,
+    scanMode: result.scanMode ?? "standard",
+    subnetScan: result.subnetScan ?? {
+      mode: "standard",
+      candidateHosts: 0,
+      scannedHosts: 0,
+      scannedEntireRecognizedSubnet: false,
+      limitation: "Legacy scan without subnet scan metadata."
+    },
     timestamp: new Date(result.timestamp),
     findings,
     connectedDevices: result.connectedDevices.map((device) => ({
