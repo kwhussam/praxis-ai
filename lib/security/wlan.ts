@@ -20,11 +20,17 @@ import { assessRogueAccessPoints, rogueApFinding } from "@/lib/security/rogueApA
 import { assessRogueDevices, rogueDeviceFinding } from "@/lib/security/rogueDeviceAssessment";
 import { assessRouterCredentialRisk, defaultPasswordRiskFinding } from "@/lib/security/routerCredentialRisk";
 import { fingerprintRouter, routerFirmwareFinding } from "@/lib/security/routerFingerprint";
-import { assessNetworkSegmentation, segmentationFinding } from "@/lib/security/segmentationAssessment";
+import {
+  assessNetworkSegmentation,
+  buildNetworkSegmentObservation,
+  segmentationFinding,
+  type NetworkSegmentObservation
+} from "@/lib/security/segmentationAssessment";
 import type {
   DeviceClassification,
   GatewaySecurityProbeResult,
   HttpAdminProbeResult,
+  NetworkSegmentId,
   NetworkSecurityFinding,
   TcpProbeResult,
   WifiSecurityDetails,
@@ -36,6 +42,7 @@ import { supabase } from "@/lib/api/supabase";
 import { createStringStorage } from "@/lib/store/storage";
 
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
+export type { NetworkSegmentId } from "@/lib/security/networkProbeTypes";
 export type SecurityProtocol = WifiSecurityProtocol;
 export type DataSource = "measured" | "inferred" | "unavailable" | "simulated" | "questionnaire";
 export type FindingConfidence = "high" | "medium" | "low";
@@ -109,6 +116,7 @@ export interface WlanScanResult {
   securityFindings: NetworkSecurityFinding[];
   riskScore: number;
   scanMode: WlanScanMode;
+  scanSegment: NetworkSegmentId;
   subnetScan: SubnetScanSummary;
   timestamp: Date;
   findings: {
@@ -351,6 +359,7 @@ type ScanContext = {
   securityFindings: NetworkSecurityFinding[];
   gatewayProbe: GatewaySecurityProbeResult | null;
   scanMode: WlanScanMode;
+  scanSegment: NetworkSegmentId;
   subnetScan: SubnetScanSummary;
 };
 
@@ -359,6 +368,7 @@ type WlanSecurityScanOptions = {
   phaseDelayMs?: number;
   knownDevices?: KnownDevice[];
   accessPoints?: AccessPoint[];
+  scanSegment?: NetworkSegmentId;
   auditMode?: {
     enabled: boolean;
     consentAccepted: boolean;
@@ -378,7 +388,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     }
 
     if (phase.id === "network_info") {
-      context = await readNetworkContext(scanModeFromOptions(options));
+      context = await readNetworkContext(scanModeFromOptions(options), options?.scanSegment ?? "practice_wifi");
     }
 
     if (phase.id === "encryption_check" && context) {
@@ -428,7 +438,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
   }
 
   if (!context) {
-    context = await readNetworkContext(scanModeFromOptions(options));
+    context = await readNetworkContext(scanModeFromOptions(options), options?.scanSegment ?? "practice_wifi");
   }
 
   const previousResult = getLatestWlanScanResult();
@@ -452,6 +462,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     securityFindings: dedupeSecurityFindings(context.securityFindings),
     riskScore: calculateWlanRiskScore(context.vulnerabilities, context.securityFindings),
     scanMode: context.scanMode,
+    scanSegment: context.scanSegment,
     subnetScan: context.subnetScan,
     timestamp: new Date(),
     findings: buildFindings(context),
@@ -487,6 +498,38 @@ export function getLatestWlanScanResult(): WlanScanResult | null {
   }
 }
 
+function getSegmentObservations(): NetworkSegmentObservation[] {
+  const payload = wlanScanStorage.getString("segment_observations");
+  if (!payload) return [];
+
+  try {
+    const parsed = JSON.parse(payload);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isNetworkSegmentObservation);
+  } catch {
+    return [];
+  }
+}
+
+function upsertSegmentObservation(observation: NetworkSegmentObservation) {
+  const bySegment = new Map<NetworkSegmentId, NetworkSegmentObservation>();
+  getSegmentObservations().forEach((item) => bySegment.set(item.segment, item));
+  bySegment.set(observation.segment, observation);
+  const observations = Array.from(bySegment.values());
+  wlanScanStorage.set("segment_observations", JSON.stringify(observations));
+  return observations;
+}
+
+function isNetworkSegmentObservation(value: unknown): value is NetworkSegmentObservation {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<NetworkSegmentObservation>;
+  return isKnownNetworkSegment(candidate.segment) && typeof candidate.visibleDeviceCount === "number" && Array.isArray(candidate.deviceClasses) && Array.isArray(candidate.exposedServices) && typeof candidate.observedAt === "string";
+}
+
+function isKnownNetworkSegment(value: unknown): value is NetworkSegmentId {
+  return value === "practice_wifi" || value === "guest_wifi" || value === "server_network" || value === "printer_network" || value === "medical_device_network";
+}
+
 export async function syncWlanScanResultToSupabase(practiceId: string, result: WlanScanResult) {
   if (!isUuid(practiceId)) {
     return { ok: false, reason: "invalid_practice_id" as const };
@@ -502,6 +545,8 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       gatewayIp: result.gatewayIp,
       dnsServers: result.dnsServers,
       wifiSecurity: result.wifiSecurity,
+      scanMode: result.scanMode,
+      scanSegment: result.scanSegment,
       findings: serializeFindings(result.findings),
       securityFindings: result.securityFindings,
       methodology: result.methodology,
@@ -613,7 +658,7 @@ function categoryForSecurityFinding(finding: NetworkSecurityFinding): WlanVulnCa
   if (finding.checkId === "router_firmware") return "firmware_outdated";
   if (finding.checkId === "default_password_risk") return "default_credentials";
   if (finding.checkId === "firewall_baseline") return "open_ports";
-  if (finding.checkId === "printer_services" || finding.checkId === "nas_services" || finding.checkId === "camera_iot" || finding.checkId === "medical_device_metadata") return "device_inventory";
+  if (finding.checkId === "smb_security" || finding.checkId === "printer_services" || finding.checkId === "nas_services" || finding.checkId === "camera_iot" || finding.checkId === "medical_device_metadata") return "device_inventory";
   if (finding.checkId === "ipv6_exposure") return "ipv6";
   if (finding.checkId === "dhcp_consistency") return "dhcp";
   if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security") return "dns_hijacking";
@@ -668,10 +713,22 @@ function buildAdvancedNetworkFindings(
     captivePortalLikely: context.ssid.toLowerCase().includes("guest") || context.ssid.toLowerCase().includes("gast") ? null : false
   });
 
+  const currentSegmentObservation = buildNetworkSegmentObservation({
+    segment: context.scanSegment,
+    ssid: context.ssid,
+    gatewayIp: context.gatewayIp,
+    visibleDeviceCount: context.devices.length,
+    classifications,
+    exposedServices: context.devices.flatMap((device) =>
+      device.openPorts.filter((port) => port.state === "open").map((port) => `${device.ipAddress}:${port.port}`)
+    )
+  });
+  const segmentObservations = upsertSegmentObservation(currentSegmentObservation);
   const segmentationAssessment = assessNetworkSegmentation({
     guestNetworkStatus: guestAssessment.status,
     classifications,
-    visibleDeviceCount: context.devices.length
+    visibleDeviceCount: context.devices.length,
+    observations: segmentObservations
   });
 
   const rogueApAssessment = assessRogueAccessPoints({
@@ -725,7 +782,7 @@ function emitProgress(
   });
 }
 
-async function readNetworkContext(scanMode: WlanScanMode): Promise<ScanContext> {
+async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSegmentId): Promise<ScanContext> {
   const state = await NetInfo.fetch();
   const details = (state.details && typeof state.details === "object" ? state.details : {}) as Record<string, unknown>;
   const detailIp = getStringProperty(details, "ipAddress");
@@ -756,6 +813,7 @@ async function readNetworkContext(scanMode: WlanScanMode): Promise<ScanContext> 
     securityFindings: [],
     gatewayProbe: null,
     scanMode,
+    scanSegment,
     subnetScan: {
       mode: scanMode,
       candidateHosts: 0,
@@ -848,6 +906,7 @@ async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[
       host: probe.ipAddress,
       tcp: probe.services.tcp,
       http: probe.services.http,
+      smb: probe.services.smb,
       classifications: [probe.classification]
     });
   });
@@ -1304,6 +1363,7 @@ function reviveScanResult(result: StoredWlanScanResult): WlanScanResult {
     wifiSecurity: result.wifiSecurity ?? defaultWifiSecurity(result.securityProtocol),
     securityFindings,
     scanMode: result.scanMode ?? "standard",
+    scanSegment: result.scanSegment ?? "practice_wifi",
     subnetScan: result.subnetScan ?? {
       mode: "standard",
       candidateHosts: 0,

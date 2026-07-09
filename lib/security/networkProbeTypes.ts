@@ -15,6 +15,8 @@ export type WifiAuthMode =
 export type ProbeSource = "measured" | "inferred" | "unavailable" | "questionnaire";
 export type ProbeConfidence = "high" | "medium" | "low";
 export type ProbeState = "open" | "closed" | "filtered" | "unknown";
+export type SmbDialect = "SMB1" | "SMB2" | "SMB3" | "UNKNOWN";
+export type NetworkSegmentId = "practice_wifi" | "guest_wifi" | "server_network" | "printer_network" | "medical_device_network";
 
 export type SecurityCheckId =
   | "wifi_encryption"
@@ -23,6 +25,7 @@ export type SecurityCheckId =
   | "router_http"
   | "telnet"
   | "smb"
+  | "smb_security"
   | "upnp_ssdp"
   | "rdp"
   | "database_ports"
@@ -129,6 +132,20 @@ export interface SnmpProbeResult {
   errorCode?: string;
 }
 
+export interface SmbSecurityProbeResult {
+  host: string;
+  port: 445;
+  state: ProbeState;
+  source: ProbeSource;
+  confidence: ProbeConfidence;
+  supportedDialects: SmbDialect[];
+  smb1Supported: boolean | null;
+  signingEnabled: boolean | null;
+  signingRequired: boolean | null;
+  guestAccess: boolean | null;
+  errorCode?: string;
+}
+
 export type DeviceClass =
   | "router"
   | "printer"
@@ -194,6 +211,9 @@ export interface SegmentationAssessment {
   status: "good" | "partial" | "weak" | "unknown";
   sharedSegments: Array<"guests" | "practice" | "servers" | "printers" | "iot" | "medical">;
   riskyCoLocation: string[];
+  observedSegments?: NetworkSegmentId[];
+  missingSegments?: NetworkSegmentId[];
+  crossSegmentExposure?: string[];
   source: ProbeSource;
   confidence: ProbeConfidence;
 }
@@ -259,6 +279,7 @@ export interface GatewaySecurityProbeResult {
   ssdp: SsdpProbeResult;
   mdns: MdnsServiceResult[];
   snmp: SnmpProbeResult[];
+  smb: SmbSecurityProbeResult[];
   deviceClassifications: DeviceClassification[];
   ipv6: Ipv6NetworkInfo;
   dnsResolvers: DnsResolverAssessment[];

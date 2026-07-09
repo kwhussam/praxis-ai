@@ -21,11 +21,13 @@ import {
   SCAN_PHASES,
   syncWlanScanResultToSupabase,
   type DeviceInfo,
+  type NetworkSegmentId,
   type NetworkSecurityFinding,
   type Vulnerability,
   type WlanScanProgress,
   type WlanScanResult
 } from "@/lib/security/wlan";
+import { NETWORK_SEGMENTS } from "@/lib/security/segmentationAssessment";
 import { useSessionStore } from "@/lib/store/session";
 
 type ScannerState = "consent" | "idle" | "scanning" | "done" | "error";
@@ -44,6 +46,7 @@ export function WlanScanner() {
   const [error, setError] = useState<string | null>(null);
   const [auditMode, setAuditMode] = useState(false);
   const [auditAccepted, setAuditAccepted] = useState(false);
+  const [scanSegment, setScanSegment] = useState<NetworkSegmentId>("practice_wifi");
 
   const phase = progress ? SCAN_PHASES[progress.phaseIndex] : SCAN_PHASES[0];
   const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
@@ -73,6 +76,7 @@ export function WlanScanner() {
         phaseDelayMs: 260,
         knownDevices,
         accessPoints,
+        scanSegment,
         auditMode: {
           enabled: auditMode,
           consentAccepted: auditAccepted
@@ -153,6 +157,23 @@ export function WlanScanner() {
       <Text style={styles.copy}>
         Lokaler Best-Effort-Scan für das verbundene Praxis-WLAN. Keine Inhalte, Dateien oder Patientendaten werden gelesen.
       </Text>
+
+      <View style={styles.segmentBox}>
+        <Text style={styles.segmentTitle}>Ausgeführtes Netz</Text>
+        <View style={styles.segmentOptions}>
+          {NETWORK_SEGMENTS.map((segment) => (
+            <Pressable
+              key={segment.id}
+              style={[styles.segmentOption, scanSegment === segment.id ? styles.segmentOptionActive : null]}
+              onPress={() => setScanSegment(segment.id)}
+            >
+              <Text style={[styles.segmentOptionText, scanSegment === segment.id ? styles.segmentOptionTextActive : null]}>
+                {segment.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
 
       <View style={styles.auditBox}>
         <Pressable
@@ -236,6 +257,7 @@ export function WlanScanner() {
               <FindingRow label={`Gateway ${result.gatewayIp || "unbekannt"}`} source={result.findings.gatewayIp.source} />
               <FindingRow label={`Verschlüsselung: ${result.securityProtocol}`} source={result.findings.securityProtocol.source} />
               <FindingRow label={`Geräte: ${result.connectedDevices.length}`} source={result.findings.connectedDevices.source} />
+              <FindingRow label={`Segment: ${segmentLabel(result.scanSegment)}`} source="questionnaire" />
               <FindingRow label={`Scanmodus: ${result.scanMode === "audit" ? "Audit" : "Standard"}`} source={result.findings.openPorts.source} />
             </View>
           </View>
@@ -290,6 +312,10 @@ function scanErrorMessage(error: unknown) {
   }
 
   return "Der lokale WLAN-Scan konnte nicht abgeschlossen werden. Prüfen Sie WLAN-Berechtigungen und ob das Gerät mit dem Praxis-WLAN verbunden ist.";
+}
+
+function segmentLabel(segmentId: NetworkSegmentId) {
+  return NETWORK_SEGMENTS.find((segment) => segment.id === segmentId)?.label ?? segmentId;
 }
 
 function FindingRow({ label, source }: { label: string; source: WlanScanResult["findings"]["networkName"]["source"] }) {
@@ -440,7 +466,7 @@ function securityCheckIcon(finding: NetworkSecurityFinding): IoniconName {
   if (finding.checkId === "wps_status") return "help-circle";
   if (finding.checkId === "router_http") return "globe";
   if (finding.checkId === "telnet") return "terminal";
-  if (finding.checkId === "smb") return "file-tray-stacked";
+  if (finding.checkId === "smb" || finding.checkId === "smb_security") return "file-tray-stacked";
   if (finding.checkId === "upnp_ssdp") return "swap-horizontal";
   if (finding.checkId === "rdp") return "desktop";
   if (finding.checkId === "database_ports") return "server";
@@ -634,6 +660,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     marginTop: 3
+  },
+  segmentBox: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 16,
+    padding: 12
+  },
+  segmentTitle: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  segmentOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  segmentOption: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  segmentOptionActive: {
+    backgroundColor: colors.electric,
+    borderColor: colors.electric
+  },
+  segmentOptionText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  segmentOptionTextActive: {
+    color: colors.ink
   },
   scannerGrid: {
     gap: 18,

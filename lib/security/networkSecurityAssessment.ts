@@ -9,6 +9,7 @@ import type {
   ProbeConfidence,
   SecuritySeverity,
   SecurityStatus,
+  SmbSecurityProbeResult,
   TcpProbeResult,
   WifiSecurityDetails
 } from "@/lib/security/networkProbeTypes";
@@ -27,6 +28,7 @@ export function assessGatewaySecurity(result: GatewaySecurityProbeResult): Netwo
     routerHttpFinding(result.host, result.http),
     tcpServiceFinding(result.host, result.tcp, 23),
     smbFinding(result.host, result.tcp),
+    smbSecurityFinding(result.host, result.tcp, result.smb),
     upnpFinding(result),
     tcpServiceFinding(result.host, result.tcp, 3389),
     databasePortsFinding(result.host, result.tcp),
@@ -45,9 +47,11 @@ export function assessDeviceSecurity(input: {
   tcp: TcpProbeResult[];
   http: HttpAdminProbeResult[];
   classifications: DeviceClassification[];
+  smb?: SmbSecurityProbeResult[];
 }): NetworkSecurityFinding[] {
   return [
     databasePortsFinding(input.host, input.tcp),
+    smbSecurityFinding(input.host, input.tcp, input.smb ?? []),
     printerServicesFinding(input.host, input.tcp, input.http, input.classifications),
     nasServicesFinding(input.host, input.tcp, input.http, input.classifications),
     cameraIotFinding(input.host, false, input.http, input.classifications),
@@ -324,6 +328,7 @@ function smbFinding(host: string, probes: TcpProbeResult[]): NetworkSecurityFind
       source,
       host,
       ports: [139, 445],
+      contextQuestions: smbContextQuestions(),
       measuredAt
     });
   }
@@ -345,6 +350,90 @@ function smbFinding(host: string, probes: TcpProbeResult[]): NetworkSecurityFind
     source: "measured",
     host,
     ports: openPorts.map((probe) => probe.port),
+    contextQuestions: smbContextQuestions(),
+    measuredAt
+  });
+}
+
+function smbSecurityFinding(host: string, tcp: TcpProbeResult[], smb: SmbSecurityProbeResult[]): NetworkSecurityFinding {
+  const measuredAt = new Date().toISOString();
+  const smbPortOpen = tcp.some((probe) => probe.port === 445 && probe.state === "open");
+  const probe = smb.find((item) => item.host === host);
+  const unavailable = !probe || probe.source === "unavailable";
+
+  if (!smbPortOpen && unavailable) {
+    return finding({
+      id: `smb_security_not_checked_${host}`,
+      checkId: "smb_security",
+      title: "SMB-Sicherheitsparameter nicht geprüft",
+      severity: "low",
+      status: "unknown",
+      detected: false,
+      confidence: "low",
+      details: "SMB-Version, Signing und Gastzugriff konnten technisch nicht zuverlässig geprüft werden.",
+      recommendation: "SMBv1 deaktivieren, SMB-Signing erzwingen, Gastzugriffe sperren und Freigaben mit Benutzerrechten absichern.",
+      scoreImpact: 0,
+      complianceImpact: "documentation",
+      source: "unavailable",
+      host,
+      ports: [445],
+      contextQuestions: smbContextQuestions(),
+      raw: { privacyBoundary: "metadata_only_no_share_or_file_reads" },
+      measuredAt
+    });
+  }
+
+  const risks: string[] = [];
+  let scoreImpact = 0;
+  if (probe?.smb1Supported === true) {
+    risks.push("SMBv1 wird unterstützt.");
+    scoreImpact -= 18;
+  }
+  if (probe?.guestAccess === true) {
+    risks.push("Gastzugriff ist möglich.");
+    scoreImpact -= 16;
+  }
+  if (probe?.signingRequired === false) {
+    risks.push("SMB-Signing ist nicht verpflichtend.");
+    scoreImpact -= 8;
+  } else if (probe?.signingEnabled === false) {
+    risks.push("SMB-Signing ist nicht aktiv.");
+    scoreImpact -= 10;
+  }
+
+  const measured = probe?.source === "measured";
+  const unknownDetails = [probe?.smb1Supported, probe?.guestAccess, probe?.signingEnabled, probe?.signingRequired].some((value) => value === null || value === undefined);
+  const hasRisk = risks.length > 0;
+
+  return finding({
+    id: hasRisk ? `smb_security_risk_${host}` : measured && !unknownDetails ? `smb_security_hardened_${host}` : `smb_security_partial_${host}`,
+    checkId: "smb_security",
+    title: hasRisk ? "SMB-Sicherheitsparameter prüfen" : measured && !unknownDetails ? "SMB-Sicherheitsparameter unauffällig" : "SMB-Sicherheitsparameter teilweise geprüft",
+    severity: hasRisk && scoreImpact <= -18 ? "high" : hasRisk ? "medium" : "low",
+    status: hasRisk ? "warning" : measured && !unknownDetails ? "secure" : "unknown",
+    detected: hasRisk,
+    confidence: measured ? probe.confidence : "low",
+    details: hasRisk
+      ? `${risks.join(" ")} Die Prüfung liest keine Freigaben oder Dateien und bewertet nur SMB-Metadaten.`
+      : measured && !unknownDetails
+        ? "SMBv1, Gastzugriff und Signing wurden datensparsam über SMB-Metadaten bewertet; es wurden keine Freigaben oder Dateien gelesen."
+        : "SMB ist erreichbar, aber Version, Signing oder Gastzugriff konnten nur teilweise bewertet werden.",
+    recommendation:
+      "SMBv1 deaktivieren, Gastzugriff sperren, SMB-Signing erzwingen, Freigaben auf Benutzergruppen beschränken und SMB nur aus notwendigen Segmenten erlauben.",
+    scoreImpact,
+    complianceImpact: hasRisk ? "technical_measure" : measured && !unknownDetails ? "none" : "documentation",
+    source: probe?.source ?? "unavailable",
+    host,
+    ports: [445],
+    protocol: probe?.supportedDialects.length ? probe.supportedDialects.join("/") : undefined,
+    contextQuestions: smbContextQuestions(),
+    raw: {
+      smb1Supported: probe?.smb1Supported ?? null,
+      signingEnabled: probe?.signingEnabled ?? null,
+      signingRequired: probe?.signingRequired ?? null,
+      guestAccess: probe?.guestAccess ?? null,
+      privacyBoundary: "metadata_only_no_share_or_file_reads"
+    },
     measuredAt
   });
 }
@@ -432,6 +521,7 @@ function databasePortsFinding(host: string, probes: TcpProbeResult[]): NetworkSe
     source: "measured",
     host,
     ports: openPorts.map((probe) => probe.port),
+    contextQuestions: nasContextQuestions(),
     measuredAt
   });
 }
@@ -642,6 +732,7 @@ function finding(input: {
   host?: string;
   ports?: number[];
   protocol?: string;
+  contextQuestions?: string[];
   raw?: Record<string, string | number | boolean | null>;
   measuredAt: string;
 }): NetworkSecurityFinding {
@@ -655,7 +746,7 @@ function finding(input: {
     confidence: input.confidence,
     details: input.details,
     recommendation: input.recommendation,
-    contextQuestions: buildPortContextQuestions(input.detected, input.ports),
+    contextQuestions: buildContextQuestions(input.detected, input.ports, input.contextQuestions),
     scoreImpact: input.scoreImpact,
     complianceImpact: input.complianceImpact,
     evidence: {
@@ -669,16 +760,39 @@ function finding(input: {
   };
 }
 
-function buildPortContextQuestions(detected: boolean, ports?: number[]) {
-  if (!detected || !ports || ports.length === 0) return undefined;
+function buildContextQuestions(detected: boolean, ports?: number[], additional: string[] = []) {
+  const questions = [...additional];
+  if (!detected || !ports || ports.length === 0) return questions.length > 0 ? Array.from(new Set(questions)) : undefined;
 
-  return ports.flatMap((port) => {
+  questions.push(...ports.flatMap((port) => {
     const service = serviceForPort(port)?.service ?? `TCP ${port}`;
     return [
       `Ist ${service} auf Port ${port} absichtlich aus dem Praxisnetz erreichbar?`,
       `Auf welche Quellgeräte oder Quell-IP-Adressen sollte Port ${port} beschränkt sein?`
     ];
-  });
+  }));
+
+  return Array.from(new Set(questions));
+}
+
+function smbContextQuestions() {
+  return [
+    "Ist SMBv1 auf diesem System vollständig deaktiviert?",
+    "Ist Gastzugriff auf SMB-Freigaben deaktiviert?",
+    "Welche Benutzergruppen dürfen auf die Freigaben zugreifen?",
+    "Aus welchen Netzsegmenten darf SMB erreichbar sein?",
+    "Welchem fachlichen Zweck dienen die Freigaben und wer ist verantwortlich?"
+  ];
+}
+
+function nasContextQuestions() {
+  return [
+    "Welche Freigaben sind auf dem NAS fachlich erforderlich?",
+    "Sind Gastzugriff und anonyme Freigaben deaktiviert?",
+    "Sind Benutzerrechte rollenbasiert vergeben und regelmäßig geprüft?",
+    "Ist das NAS vom Gäste-WLAN, Druckernetz und Medizingerätenetz getrennt?",
+    "Wer ist für Pflege, Updates und Rechteprüfung der Freigaben verantwortlich?"
+  ];
 }
 
 function dedupeFindings(findings: NetworkSecurityFinding[]) {

@@ -7,6 +7,7 @@ import type {
   MdnsServiceResult,
   MdnsServiceType,
   ProbeState,
+  SmbSecurityProbeResult,
   SnmpProbeResult,
   SsdpProbeResult,
   TcpProbeResult,
@@ -23,6 +24,7 @@ type NativeNetworkProbeModule = {
   probeSsdp?: (request: { timeoutMs: number }) => Promise<SsdpProbeResult>;
   discoverMdnsServices?: (request: { types: string[]; timeoutMs: number }) => Promise<MdnsServiceResult[]>;
   probeSnmpBasic?: (request: { hosts: string[]; timeoutMs: number }) => Promise<SnmpProbeResult[]>;
+  probeSmbSecurity?: (request: { hosts: string[]; timeoutMs: number }) => Promise<SmbSecurityProbeResult[]>;
   getIpv6NetworkInfo?: () => Promise<Ipv6NetworkInfo>;
 };
 
@@ -71,6 +73,7 @@ export async function probeGatewaySecurity(options: {
       ssdp: unavailableSsdp("invalid_private_ip"),
       mdns: [],
       snmp: [],
+      smb: unavailableSmbSecurity([host], "invalid_private_ip"),
       deviceClassifications: [],
       ipv6: unavailableIpv6("invalid_private_ip", dnsServers),
       dnsResolvers: classifyDnsResolvers(dnsServers, host),
@@ -78,12 +81,13 @@ export async function probeGatewaySecurity(options: {
     };
   }
 
-  const [http, tcp, ssdp, mdns, snmp, ipv6] = await Promise.all([
+  const [http, tcp, ssdp, mdns, snmp, smb, ipv6] = await Promise.all([
     probeHttpAdmin(host, timeoutMs),
     probeTcpPorts(host, [...GATEWAY_TCP_PORTS], timeoutMs),
     probeSsdp(timeoutMs),
     discoverMdnsServices(DEFAULT_MDNS_TYPES, timeoutMs),
     probeSnmpBasic([host], timeoutMs),
+    probeSmbSecurity([host], timeoutMs),
     getIpv6NetworkInfo(dnsServers)
   ]);
 
@@ -94,6 +98,7 @@ export async function probeGatewaySecurity(options: {
     ssdp,
     mdns,
     snmp,
+    smb,
     deviceClassifications: [],
     ipv6,
     dnsResolvers: classifyDnsResolvers(dnsServers, host),
@@ -108,11 +113,12 @@ export async function probeHttpAdmin(host: string, timeoutMs = 1400): Promise<Ht
 }
 
 export async function probeDeviceServices(host: string, timeoutMs = 1200) {
-  const [http, tcp] = await Promise.all([
+  const [http, tcp, smb] = await Promise.all([
     probeHttpAdmin(host, timeoutMs),
-    probeTcpPorts(host, [...GATEWAY_TCP_PORTS], timeoutMs)
+    probeTcpPorts(host, [...GATEWAY_TCP_PORTS], timeoutMs),
+    probeSmbSecurity([host], timeoutMs)
   ]);
-  return { host, http, tcp };
+  return { host, http, tcp, smb };
 }
 
 export async function probeTcpPorts(host: string, ports: number[], timeoutMs = 1200): Promise<TcpProbeResult[]> {
@@ -217,6 +223,22 @@ export async function probeSnmpBasic(hosts: string[], timeoutMs = 900): Promise<
       confidence: "low",
       errorCode: error instanceof Error ? error.message : "native_snmp_probe_failed"
     }));
+  }
+}
+
+export async function probeSmbSecurity(hosts: string[], timeoutMs = 1200): Promise<SmbSecurityProbeResult[]> {
+  if (!nativeNetworkProbe?.probeSmbSecurity) {
+    return unavailableSmbSecurity(
+      hosts,
+      Platform.OS === "web" ? "web_smb_probe_unavailable" : "native_smb_probe_unavailable"
+    );
+  }
+
+  try {
+    const results = await nativeNetworkProbe.probeSmbSecurity({ hosts, timeoutMs });
+    return hosts.map((host) => normalizeSmbSecurityResult(host, results.find((result) => result.host === host)));
+  } catch (error) {
+    return unavailableSmbSecurity(hosts, error instanceof Error ? error.message : "native_smb_probe_failed");
   }
 }
 
@@ -333,6 +355,40 @@ function unavailableSsdp(errorCode: string): SsdpProbeResult {
     confidence: "low",
     devices: [],
     errorCode
+  };
+}
+
+function unavailableSmbSecurity(hosts: string[], errorCode: string): SmbSecurityProbeResult[] {
+  return hosts.map((host) => ({
+    host,
+    port: 445,
+    state: "unknown",
+    source: "unavailable",
+    confidence: "low",
+    supportedDialects: [],
+    smb1Supported: null,
+    signingEnabled: null,
+    signingRequired: null,
+    guestAccess: null,
+    errorCode
+  }));
+}
+
+function normalizeSmbSecurityResult(host: string, result?: SmbSecurityProbeResult): SmbSecurityProbeResult {
+  if (!result) return unavailableSmbSecurity([host], "native_smb_probe_missing_result")[0];
+
+  return {
+    host,
+    port: 445,
+    state: normalizeProbeState(result.state),
+    source: result.source ?? "measured",
+    confidence: result.confidence ?? "medium",
+    supportedDialects: Array.isArray(result.supportedDialects) ? result.supportedDialects : [],
+    smb1Supported: typeof result.smb1Supported === "boolean" ? result.smb1Supported : null,
+    signingEnabled: typeof result.signingEnabled === "boolean" ? result.signingEnabled : null,
+    signingRequired: typeof result.signingRequired === "boolean" ? result.signingRequired : null,
+    guestAccess: typeof result.guestAccess === "boolean" ? result.guestAccess : null,
+    errorCode: result.errorCode
   };
 }
 

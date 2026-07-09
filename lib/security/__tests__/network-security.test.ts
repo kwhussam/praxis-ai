@@ -8,7 +8,7 @@ import { assessGatewaySecurity, assessWifiSecurity, calculateSecurityFindingScor
 import { assessRogueAccessPoints } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices } from "@/lib/security/rogueDeviceAssessment";
 import { fingerprintRouter } from "@/lib/security/routerFingerprint";
-import { assessNetworkSegmentation } from "@/lib/security/segmentationAssessment";
+import { assessNetworkSegmentation, buildNetworkSegmentObservation } from "@/lib/security/segmentationAssessment";
 import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
 import { buildIpv4SubnetCandidates } from "@/lib/security/ipv4Subnet";
@@ -70,6 +70,32 @@ describe("network security assessment", () => {
     const questions = smb?.contextQuestions ?? [];
     expect(questions.some((question) => question.includes("Port 445"))).toBe(true);
     expect(questions.some((question) => question.includes("Quellgeräte"))).toBe(true);
+    expect(questions.some((question) => question.includes("SMBv1"))).toBe(true);
+    expect(questions.some((question) => question.includes("Gastzugriff"))).toBe(true);
+  });
+
+  it("bewertet SMBv1 und Guest Access ohne Dateizugriff als Risiko", () => {
+    const findings = assessGatewaySecurity({
+      ...gatewayProbe([445]),
+      smb: [
+        {
+          host: "192.168.1.1",
+          port: 445,
+          state: "open",
+          source: "measured",
+          confidence: "high",
+          supportedDialects: ["SMB1", "SMB2"],
+          smb1Supported: true,
+          signingEnabled: true,
+          signingRequired: false,
+          guestAccess: true
+        }
+      ]
+    });
+    const smbSecurity = findings.find((finding) => finding.checkId === "smb_security");
+    expect(smbSecurity?.detected).toBe(true);
+    expect(smbSecurity?.details.includes("keine Freigaben oder Dateien")).toBe(true);
+    expect(smbSecurity?.evidence.raw?.guestAccess).toBe(true);
   });
 
   it("berechnet Kandidaten für den vollständigen IPv4-Subnetzscan", () => {
@@ -142,6 +168,38 @@ describe("network security assessment", () => {
       ]
     });
     expect(assessment.status).toBe("weak");
+  });
+
+  it("aggregiert Segmentierungsbeobachtungen aus mehreren Netzen", () => {
+    const observations = [
+      buildNetworkSegmentObservation({
+        segment: "guest_wifi",
+        visibleDeviceCount: 3,
+        classifications: [
+          { host: "192.168.30.10", deviceClass: "nas", confidence: "high", signals: ["tcp:445"], privacyBoundary: "metadata only" }
+        ],
+        exposedServices: ["192.168.30.10:445"],
+        observedAt: new Date("2026-07-09T00:00:00.000Z")
+      }),
+      buildNetworkSegmentObservation({
+        segment: "server_network",
+        visibleDeviceCount: 2,
+        classifications: [
+          { host: "192.168.20.40", deviceClass: "camera_iot", confidence: "medium", signals: ["upnp"], privacyBoundary: "metadata only" }
+        ],
+        exposedServices: [],
+        observedAt: new Date("2026-07-09T00:01:00.000Z")
+      })
+    ];
+    const assessment = assessNetworkSegmentation({
+      guestNetworkStatus: "present",
+      visibleDeviceCount: 2,
+      classifications: [],
+      observations
+    });
+    expect(assessment.status).toBe("weak");
+    expect(assessment.observedSegments?.length).toBe(2);
+    expect(assessment.crossSegmentExposure?.length).toBeGreaterThan(0);
   });
 
   it("findet Rogue-AP-Hinweise bei gleicher SSID mit abweichender Verschlüsselung", () => {
@@ -270,6 +328,7 @@ function gatewayProbe(openPorts: number[]): GatewaySecurityProbeResult {
     },
     mdns: [],
     snmp: [],
+    smb: [],
     deviceClassifications: [],
     ipv6: {
       enabled: false,
