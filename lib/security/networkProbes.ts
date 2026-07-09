@@ -7,6 +7,7 @@ import type {
   MdnsServiceResult,
   MdnsServiceType,
   ProbeState,
+  DnsFilterTestResult,
   SmbSecurityProbeResult,
   SnmpProbeResult,
   SsdpProbeResult,
@@ -25,12 +26,17 @@ type NativeNetworkProbeModule = {
   discoverMdnsServices?: (request: { types: string[]; timeoutMs: number }) => Promise<MdnsServiceResult[]>;
   probeSnmpBasic?: (request: { hosts: string[]; timeoutMs: number }) => Promise<SnmpProbeResult[]>;
   probeSmbSecurity?: (request: { hosts: string[]; timeoutMs: number }) => Promise<SmbSecurityProbeResult[]>;
+  resolveDnsTestDomains?: (request: { domains: string[]; timeoutMs: number }) => Promise<DnsFilterTestResult[]>;
   getIpv6NetworkInfo?: () => Promise<Ipv6NetworkInfo>;
 };
 
 const nativeNetworkProbe = NativeModules.PraxisShieldNetworkProbe as NativeNetworkProbeModule | undefined;
 const HTTP_ADMIN_PORTS = EXTENDED_HTTP_PORTS;
 const GATEWAY_TCP_PORTS = EXTENDED_TCP_PORTS;
+export const DNS_FILTER_TEST_DOMAINS: Array<Pick<DnsFilterTestResult, "domain" | "category">> = [
+  { domain: "malware.testcategory.com", category: "malware" },
+  { domain: "phishing.testcategory.com", category: "phishing" }
+];
 export const DEFAULT_MDNS_TYPES: MdnsServiceType[] = [
   "_http._tcp",
   "_https._tcp",
@@ -77,18 +83,20 @@ export async function probeGatewaySecurity(options: {
       deviceClassifications: [],
       ipv6: unavailableIpv6("invalid_private_ip", dnsServers),
       dnsResolvers: classifyDnsResolvers(dnsServers, host),
+      dnsFilterTests: unavailableDnsFilterTests("invalid_private_ip"),
       dhcpConsistency: assessDhcpConsistencyInput({ ipAddress: localIp, subnetMask, gatewayIp: host, dnsServers })
     };
   }
 
-  const [http, tcp, ssdp, mdns, snmp, smb, ipv6] = await Promise.all([
+  const [http, tcp, ssdp, mdns, snmp, smb, ipv6, dnsFilterTests] = await Promise.all([
     probeHttpAdmin(host, timeoutMs),
     probeTcpPorts(host, [...GATEWAY_TCP_PORTS], timeoutMs),
     probeSsdp(timeoutMs),
     discoverMdnsServices(DEFAULT_MDNS_TYPES, timeoutMs),
     probeSnmpBasic([host], timeoutMs),
     probeSmbSecurity([host], timeoutMs),
-    getIpv6NetworkInfo(dnsServers)
+    getIpv6NetworkInfo(dnsServers),
+    probeDnsFilterTestDomains(timeoutMs)
   ]);
 
   return {
@@ -102,6 +110,7 @@ export async function probeGatewaySecurity(options: {
     deviceClassifications: [],
     ipv6,
     dnsResolvers: classifyDnsResolvers(dnsServers, host),
+    dnsFilterTests,
     dhcpConsistency: assessDhcpConsistencyInput({ ipAddress: localIp, subnetMask, gatewayIp: host, dnsServers })
   };
 }
@@ -242,6 +251,20 @@ export async function probeSmbSecurity(hosts: string[], timeoutMs = 1200): Promi
   }
 }
 
+export async function probeDnsFilterTestDomains(timeoutMs = 1200): Promise<DnsFilterTestResult[]> {
+  if (!nativeNetworkProbe?.resolveDnsTestDomains) {
+    return unavailableDnsFilterTests(Platform.OS === "web" ? "web_dns_test_unavailable" : "native_dns_test_unavailable");
+  }
+
+  try {
+    const domains = DNS_FILTER_TEST_DOMAINS.map((item) => item.domain);
+    const results = await nativeNetworkProbe.resolveDnsTestDomains({ domains, timeoutMs });
+    return DNS_FILTER_TEST_DOMAINS.map((test) => normalizeDnsFilterTestResult(test, results.find((result) => result.domain === test.domain)));
+  } catch (error) {
+    return unavailableDnsFilterTests(error instanceof Error ? error.message : "native_dns_test_failed");
+  }
+}
+
 export async function getIpv6NetworkInfo(dnsServers: string[]): Promise<Ipv6NetworkInfo> {
   if (!nativeNetworkProbe?.getIpv6NetworkInfo) {
     return buildIpv6NetworkInfo([], dnsServers);
@@ -372,6 +395,50 @@ function unavailableSmbSecurity(hosts: string[], errorCode: string): SmbSecurity
     guestAccess: null,
     errorCode
   }));
+}
+
+function unavailableDnsFilterTests(errorCode: string): DnsFilterTestResult[] {
+  return DNS_FILTER_TEST_DOMAINS.map((test) => ({
+    domain: test.domain,
+    category: test.category,
+    blocked: null,
+    resolvedAddresses: [],
+    source: "unavailable",
+    confidence: "low",
+    errorCode
+  }));
+}
+
+function normalizeDnsFilterTestResult(
+  test: Pick<DnsFilterTestResult, "domain" | "category">,
+  result?: DnsFilterTestResult
+): DnsFilterTestResult {
+  if (!result) return unavailableDnsFilterTests("native_dns_test_missing_result").find((item) => item.domain === test.domain)!;
+  const responseCode = normalizeDnsResponseCode(result.responseCode);
+  const blocked =
+    typeof result.blocked === "boolean"
+      ? result.blocked
+      : responseCode === "NXDOMAIN" || responseCode === "REFUSED"
+        ? true
+        : responseCode === "NOERROR" && result.resolvedAddresses.length > 0
+          ? false
+          : null;
+
+  return {
+    domain: test.domain,
+    category: test.category,
+    blocked,
+    responseCode,
+    resolvedAddresses: Array.isArray(result.resolvedAddresses) ? result.resolvedAddresses : [],
+    source: result.source ?? "measured",
+    confidence: result.confidence ?? "medium",
+    errorCode: result.errorCode
+  };
+}
+
+function normalizeDnsResponseCode(code?: string) {
+  if (code === "NOERROR" || code === "NXDOMAIN" || code === "REFUSED" || code === "SERVFAIL" || code === "TIMEOUT" || code === "UNKNOWN") return code;
+  return undefined;
 }
 
 function normalizeSmbSecurityResult(host: string, result?: SmbSecurityProbeResult): SmbSecurityProbeResult {

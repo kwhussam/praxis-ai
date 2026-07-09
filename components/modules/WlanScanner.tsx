@@ -35,6 +35,7 @@ type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 export function WlanScanner() {
   const recalculateScore = useCheckStore((store) => store.recalculate);
+  const questionnaireAnswers = useCheckStore((store) => store.answers);
   const practiceId = useSessionStore((store) => store.practice?.id);
   const knownDevices = useInventoryStore((store) => store.getKnownDevices(practiceId));
   const accessPoints = useInventoryStore((store) => store.getAccessPoints(practiceId));
@@ -77,6 +78,11 @@ export function WlanScanner() {
         knownDevices,
         accessPoints,
         scanSegment,
+        networkStructure: {
+          guestWifiExists: questionnaireAnswers.vlanGuests,
+          guestWifiClientIsolation: questionnaireAnswers.guestWifiClientIsolation,
+          networkStructureDocumented: questionnaireAnswers.networkStructureDocumented
+        },
         auditMode: {
           enabled: auditMode,
           consentAccepted: auditAccepted

@@ -1,4 +1,11 @@
-import type { DeviceClass, DeviceClassification, NetworkSecurityFinding, NetworkSegmentId, SegmentationAssessment } from "@/lib/security/networkProbeTypes";
+import type {
+  DeviceClass,
+  DeviceClassification,
+  NetworkSecurityFinding,
+  NetworkSegmentId,
+  SegmentReachabilityTestResult,
+  SegmentationAssessment
+} from "@/lib/security/networkProbeTypes";
 
 export const NETWORK_SEGMENTS: Array<{ id: NetworkSegmentId; label: string }> = [
   { id: "practice_wifi", label: "Praxis-WLAN" },
@@ -23,6 +30,7 @@ export function assessNetworkSegmentation(input: {
   classifications: DeviceClassification[];
   visibleDeviceCount: number;
   observations?: NetworkSegmentObservation[];
+  reachabilityTests?: SegmentReachabilityTestResult[];
 }): SegmentationAssessment {
   const classes = new Set(input.classifications.map((item) => item.deviceClass));
   const riskyCoLocation: string[] = [];
@@ -47,6 +55,11 @@ export function assessNetworkSegmentation(input: {
     riskyCoLocation.push("Medizinische Geräte-Metadaten sind zusammen mit weiteren Geräten sichtbar.");
   }
 
+  const reachableCrossSegment = (input.reachabilityTests ?? []).filter((test) => test.reachable === true);
+  reachableCrossSegment.forEach((test) => {
+    riskyCoLocation.push(`${segmentLabel(test.fromSegment)} erreicht ${test.host}:${test.port} im Segment ${segmentLabel(test.toSegment)}.`);
+  });
+
   riskyCoLocation.push(...(multiSegment?.riskyCoLocation ?? []));
   sharedSegments.push(...(multiSegment?.sharedSegments ?? []));
 
@@ -62,9 +75,13 @@ export function assessNetworkSegmentation(input: {
     riskyCoLocation: Array.from(new Set(riskyCoLocation)),
     observedSegments,
     missingSegments: NETWORK_SEGMENTS.map((segment) => segment.id).filter((segment) => !observedSegments.includes(segment)),
-    crossSegmentExposure: multiSegment?.crossSegmentExposure ?? [],
+    crossSegmentExposure: [
+      ...(multiSegment?.crossSegmentExposure ?? []),
+      ...reachableCrossSegment.map((test) => `${test.fromSegment}_to_${test.toSegment}_${test.port}`)
+    ],
+    reachabilityTests: input.reachabilityTests ?? [],
     source: "inferred",
-    confidence: observedSegments.length >= 3 ? "high" : input.classifications.length > 0 || observedSegments.length > 0 ? "medium" : "low"
+    confidence: reachableCrossSegment.length > 0 || observedSegments.length >= 3 ? "high" : input.classifications.length > 0 || observedSegments.length > 0 ? "medium" : "low"
   };
 }
 
@@ -86,6 +103,23 @@ export function buildNetworkSegmentObservation(input: {
     exposedServices: Array.from(new Set(input.exposedServices)),
     observedAt: (input.observedAt ?? new Date()).toISOString()
   };
+}
+
+export function buildSegmentReachabilityTargets(currentSegment: NetworkSegmentId, observations: NetworkSegmentObservation[]) {
+  return observations
+    .filter((observation) => observation.segment !== currentSegment)
+    .flatMap((observation) =>
+      observation.exposedServices
+        .map((service) => parseExposedService(service))
+        .filter((service): service is { host: string; port: number; service: string } => service !== null)
+        .map((service) => ({
+          fromSegment: currentSegment,
+          toSegment: observation.segment,
+          host: service.host,
+          port: service.port,
+          service: service.service
+        }))
+    );
 }
 
 function assessMultiSegmentObservations(observations: NetworkSegmentObservation[]) {
@@ -133,6 +167,7 @@ export function segmentationFinding(assessment: SegmentationAssessment): Network
   const measuredAt = new Date().toISOString();
   const weak = assessment.status === "weak";
   const partial = assessment.status === "partial";
+  const reachable = assessment.reachabilityTests?.filter((test) => test.reachable === true) ?? [];
 
   return {
     id: `network_segmentation_${assessment.status}`,
@@ -143,7 +178,9 @@ export function segmentationFinding(assessment: SegmentationAssessment): Network
     detected: weak || partial,
     confidence: assessment.confidence,
     details:
-      assessment.riskyCoLocation.length > 0
+      reachable.length > 0
+        ? `Segment-Erreichbarkeit wurde festgestellt: ${reachable.map((test) => `${segmentLabel(test.fromSegment)} -> ${segmentLabel(test.toSegment)} ${test.host}:${test.port}`).join("; ")}.`
+        : assessment.riskyCoLocation.length > 0
         ? assessment.riskyCoLocation.join(" ")
         : "Aus den sichtbaren Geräten ergibt sich kein klarer Hinweis auf gemeinsam betriebene Risiko-Segmente.",
     recommendation:
@@ -158,9 +195,22 @@ export function segmentationFinding(assessment: SegmentationAssessment): Network
         riskyCoLocation: assessment.riskyCoLocation.length,
         observedSegments: assessment.observedSegments?.length ?? 0,
         missingSegments: assessment.missingSegments?.length ?? 0,
-        crossSegmentExposure: assessment.crossSegmentExposure?.length ?? 0
+        crossSegmentExposure: assessment.crossSegmentExposure?.length ?? 0,
+        reachabilityTests: assessment.reachabilityTests?.length ?? 0,
+        reachableCrossSegmentTargets: reachable.length
       },
       measuredAt
     }
   };
+}
+
+function parseExposedService(value: string) {
+  const [host, portValue] = value.split(":");
+  const port = Number(portValue);
+  if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  return { host, port, service: `TCP ${port}` };
+}
+
+function segmentLabel(segmentId: NetworkSegmentId) {
+  return NETWORK_SEGMENTS.find((segment) => segment.id === segmentId)?.label ?? segmentId;
 }

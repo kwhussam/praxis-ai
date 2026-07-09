@@ -1,5 +1,5 @@
 import { classifyDevice } from "@/lib/security/deviceClassification";
-import { classifyDnsResolvers } from "@/lib/security/dnsAssessment";
+import { assessDnsFilterTests, classifyDnsResolvers } from "@/lib/security/dnsAssessment";
 import { assessDhcpConsistencyInput } from "@/lib/security/dhcpConsistency";
 import { assessFirewallBaseline } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork } from "@/lib/security/guestNetworkAssessment";
@@ -8,7 +8,7 @@ import { assessGatewaySecurity, assessWifiSecurity, calculateSecurityFindingScor
 import { assessRogueAccessPoints } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices } from "@/lib/security/rogueDeviceAssessment";
 import { fingerprintRouter } from "@/lib/security/routerFingerprint";
-import { assessNetworkSegmentation, buildNetworkSegmentObservation } from "@/lib/security/segmentationAssessment";
+import { assessNetworkSegmentation, buildNetworkSegmentObservation, buildSegmentReachabilityTargets } from "@/lib/security/segmentationAssessment";
 import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
 import { buildIpv4SubnetCandidates } from "@/lib/security/ipv4Subnet";
@@ -158,6 +158,44 @@ describe("network security assessment", () => {
     expect(assessment.status).toBe("present");
   });
 
+  it("bewertet Gastnetz mit Benutzerangaben als wahrscheinlicher getrennt", () => {
+    const assessment = assessGuestNetwork({
+      ssid: "Praxis",
+      gatewayReachable: true,
+      visibleDeviceCount: 1,
+      classifications: [],
+      declaredGuestNetwork: true,
+      declaredClientIsolation: true
+    });
+    expect(assessment.status).toBe("present");
+    expect(assessment.confidence).toBe("high");
+  });
+
+  it("wertet erreichbare interne Ziele aus dem Gäste-WLAN als fehlende Isolation", () => {
+    const assessment = assessGuestNetwork({
+      ssid: "Praxis-Gast",
+      gatewayReachable: true,
+      visibleDeviceCount: 1,
+      classifications: [],
+      declaredGuestNetwork: true,
+      declaredClientIsolation: true,
+      segmentReachabilityTests: [
+        {
+          fromSegment: "guest_wifi",
+          toSegment: "server_network",
+          host: "192.168.20.10",
+          port: 445,
+          service: "SMB",
+          reachable: true,
+          source: "measured",
+          confidence: "high"
+        }
+      ]
+    });
+    expect(assessment.status).toBe("not_present");
+    expect(assessment.confidence).toBe("high");
+  });
+
   it("bewertet schwache Segmentierung bei Server und IoT im gleichen sichtbaren Netz", () => {
     const assessment = assessNetworkSegmentation({
       guestNetworkStatus: "not_present",
@@ -200,6 +238,46 @@ describe("network security assessment", () => {
     expect(assessment.status).toBe("weak");
     expect(assessment.observedSegments?.length).toBe(2);
     expect(assessment.crossSegmentExposure?.length).toBeGreaterThan(0);
+  });
+
+  it("erzeugt gezielte Reachability-Ziele aus anderen Segmenten", () => {
+    const targets = buildSegmentReachabilityTargets("guest_wifi", [
+      {
+        segment: "server_network",
+        visibleDeviceCount: 1,
+        deviceClasses: ["server"],
+        exposedServices: ["192.168.20.10:445"],
+        observedAt: "2026-07-09T00:00:00.000Z"
+      }
+    ]);
+    expect(targets).toHaveLength(1);
+    expect(targets[0].toSegment).toBe("server_network");
+    expect(targets[0].port).toBe(445);
+  });
+
+  it("bewertet aufgelöste DNS-Testdomains als fehlenden DNS-Filter", () => {
+    const finding = assessDnsFilterTests([
+      {
+        domain: "malware.testcategory.com",
+        category: "malware",
+        blocked: false,
+        responseCode: "NOERROR",
+        resolvedAddresses: ["203.0.113.10"],
+        source: "measured",
+        confidence: "high"
+      },
+      {
+        domain: "phishing.testcategory.com",
+        category: "phishing",
+        blocked: true,
+        responseCode: "NXDOMAIN",
+        resolvedAddresses: [],
+        source: "measured",
+        confidence: "high"
+      }
+    ]);
+    expect(finding.status).toBe("warning");
+    expect(finding.evidence.raw?.allowedCount).toBe(1);
   });
 
   it("findet Rogue-AP-Hinweise bei gleicher SSID mit abweichender Verschlüsselung", () => {
@@ -341,6 +419,7 @@ function gatewayProbe(openPorts: number[]): GatewaySecurityProbeResult {
       confidence: "low"
     },
     dnsResolvers: [],
+    dnsFilterTests: [],
     dhcpConsistency: {
       status: "consistent",
       issues: [],

@@ -35,6 +35,14 @@ export type QuestionnaireAnswerKey =
   | "privacyReviewEvidence"
   | "securityOwnerAssigned"
   | "responsibilityDocumented"
+  | "networkStructureDocumented"
+  | "vlanPracticeDevices"
+  | "vlanGuests"
+  | "vlanServers"
+  | "vlanPrinters"
+  | "vlanIot"
+  | "vlanMedicalDevices"
+  | "guestWifiClientIsolation"
   | "staffTraining"
   | "dmarc";
 
@@ -85,6 +93,14 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   privacyReviewEvidence: false,
   securityOwnerAssigned: false,
   responsibilityDocumented: false,
+  networkStructureDocumented: false,
+  vlanPracticeDevices: false,
+  vlanGuests: false,
+  vlanServers: false,
+  vlanPrinters: false,
+  vlanIot: false,
+  vlanMedicalDevices: false,
+  guestWifiClientIsolation: false,
   staffTraining: true,
   dmarc: false
 };
@@ -147,6 +163,19 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     questions: [
       { key: "securityOwnerAssigned", label: "Ist eine verantwortliche Person für IT-Sicherheit und Datenschutz benannt?" },
       { key: "responsibilityDocumented", label: "Sind Vertretung, Aufgaben und Eskalationswege schriftlich dokumentiert?" }
+    ]
+  },
+  {
+    title: "Netzstruktur",
+    questions: [
+      { key: "networkStructureDocumented", label: "Ist dokumentiert, welche VLANs oder getrennten WLANs für Praxisgeräte, Gäste, Server, Drucker, IoT und Medizingeräte existieren?" },
+      { key: "vlanPracticeDevices", label: "Gibt es ein eigenes Netz oder VLAN für Praxisgeräte?" },
+      { key: "vlanGuests", label: "Gibt es ein getrenntes Gäste-WLAN oder Gäste-VLAN?" },
+      { key: "vlanServers", label: "Gibt es ein getrenntes Servernetz oder Server-VLAN?" },
+      { key: "vlanPrinters", label: "Gibt es ein getrenntes Druckernetz oder Drucker-VLAN?" },
+      { key: "vlanIot", label: "Gibt es ein getrenntes IoT-/Kamera-Netz oder VLAN?" },
+      { key: "vlanMedicalDevices", label: "Gibt es ein getrenntes Netz oder VLAN für Medizingeräte?" },
+      { key: "guestWifiClientIsolation", label: "Ist Client-Isolation im Gäste-WLAN aktiviert?" }
     ]
   },
   {

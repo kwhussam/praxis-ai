@@ -17,6 +17,7 @@ export type ProbeConfidence = "high" | "medium" | "low";
 export type ProbeState = "open" | "closed" | "filtered" | "unknown";
 export type SmbDialect = "SMB1" | "SMB2" | "SMB3" | "UNKNOWN";
 export type NetworkSegmentId = "practice_wifi" | "guest_wifi" | "server_network" | "printer_network" | "medical_device_network";
+export type DnsFilterTestCategory = "malware" | "phishing";
 
 export type SecurityCheckId =
   | "wifi_encryption"
@@ -36,6 +37,7 @@ export type SecurityCheckId =
   | "ipv6_exposure"
   | "dns_resolver"
   | "dns_security"
+  | "dns_filter_test"
   | "dhcp_consistency"
   | "guest_network"
   | "network_segmentation"
@@ -189,6 +191,17 @@ export interface DnsResolverAssessment {
   recommendation: string;
 }
 
+export interface DnsFilterTestResult {
+  domain: string;
+  category: DnsFilterTestCategory;
+  blocked: boolean | null;
+  responseCode?: "NOERROR" | "NXDOMAIN" | "REFUSED" | "SERVFAIL" | "TIMEOUT" | "UNKNOWN";
+  resolvedAddresses: string[];
+  source: ProbeSource;
+  confidence: ProbeConfidence;
+  errorCode?: string;
+}
+
 export interface DhcpConsistencyAssessment {
   status: "consistent" | "warning" | "critical" | "unknown";
   issues: string[];
@@ -214,8 +227,21 @@ export interface SegmentationAssessment {
   observedSegments?: NetworkSegmentId[];
   missingSegments?: NetworkSegmentId[];
   crossSegmentExposure?: string[];
+  reachabilityTests?: SegmentReachabilityTestResult[];
   source: ProbeSource;
   confidence: ProbeConfidence;
+}
+
+export interface SegmentReachabilityTestResult {
+  fromSegment: NetworkSegmentId;
+  toSegment: NetworkSegmentId;
+  host: string;
+  port: number;
+  service: string;
+  reachable: boolean | null;
+  source: ProbeSource;
+  confidence: ProbeConfidence;
+  errorCode?: string;
 }
 
 export interface RogueApCandidate {
@@ -283,6 +309,7 @@ export interface GatewaySecurityProbeResult {
   deviceClassifications: DeviceClassification[];
   ipv6: Ipv6NetworkInfo;
   dnsResolvers: DnsResolverAssessment[];
+  dnsFilterTests: DnsFilterTestResult[];
   dhcpConsistency: DhcpConsistencyAssessment;
 }
 

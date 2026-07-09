@@ -13,7 +13,7 @@ import type {
   TcpProbeResult,
   WifiSecurityDetails
 } from "@/lib/security/networkProbeTypes";
-import { assessDnsResolvers } from "@/lib/security/dnsAssessment";
+import { assessDnsFilterTests, assessDnsResolvers } from "@/lib/security/dnsAssessment";
 import { dhcpConsistencyFinding } from "@/lib/security/dhcpConsistency";
 import { assessIpv6 } from "@/lib/security/ipv6Assessment";
 import { serviceForPort } from "@/lib/security/servicePortCatalog";
@@ -38,6 +38,7 @@ export function assessGatewaySecurity(result: GatewaySecurityProbeResult): Netwo
     medicalDeviceMetadataFinding(classifications),
     assessIpv6(result.ipv6),
     ...assessDnsResolvers(result.dnsResolvers),
+    assessDnsFilterTests(result.dnsFilterTests),
     dhcpConsistencyFinding(result.dhcpConsistency)
   ];
 }

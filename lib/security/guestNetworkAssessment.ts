@@ -1,4 +1,4 @@
-import type { DeviceClassification, GuestNetworkAssessment, NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
+import type { DeviceClassification, GuestNetworkAssessment, NetworkSecurityFinding, SegmentReachabilityTestResult } from "@/lib/security/networkProbeTypes";
 
 export function assessGuestNetwork(input: {
   ssid: string;
@@ -6,16 +6,32 @@ export function assessGuestNetwork(input: {
   visibleDeviceCount: number;
   classifications: DeviceClassification[];
   captivePortalLikely?: boolean | null;
+  declaredGuestNetwork?: boolean;
+  declaredClientIsolation?: boolean;
+  segmentReachabilityTests?: SegmentReachabilityTestResult[];
 }): GuestNetworkAssessment {
   const ssidSignals = guestSsidSignals(input.ssid);
   const visibleInfrastructure = input.classifications.filter((item) => item.deviceClass !== "phone" && item.deviceClass !== "unknown").length;
   const clientIsolationLikely = input.gatewayReachable && input.visibleDeviceCount <= 2 && visibleInfrastructure === 0;
+  const guestToInternalReachable = (input.segmentReachabilityTests ?? []).some((test) => test.fromSegment === "guest_wifi" && test.toSegment !== "guest_wifi" && test.reachable === true);
+
+  if (guestToInternalReachable) {
+    return result("not_present", false, input.captivePortalLikely ?? null, ssidSignals, 28, "high");
+  }
+
+  if (input.declaredGuestNetwork && input.declaredClientIsolation && clientIsolationLikely) {
+    return result("present", true, input.captivePortalLikely ?? null, ssidSignals, 96, "high");
+  }
+
+  if (input.declaredGuestNetwork && input.declaredClientIsolation) {
+    return result("likely_present", true, input.captivePortalLikely ?? null, ssidSignals, 82, "medium");
+  }
 
   if (ssidSignals.length > 0 && clientIsolationLikely) {
     return result("present", true, input.captivePortalLikely ?? null, ssidSignals, 92, "high");
   }
 
-  if (ssidSignals.length > 0 || clientIsolationLikely || input.captivePortalLikely) {
+  if (ssidSignals.length > 0 || clientIsolationLikely || input.captivePortalLikely || input.declaredGuestNetwork) {
     return result("likely_present", clientIsolationLikely, input.captivePortalLikely ?? null, ssidSignals, 72, "medium");
   }
 
@@ -40,9 +56,9 @@ export function guestNetworkFinding(assessment: GuestNetworkAssessment): Network
     detected: bad,
     confidence: assessment.confidence,
     details: good
-      ? "SSID, Geräte-Sichtbarkeit und Client-Isolation sprechen für ein getrenntes Gastnetz."
+      ? "SSID, Benutzerangaben, Geräte-Sichtbarkeit oder Segmentierungstests sprechen für ein getrenntes Gastnetz."
       : bad
-        ? "Es sind mehrere Praxis-/Infrastrukturgeräte sichtbar; ein separates Gastnetz ist nicht erkennbar."
+        ? "Es sind mehrere Praxis-/Infrastrukturgeräte sichtbar oder Segmenttests zeigen erreichbare interne Ziele aus dem Gäste-Netz."
         : "Mobile Plattformen erlauben keine eindeutige VLAN-Prüfung. Das Ergebnis bleibt eine Heuristik.",
     recommendation: good
       ? "Gastnetz beibehalten und vom Praxisnetz isoliert lassen."

@@ -1,4 +1,4 @@
-import type { DnsResolverAssessment, NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
+import type { DnsFilterTestResult, DnsResolverAssessment, NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 
 const PUBLIC_DNS: Record<string, { name: string; security?: string }> = {
   "1.1.1.1": { name: "Cloudflare" },
@@ -112,6 +112,64 @@ export function assessDnsResolvers(resolvers: DnsResolverAssessment[]): NetworkS
       }
     }
   ];
+}
+
+export function assessDnsFilterTests(results: DnsFilterTestResult[]): NetworkSecurityFinding {
+  const measuredAt = new Date().toISOString();
+  const measured = results.filter((result) => result.source === "measured");
+  const allowed = measured.filter((result) => result.blocked === false);
+  const blocked = measured.filter((result) => result.blocked === true);
+
+  if (measured.length === 0) {
+    return {
+      id: "dns_filter_test_unavailable",
+      checkId: "dns_filter_test",
+      title: "DNS-Filtertest nicht verfügbar",
+      severity: "low",
+      status: "unknown",
+      detected: false,
+      confidence: "low",
+      details: "Malware-/Phishing-Testdomains konnten nicht per DNS geprüft werden. Es wurden keine Webseiten oder Inhalte abgerufen.",
+      recommendation: "DNS-Filterung über Router, Schutz-DNS oder Security-Gateway dokumentieren und bei Gelegenheit technisch testen.",
+      scoreImpact: 0,
+      complianceImpact: "documentation",
+      evidence: {
+        source: "unavailable",
+        raw: { testCount: results.length, privacyBoundary: "dns_lookup_only_no_content_fetch" },
+        measuredAt
+      }
+    };
+  }
+
+  return {
+    id: allowed.length > 0 ? "dns_filter_test_allowed" : "dns_filter_test_blocked",
+    checkId: "dns_filter_test",
+    title: allowed.length > 0 ? "DNS-Filter blockiert Testdomains nicht vollständig" : "DNS-Filter blockiert Testdomains",
+    severity: allowed.length > 0 ? "medium" : "low",
+    status: allowed.length > 0 ? "warning" : "secure",
+    detected: allowed.length > 0,
+    confidence: measured.some((result) => result.confidence === "high") ? "high" : "medium",
+    details:
+      allowed.length > 0
+        ? `Folgende harmlosen Testdomains wurden per DNS aufgelöst statt blockiert: ${allowed.map((result) => result.domain).join(", ")}. Es wurden keine Inhalte abgerufen.`
+        : `Alle gemessenen Malware-/Phishing-Testdomains wurden per DNS blockiert: ${blocked.map((result) => result.domain).join(", ")}.`,
+    recommendation:
+      allowed.length > 0
+        ? "Malware-/Phishing-Filter im DNS-Resolver, Router oder Security-Gateway aktivieren und dokumentieren."
+        : "DNS-Filterung beibehalten und Ausnahmen regelmäßig prüfen.",
+    scoreImpact: allowed.length > 0 ? -6 : 0,
+    complianceImpact: allowed.length > 0 ? "technical_measure" : "none",
+    evidence: {
+      source: "measured",
+      raw: {
+        testCount: results.length,
+        blockedCount: blocked.length,
+        allowedCount: allowed.length,
+        privacyBoundary: "dns_lookup_only_no_content_fetch"
+      },
+      measuredAt
+    }
+  };
 }
 
 function resolver(
