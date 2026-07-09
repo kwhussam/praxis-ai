@@ -4,6 +4,7 @@ import type {
   GatewaySecurityProbeResult,
   HttpAdminProbeResult,
   Ipv6NetworkInfo,
+  Ipv6ReachabilityProbeResult,
   MdnsServiceResult,
   MdnsServiceType,
   ProbeState,
@@ -22,6 +23,7 @@ import { EXTENDED_HTTP_PORTS, EXTENDED_TCP_PORTS } from "@/lib/security/serviceP
 type NativeNetworkProbeModule = {
   getWifiSecurityDetails?: () => Promise<Partial<WifiSecurityDetails> | null>;
   probeTcpPorts?: (request: { host: string; ports: number[]; timeoutMs: number }) => Promise<TcpProbeResult[]>;
+  probeIpv6TcpPorts?: (request: { host: string; ports: number[]; timeoutMs: number }) => Promise<Ipv6ReachabilityProbeResult[]>;
   probeSsdp?: (request: { timeoutMs: number }) => Promise<SsdpProbeResult>;
   discoverMdnsServices?: (request: { types: string[]; timeoutMs: number }) => Promise<MdnsServiceResult[]>;
   probeSnmpBasic?: (request: { hosts: string[]; timeoutMs: number }) => Promise<SnmpProbeResult[]>;
@@ -162,6 +164,45 @@ export async function probeTcpPorts(host: string, ports: number[], timeoutMs = 1
       state: "unknown",
       source: "unavailable",
       errorCode: error instanceof Error ? error.message : "native_tcp_probe_failed"
+    }));
+  }
+}
+
+export async function probeIpv6TcpPorts(host: string, ports: number[], timeoutMs = 1200): Promise<Ipv6ReachabilityProbeResult[]> {
+  if (!nativeNetworkProbe?.probeIpv6TcpPorts) {
+    return ports.map((port) => ({
+      host,
+      port,
+      state: "unknown",
+      source: "unavailable",
+      confidence: "low",
+      errorCode: Platform.OS === "web" ? "web_ipv6_tcp_unavailable" : "native_ipv6_tcp_module_unavailable"
+    }));
+  }
+
+  try {
+    const startedAt = Date.now();
+    const results = await nativeNetworkProbe.probeIpv6TcpPorts({ host, ports, timeoutMs });
+    return ports.map((port) => {
+      const nativeResult = results.find((result) => result.port === port);
+      return {
+        host,
+        port,
+        state: normalizeProbeState(nativeResult?.state),
+        latencyMs: nativeResult?.latencyMs ?? Date.now() - startedAt,
+        source: nativeResult?.source ?? "measured",
+        confidence: nativeResult?.confidence ?? "medium",
+        errorCode: nativeResult?.errorCode
+      };
+    });
+  } catch (error) {
+    return ports.map((port) => ({
+      host,
+      port,
+      state: "unknown",
+      source: "unavailable",
+      confidence: "low",
+      errorCode: error instanceof Error ? error.message : "native_ipv6_tcp_probe_failed"
     }));
   }
 }

@@ -5,6 +5,7 @@ import type {
   GatewaySecurityProbeResult,
   HttpAdminProbeResult,
   Ipv6NetworkInfo,
+  Ipv6SecurityAnswers,
   NetworkSecurityFinding,
   ProbeConfidence,
   SecuritySeverity,
@@ -22,7 +23,7 @@ export function assessWifiSecurity(details: WifiSecurityDetails): NetworkSecurit
   return [wifiEncryptionFinding(details), wpsStatusFinding(), wpa3UpgradeFinding(details)];
 }
 
-export function assessGatewaySecurity(result: GatewaySecurityProbeResult): NetworkSecurityFinding[] {
+export function assessGatewaySecurity(result: GatewaySecurityProbeResult, options: { ipv6Answers?: Ipv6SecurityAnswers } = {}): NetworkSecurityFinding[] {
   const classifications = result.deviceClassifications ?? [];
   return [
     routerHttpFinding(result.host, result.http),
@@ -36,7 +37,7 @@ export function assessGatewaySecurity(result: GatewaySecurityProbeResult): Netwo
     nasServicesFinding(result.host, result.tcp, result.http, classifications),
     cameraIotFinding(result.host, result.ssdp.active === true, result.http, classifications),
     medicalDeviceMetadataFinding(classifications),
-    assessIpv6(result.ipv6),
+    assessIpv6(result.ipv6, options.ipv6Answers),
     ...assessDnsResolvers(result.dnsResolvers),
     assessDnsFilterTests(result.dnsFilterTests),
     dhcpConsistencyFinding(result.dhcpConsistency)
@@ -72,8 +73,9 @@ export function networkContextFindings(input: {
   ipv6: Ipv6NetworkInfo;
   dnsResolvers: DnsResolverAssessment[];
   dhcpConsistency: DhcpConsistencyAssessment;
+  ipv6Answers?: Ipv6SecurityAnswers;
 }) {
-  return [assessIpv6(input.ipv6), ...assessDnsResolvers(input.dnsResolvers), dhcpConsistencyFinding(input.dhcpConsistency)];
+  return [assessIpv6(input.ipv6, input.ipv6Answers), ...assessDnsResolvers(input.dnsResolvers), dhcpConsistencyFinding(input.dhcpConsistency)];
 }
 
 function wifiEncryptionFinding(details: WifiSecurityDetails): NetworkSecurityFinding {

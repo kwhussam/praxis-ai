@@ -43,6 +43,14 @@ export type QuestionnaireAnswerKey =
   | "vlanIot"
   | "vlanMedicalDevices"
   | "guestWifiClientIsolation"
+  | "dnsResolverDocumented"
+  | "dnsFilterEnabled"
+  | "dnsPrivacyReviewed"
+  | "dnsProviderDocumented"
+  | "dnsConfigurationDocumented"
+  | "ipv6UsedIntentionally"
+  | "ipv6FirewallRulesCovered"
+  | "ipv6DnsRulesCovered"
   | "staffTraining"
   | "dmarc";
 
@@ -101,6 +109,14 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   vlanIot: false,
   vlanMedicalDevices: false,
   guestWifiClientIsolation: false,
+  dnsResolverDocumented: false,
+  dnsFilterEnabled: false,
+  dnsPrivacyReviewed: false,
+  dnsProviderDocumented: false,
+  dnsConfigurationDocumented: false,
+  ipv6UsedIntentionally: false,
+  ipv6FirewallRulesCovered: false,
+  ipv6DnsRulesCovered: false,
   staffTraining: true,
   dmarc: false
 };
@@ -176,6 +192,24 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "vlanIot", label: "Gibt es ein getrenntes IoT-/Kamera-Netz oder VLAN?" },
       { key: "vlanMedicalDevices", label: "Gibt es ein getrenntes Netz oder VLAN für Medizingeräte?" },
       { key: "guestWifiClientIsolation", label: "Ist Client-Isolation im Gäste-WLAN aktiviert?" }
+    ]
+  },
+  {
+    title: "DNS-Betrieb",
+    questions: [
+      { key: "dnsResolverDocumented", label: "Ist dokumentiert, welcher DNS-Resolver verwendet wird, z. B. Router, Dienstleister, Schutz-DNS oder interner Server?" },
+      { key: "dnsFilterEnabled", label: "Ist ein DNS-Filter für Malware-/Phishing-Domains aktiv?" },
+      { key: "dnsPrivacyReviewed", label: "Wurde die Datenschutzbewertung des DNS-Resolvers dokumentiert?" },
+      { key: "dnsProviderDocumented", label: "Ist der zuständige DNS-Dienstleister oder Betreiber benannt?" },
+      { key: "dnsConfigurationDocumented", label: "Ist die DNS-Konfiguration mit Weiterleitungen, Ausnahmen und Verantwortlichem dokumentiert?" }
+    ]
+  },
+  {
+    title: "IPv6-Sicherheit",
+    questions: [
+      { key: "ipv6UsedIntentionally", label: "Wird IPv6 bewusst genutzt und ist der Zweck dokumentiert?" },
+      { key: "ipv6FirewallRulesCovered", label: "Gelten Firewall-Regeln und Segmentierung auch für IPv6?" },
+      { key: "ipv6DnsRulesCovered", label: "Gelten DNS-Filter und Resolver-Regeln auch für IPv6?" }
     ]
   },
   {

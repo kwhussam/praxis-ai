@@ -47,6 +47,7 @@ export function WlanScanner() {
   const [error, setError] = useState<string | null>(null);
   const [auditMode, setAuditMode] = useState(false);
   const [auditAccepted, setAuditAccepted] = useState(false);
+  const [ipv6Accepted, setIpv6Accepted] = useState(false);
   const [scanSegment, setScanSegment] = useState<NetworkSegmentId>("practice_wifi");
 
   const phase = progress ? SCAN_PHASES[progress.phaseIndex] : SCAN_PHASES[0];
@@ -71,7 +72,7 @@ export function WlanScanner() {
     setVisibleDevices([]);
 
     try {
-      void recordWlanScanConsent(practiceId, auditMode && auditAccepted);
+      void recordWlanScanConsent(practiceId, auditMode && auditAccepted, ipv6Accepted);
 
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
@@ -82,6 +83,19 @@ export function WlanScanner() {
           guestWifiExists: questionnaireAnswers.vlanGuests,
           guestWifiClientIsolation: questionnaireAnswers.guestWifiClientIsolation,
           networkStructureDocumented: questionnaireAnswers.networkStructureDocumented
+        },
+        dnsOperation: {
+          resolverDocumented: questionnaireAnswers.dnsResolverDocumented,
+          filterEnabled: questionnaireAnswers.dnsFilterEnabled,
+          privacyReviewed: questionnaireAnswers.dnsPrivacyReviewed,
+          providerDocumented: questionnaireAnswers.dnsProviderDocumented,
+          configurationDocumented: questionnaireAnswers.dnsConfigurationDocumented
+        },
+        ipv6Security: {
+          usedIntentionally: questionnaireAnswers.ipv6UsedIntentionally,
+          firewallRulesCovered: questionnaireAnswers.ipv6FirewallRulesCovered,
+          dnsRulesCovered: questionnaireAnswers.ipv6DnsRulesCovered,
+          reachabilityConsentAccepted: ipv6Accepted
         },
         auditMode: {
           enabled: auditMode,
@@ -207,6 +221,15 @@ export function WlanScanner() {
             <Text style={styles.consentText}>Ich habe die Berechtigung für einen vollständigen lokalen Audit-Scan.</Text>
           </Pressable>
         ) : null}
+        <Pressable style={styles.consentRow} onPress={() => setIpv6Accepted((current) => !current)}>
+          <View style={[styles.checkbox, ipv6Accepted ? styles.checkboxActive : null]}>
+            {ipv6Accepted ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
+          </View>
+          <View style={styles.auditText}>
+            <Text style={styles.auditTitle}>IPv6-Erreichbarkeit prüfen</Text>
+            <Text style={styles.auditDescription}>Optionale lokale IPv6-Portprüfung für erkannte ULA-/Link-Local-Adressen.</Text>
+          </View>
+        </Pressable>
       </View>
 
       <View style={styles.scannerGrid}>
@@ -285,7 +308,7 @@ export function WlanScanner() {
   );
 }
 
-async function recordWlanScanConsent(practiceId: string, auditConsent: boolean) {
+async function recordWlanScanConsent(practiceId: string, auditConsent: boolean, ipv6Consent: boolean) {
   try {
     await apiRequest("/api/legal/consent", {
       method: "POST",
@@ -302,6 +325,17 @@ async function recordWlanScanConsent(practiceId: string, auditConsent: boolean) 
         body: {
           practiceId,
           type: "wlan_audit_scan",
+          version: "1.0",
+          accepted: true
+        }
+      });
+    }
+    if (ipv6Consent) {
+      await apiRequest("/api/legal/consent", {
+        method: "POST",
+        body: {
+          practiceId,
+          type: "wlan_ipv6_reachability_scan",
           version: "1.0",
           accepted: true
         }
@@ -480,8 +514,8 @@ function securityCheckIcon(finding: NetworkSecurityFinding): IoniconName {
   if (finding.checkId === "nas_services") return "file-tray-stacked";
   if (finding.checkId === "camera_iot") return "videocam";
   if (finding.checkId === "medical_device_metadata") return "medkit";
-  if (finding.checkId === "ipv6_exposure") return "git-network";
-  if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security") return "globe";
+  if (finding.checkId === "ipv6_exposure" || finding.checkId === "ipv6_reachability") return "git-network";
+  if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security" || finding.checkId === "dns_filter_test") return "globe";
   if (finding.checkId === "dhcp_consistency") return "git-branch";
   if (finding.checkId === "guest_network") return "people";
   if (finding.checkId === "network_segmentation") return "git-compare";

@@ -1,9 +1,9 @@
 import { classifyDevice } from "@/lib/security/deviceClassification";
-import { assessDnsFilterTests, classifyDnsResolvers } from "@/lib/security/dnsAssessment";
+import { assessDnsFilterTests, assessDnsOperation, classifyDnsResolvers } from "@/lib/security/dnsAssessment";
 import { assessDhcpConsistencyInput } from "@/lib/security/dhcpConsistency";
 import { assessFirewallBaseline } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork } from "@/lib/security/guestNetworkAssessment";
-import { buildIpv6NetworkInfo } from "@/lib/security/ipv6Assessment";
+import { assessIpv6, buildIpv6NetworkInfo, ipv6ReachabilityFinding } from "@/lib/security/ipv6Assessment";
 import { assessGatewaySecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
 import { assessRogueAccessPoints } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices } from "@/lib/security/rogueDeviceAssessment";
@@ -131,6 +131,31 @@ describe("network security assessment", () => {
     const info = buildIpv6NetworkInfo(["2001:db8::10", "fe80::1"], ["2001:4860:4860::8888"]);
     expect(info.enabled).toBe(true);
     expect(info.globalAddresses).toHaveLength(1);
+  });
+
+  it("wertet aktive IPv6-Nutzung ohne Regelabdeckung als Risiko", () => {
+    const info = buildIpv6NetworkInfo(["fd00::10"], ["fd00::1"]);
+    const finding = assessIpv6(info, {
+      usedIntentionally: true,
+      firewallRulesCovered: false,
+      dnsRulesCovered: true
+    });
+    expect(finding.status).toBe("warning");
+    expect(finding.evidence.raw?.firewallRulesCovered).toBe(false);
+  });
+
+  it("bewertet offene lokale IPv6-Ports als Erreichbarkeitsbefund", () => {
+    const finding = ipv6ReachabilityFinding([
+      {
+        host: "fd00::10",
+        port: 445,
+        state: "open",
+        source: "measured",
+        confidence: "high"
+      }
+    ]);
+    expect(finding.checkId).toBe("ipv6_reachability");
+    expect(finding.detected).toBe(true);
   });
 
   it("klassifiziert Schutz-DNS", () => {
@@ -278,6 +303,18 @@ describe("network security assessment", () => {
     ]);
     expect(finding.status).toBe("warning");
     expect(finding.evidence.raw?.allowedCount).toBe(1);
+  });
+
+  it("erfasst DNS-Betrieb als Selbstauskunft", () => {
+    const finding = assessDnsOperation({
+      resolverDocumented: true,
+      filterEnabled: true,
+      privacyReviewed: false,
+      providerDocumented: true,
+      configurationDocumented: true
+    });
+    expect(finding.status).toBe("warning");
+    expect(finding.evidence.source).toBe("questionnaire");
   });
 
   it("findet Rogue-AP-Hinweise bei gleicher SSID mit abweichender Verschlüsselung", () => {

@@ -35,6 +35,7 @@ export type SecurityCheckId =
   | "camera_iot"
   | "medical_device_metadata"
   | "ipv6_exposure"
+  | "ipv6_reachability"
   | "dns_resolver"
   | "dns_security"
   | "dns_filter_test"
@@ -178,6 +179,22 @@ export interface Ipv6NetworkInfo {
   gatewayVisible: boolean | null;
   source: ProbeSource;
   confidence: ProbeConfidence;
+  errorCode?: string;
+}
+
+export interface Ipv6SecurityAnswers {
+  usedIntentionally?: boolean;
+  firewallRulesCovered?: boolean;
+  dnsRulesCovered?: boolean;
+}
+
+export interface Ipv6ReachabilityProbeResult {
+  host: string;
+  port: number;
+  state: ProbeState;
+  source: ProbeSource;
+  confidence: ProbeConfidence;
+  latencyMs?: number;
   errorCode?: string;
 }
 

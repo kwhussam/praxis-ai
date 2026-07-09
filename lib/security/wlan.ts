@@ -13,9 +13,11 @@ import {
 import { assessFirewallBaseline, firewallBaselineFinding } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork, guestNetworkFinding } from "@/lib/security/guestNetworkAssessment";
 import { buildIpv4SubnetCandidates, MAX_AUDIT_SUBNET_HOSTS, usableSubnetHostCount } from "@/lib/security/ipv4Subnet";
+import { ipv6ReachabilityFinding } from "@/lib/security/ipv6Assessment";
+import { assessDnsOperation } from "@/lib/security/dnsAssessment";
 import { classifyDevice } from "@/lib/security/deviceClassification";
 import { assessGatewaySecurity, assessDeviceSecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
-import { getNativeWifiSecurityDetails, probeDeviceServices, probeGatewaySecurity, probeTcpPorts } from "@/lib/security/networkProbes";
+import { getNativeWifiSecurityDetails, probeDeviceServices, probeGatewaySecurity, probeIpv6TcpPorts, probeTcpPorts } from "@/lib/security/networkProbes";
 import { assessRogueAccessPoints, rogueApFinding } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices, rogueDeviceFinding } from "@/lib/security/rogueDeviceAssessment";
 import { assessRouterCredentialRisk, defaultPasswordRiskFinding } from "@/lib/security/routerCredentialRisk";
@@ -31,6 +33,7 @@ import type {
   DeviceClassification,
   GatewaySecurityProbeResult,
   HttpAdminProbeResult,
+  Ipv6ReachabilityProbeResult,
   NetworkSegmentId,
   NetworkSecurityFinding,
   SegmentReachabilityTestResult,
@@ -360,6 +363,7 @@ type ScanContext = {
   vulnerabilities: Vulnerability[];
   securityFindings: NetworkSecurityFinding[];
   gatewayProbe: GatewaySecurityProbeResult | null;
+  ipv6Reachability: Ipv6ReachabilityProbeResult[];
   segmentReachabilityTests: SegmentReachabilityTestResult[];
   scanMode: WlanScanMode;
   scanSegment: NetworkSegmentId;
@@ -376,6 +380,19 @@ type WlanSecurityScanOptions = {
     guestWifiExists?: boolean;
     guestWifiClientIsolation?: boolean;
     networkStructureDocumented?: boolean;
+  };
+  dnsOperation?: {
+    resolverDocumented?: boolean;
+    filterEnabled?: boolean;
+    privacyReviewed?: boolean;
+    providerDocumented?: boolean;
+    configurationDocumented?: boolean;
+  };
+  ipv6Security?: {
+    usedIntentionally?: boolean;
+    firewallRulesCovered?: boolean;
+    dnsRulesCovered?: boolean;
+    reachabilityConsentAccepted?: boolean;
   };
   auditMode?: {
     enabled: boolean;
@@ -425,7 +442,13 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
       context.gatewayProbe = gatewayProbe;
       const gatewayPorts = gatewayProbeToPortProbes(gatewayProbe);
       context.devices = upsertGatewayPorts(context.devices, context.gatewayIp, gatewayPorts, gatewayClassification);
-      const gatewayFindings = assessGatewaySecurity(gatewayProbe);
+      if (options?.ipv6Security?.reachabilityConsentAccepted) {
+        context.ipv6Reachability = await runIpv6ReachabilityChecks(gatewayProbe.ipv6);
+      }
+      const gatewayFindings = [
+        ...assessGatewaySecurity(gatewayProbe, { ipv6Answers: options?.ipv6Security }),
+        ipv6ReachabilityFinding(context.ipv6Reachability)
+      ];
       context.securityFindings.push(...gatewayFindings);
       context.vulnerabilities.push(...securityFindingsToVulnerabilities(gatewayFindings));
     }
@@ -454,7 +477,8 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
   const advancedFindings = buildAdvancedNetworkFindings(context, previousResult?.connectedDevices ?? [], {
     accessPoints: options?.accessPoints ?? [],
     knownDevices: options?.knownDevices ?? [],
-    networkStructure: options?.networkStructure ?? {}
+    networkStructure: options?.networkStructure ?? {},
+    dnsOperation: options?.dnsOperation ?? {}
   });
   context.securityFindings.push(...advancedFindings);
   context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
@@ -669,7 +693,7 @@ function categoryForSecurityFinding(finding: NetworkSecurityFinding): WlanVulnCa
   if (finding.checkId === "default_password_risk") return "default_credentials";
   if (finding.checkId === "firewall_baseline") return "open_ports";
   if (finding.checkId === "smb_security" || finding.checkId === "printer_services" || finding.checkId === "nas_services" || finding.checkId === "camera_iot" || finding.checkId === "medical_device_metadata") return "device_inventory";
-  if (finding.checkId === "ipv6_exposure") return "ipv6";
+  if (finding.checkId === "ipv6_exposure" || finding.checkId === "ipv6_reachability") return "ipv6";
   if (finding.checkId === "dhcp_consistency") return "dhcp";
   if (finding.checkId === "dns_resolver" || finding.checkId === "dns_security" || finding.checkId === "dns_filter_test") return "dns_hijacking";
   return "open_ports";
@@ -712,6 +736,7 @@ function buildAdvancedNetworkFindings(
     accessPoints: AccessPoint[];
     knownDevices: KnownDevice[];
     networkStructure: NonNullable<WlanSecurityScanOptions["networkStructure"]>;
+    dnsOperation: NonNullable<WlanSecurityScanOptions["dnsOperation"]>;
   }
 ) {
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
@@ -759,6 +784,7 @@ function buildAdvancedNetworkFindings(
   const findings = [
     guestNetworkFinding(guestAssessment),
     segmentationFinding(segmentationAssessment),
+    assessDnsOperation(inventory.dnsOperation),
     rogueApFinding(rogueApAssessment),
     rogueDeviceFinding(rogueDeviceAssessment)
   ];
@@ -796,6 +822,19 @@ async function runSegmentReachabilityTests(context: ScanContext): Promise<Segmen
       errorCode: probe.errorCode
     };
   });
+}
+
+async function runIpv6ReachabilityChecks(info: GatewaySecurityProbeResult["ipv6"]): Promise<Ipv6ReachabilityProbeResult[]> {
+  const localTargets = [...info.uniqueLocalAddresses, ...info.linkLocalAddresses].slice(0, 6);
+  if (localTargets.length === 0) return [];
+
+  const ports = [80, 443, 445, 3389];
+  const targetRequests = localTargets.flatMap((host) => ports.map((port) => ({ host, port })));
+  const results = await mapWithConcurrency(targetRequests, 3, async (target) => {
+    const [probe] = await probeIpv6TcpPorts(target.host, [target.port], 900);
+    return probe;
+  });
+  return results;
 }
 
 function emitProgress(
@@ -850,6 +889,7 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
     vulnerabilities: [],
     securityFindings: [],
     gatewayProbe: null,
+    ipv6Reachability: [],
     segmentReachabilityTests: [],
     scanMode,
     scanSegment,

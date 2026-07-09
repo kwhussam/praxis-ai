@@ -172,6 +172,49 @@ export function assessDnsFilterTests(results: DnsFilterTestResult[]): NetworkSec
   };
 }
 
+export function assessDnsOperation(answers: {
+  resolverDocumented?: boolean;
+  filterEnabled?: boolean;
+  privacyReviewed?: boolean;
+  providerDocumented?: boolean;
+  configurationDocumented?: boolean;
+}): NetworkSecurityFinding {
+  const measuredAt = new Date().toISOString();
+  const complete =
+    answers.resolverDocumented === true &&
+    answers.filterEnabled === true &&
+    answers.privacyReviewed === true &&
+    answers.providerDocumented === true &&
+    answers.configurationDocumented === true;
+
+  return {
+    id: complete ? "dns_operation_documented" : "dns_operation_incomplete",
+    checkId: "dns_security",
+    title: complete ? "DNS-Betrieb dokumentiert" : "DNS-Betrieb unvollständig dokumentiert",
+    severity: "low",
+    status: complete ? "secure" : "warning",
+    detected: !complete,
+    confidence: "medium",
+    details: complete
+      ? "Resolver, DNS-Filter, Datenschutzbewertung, Dienstleister und Konfiguration wurden per Fragebogen bestätigt."
+      : "Resolver, DNS-Filter, Datenschutzbewertung, Dienstleister oder DNS-Konfiguration sind nicht vollständig dokumentiert.",
+    recommendation: "DNS-Resolver, Filterfunktion, Datenschutzbewertung, Dienstleister und Konfigurationsausnahmen zentral dokumentieren.",
+    scoreImpact: complete ? 0 : -3,
+    complianceImpact: complete ? "none" : "documentation",
+    evidence: {
+      source: "questionnaire",
+      raw: {
+        resolverDocumented: answers.resolverDocumented ?? null,
+        filterEnabled: answers.filterEnabled ?? null,
+        privacyReviewed: answers.privacyReviewed ?? null,
+        providerDocumented: answers.providerDocumented ?? null,
+        configurationDocumented: answers.configurationDocumented ?? null
+      },
+      measuredAt
+    }
+  };
+}
+
 function resolver(
   server: string,
   resolverClass: DnsResolverAssessment["resolverClass"],
