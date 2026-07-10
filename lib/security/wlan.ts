@@ -12,6 +12,7 @@ import {
 } from "@/lib/security/nativeWifi";
 import { assessFirewallBaseline, firewallBaselineFinding } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork, guestNetworkFinding } from "@/lib/security/guestNetworkAssessment";
+import { dhcpDocumentationFinding } from "@/lib/security/dhcpConsistency";
 import { buildIpv4SubnetCandidates, MAX_AUDIT_SUBNET_HOSTS, usableSubnetHostCount } from "@/lib/security/ipv4Subnet";
 import { ipv6ReachabilityFinding } from "@/lib/security/ipv6Assessment";
 import { assessDnsOperation } from "@/lib/security/dnsAssessment";
@@ -388,6 +389,26 @@ type WlanSecurityScanOptions = {
     providerDocumented?: boolean;
     configurationDocumented?: boolean;
   };
+  dhcpDocumentation?: {
+    authorizedServerDocumented?: boolean;
+    routerIpDocumented?: boolean;
+    dnsServersDocumented?: boolean;
+    exceptionsDocumented?: boolean;
+  };
+  routerDocumentation?: {
+    manufacturerDocumented?: boolean;
+    modelDocumented?: boolean;
+    firmwareVersionDocumented?: boolean;
+    updateStatusDocumented?: boolean;
+    firmwareCurrent?: boolean;
+    itProviderDocumented?: boolean;
+  };
+  routerCredentials?: {
+    adminPasswordChanged?: boolean;
+    passwordManagerUsed?: boolean;
+    routerMfaAvailable?: boolean;
+    managedByItProvider?: boolean;
+  };
   ipv6Security?: {
     usedIntentionally?: boolean;
     firewallRulesCovered?: boolean;
@@ -478,7 +499,10 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     accessPoints: options?.accessPoints ?? [],
     knownDevices: options?.knownDevices ?? [],
     networkStructure: options?.networkStructure ?? {},
-    dnsOperation: options?.dnsOperation ?? {}
+    dnsOperation: options?.dnsOperation ?? {},
+    dhcpDocumentation: options?.dhcpDocumentation ?? {},
+    routerDocumentation: options?.routerDocumentation ?? {},
+    routerCredentials: options?.routerCredentials ?? {}
   });
   context.securityFindings.push(...advancedFindings);
   context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
@@ -737,6 +761,9 @@ function buildAdvancedNetworkFindings(
     knownDevices: KnownDevice[];
     networkStructure: NonNullable<WlanSecurityScanOptions["networkStructure"]>;
     dnsOperation: NonNullable<WlanSecurityScanOptions["dnsOperation"]>;
+    dhcpDocumentation: NonNullable<WlanSecurityScanOptions["dhcpDocumentation"]>;
+    routerDocumentation: NonNullable<WlanSecurityScanOptions["routerDocumentation"]>;
+    routerCredentials: NonNullable<WlanSecurityScanOptions["routerCredentials"]>;
   }
 ) {
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
@@ -785,6 +812,7 @@ function buildAdvancedNetworkFindings(
     guestNetworkFinding(guestAssessment),
     segmentationFinding(segmentationAssessment),
     assessDnsOperation(inventory.dnsOperation),
+    dhcpDocumentationFinding(inventory.dhcpDocumentation),
     rogueApFinding(rogueApAssessment),
     rogueDeviceFinding(rogueDeviceAssessment)
   ];
@@ -792,9 +820,13 @@ function buildAdvancedNetworkFindings(
   if (context.gatewayProbe) {
     const routerFingerprint = fingerprintRouter({
       http: context.gatewayProbe.http,
-      classification: gatewayDevice?.classification
+      classification: gatewayDevice?.classification,
+      structured: inventory.routerDocumentation
     });
-    const credentialRisk = assessRouterCredentialRisk({ fingerprint: routerFingerprint });
+    const credentialRisk = assessRouterCredentialRisk({
+      fingerprint: routerFingerprint,
+      answers: inventory.routerCredentials
+    });
     const firewallBaseline = assessFirewallBaseline(context.gatewayProbe);
     findings.push(routerFirmwareFinding(routerFingerprint));
     findings.push(defaultPasswordRiskFinding(credentialRisk));

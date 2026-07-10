@@ -91,6 +91,26 @@ export function WlanScanner() {
           providerDocumented: questionnaireAnswers.dnsProviderDocumented,
           configurationDocumented: questionnaireAnswers.dnsConfigurationDocumented
         },
+        dhcpDocumentation: {
+          authorizedServerDocumented: questionnaireAnswers.dhcpAuthorizedServerDocumented,
+          routerIpDocumented: questionnaireAnswers.dhcpRouterIpDocumented,
+          dnsServersDocumented: questionnaireAnswers.dhcpDnsServersDocumented,
+          exceptionsDocumented: questionnaireAnswers.dhcpExceptionsDocumented
+        },
+        routerDocumentation: {
+          manufacturerDocumented: questionnaireAnswers.routerManufacturerDocumented,
+          modelDocumented: questionnaireAnswers.routerModelDocumented,
+          firmwareVersionDocumented: questionnaireAnswers.routerFirmwareVersionDocumented,
+          updateStatusDocumented: questionnaireAnswers.routerUpdateStatusDocumented,
+          firmwareCurrent: questionnaireAnswers.routerFirmwareCurrent,
+          itProviderDocumented: questionnaireAnswers.routerItProviderDocumented
+        },
+        routerCredentials: {
+          adminPasswordChanged: questionnaireAnswers.routerAdminPasswordChanged,
+          passwordManagerUsed: questionnaireAnswers.routerPasswordManagerUsed,
+          routerMfaAvailable: questionnaireAnswers.routerMfaAvailable,
+          managedByItProvider: questionnaireAnswers.routerItProviderDocumented
+        },
         ipv6Security: {
           usedIntentionally: questionnaireAnswers.ipv6UsedIntentionally,
           firewallRulesCovered: questionnaireAnswers.ipv6FirewallRulesCovered,

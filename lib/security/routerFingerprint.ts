@@ -2,9 +2,19 @@ import type { DeviceClassification, HttpAdminProbeResult, NetworkSecurityFinding
 
 const ROUTER_HINTS = ["fritz", "avm", "speedport", "telekom", "ubiquiti", "unifi", "tp-link", "netgear", "asus", "mikrotik", "draytek", "lancom"];
 
+export type RouterDocumentationAnswers = {
+  manufacturerDocumented?: boolean;
+  modelDocumented?: boolean;
+  firmwareVersionDocumented?: boolean;
+  updateStatusDocumented?: boolean;
+  firmwareCurrent?: boolean;
+  itProviderDocumented?: boolean;
+};
+
 export function fingerprintRouter(input: {
   http: HttpAdminProbeResult[];
   classification?: DeviceClassification;
+  structured?: RouterDocumentationAnswers;
 }): RouterFingerprint {
   const evidence = [
     ...(input.classification?.signals ?? []),
@@ -19,37 +29,61 @@ export function fingerprintRouter(input: {
     vendor: vendor ? normalizeVendor(vendor) : input.classification?.vendor,
     model: extractModel(evidence),
     firmwareHint: evidence.find((item) => /firmware|version|os|routeros/i.test(item)),
+    structured: input.structured,
     managementInterface: httpOpen && httpsOpen ? "both" : httpsOpen ? "https" : httpOpen ? "http" : "unknown",
     evidence,
-    source: evidence.length > 0 ? "inferred" : "unavailable",
-    confidence: vendor || input.classification?.vendor ? "medium" : "low"
+    source: input.structured ? "questionnaire" : evidence.length > 0 ? "inferred" : "unavailable",
+    confidence: input.structured ? "medium" : vendor || input.classification?.vendor ? "medium" : "low"
   };
 }
 
 export function routerFirmwareFinding(fingerprint: RouterFingerprint): NetworkSecurityFinding {
   const measuredAt = new Date().toISOString();
   const risky = fingerprint.managementInterface === "http" || fingerprint.managementInterface === "both";
+  const structured = fingerprint.structured;
+  const documentationComplete =
+    structured?.manufacturerDocumented === true &&
+    structured.modelDocumented === true &&
+    structured.firmwareVersionDocumented === true &&
+    structured.updateStatusDocumented === true &&
+    structured.firmwareCurrent === true &&
+    structured.itProviderDocumented === true;
+  const documentationIncomplete = Boolean(structured) && !documentationComplete;
 
   return {
-    id: risky ? "router_firmware_review_recommended" : "router_firmware_hint",
+    id: risky ? "router_firmware_review_recommended" : documentationComplete ? "router_firmware_documented" : "router_firmware_hint",
     checkId: "router_firmware",
-    title: fingerprint.vendor ? `Router-Hinweis: ${fingerprint.vendor}` : "Router-Firmware nicht eindeutig erkennbar",
-    severity: risky ? "medium" : "low",
-    status: risky ? "warning" : "unknown",
-    detected: risky,
+    title: documentationComplete
+      ? "Router-Angaben vollständig dokumentiert"
+      : fingerprint.vendor
+        ? `Router-Hinweis: ${fingerprint.vendor}`
+        : "Router-Firmware nicht eindeutig dokumentiert",
+    severity: risky || documentationIncomplete ? "medium" : "low",
+    status: risky || documentationIncomplete ? "warning" : documentationComplete ? "secure" : "unknown",
+    detected: risky || documentationIncomplete,
     confidence: fingerprint.confidence,
     details:
-      "Die App leitet Hersteller-/Firmware-Hinweise nur aus HTTP-Headern, BSSID/OUI, mDNS/SSDP oder Bannern ab. Es wird keine Firmware heruntergeladen oder installiert.",
+      documentationComplete
+        ? "Hersteller, Modell, Firmware-Version, Update-Status und zuständiger IT-Dienstleister wurden per Fragebogen dokumentiert."
+        : "Die App leitet technische Hersteller-/Firmware-Hinweise nur aus HTTP-Headern, BSSID/OUI, mDNS/SSDP oder Bannern ab. Strukturierte Routerangaben sollten per Nachweis dokumentiert werden.",
     recommendation:
-      "Routermodell im Administrationsmenü prüfen und Firmware-Updates durch den IT-Dienstleister installieren lassen.",
-    scoreImpact: risky ? -5 : 0,
-    complianceImpact: "documentation",
+      documentationComplete
+        ? "Routerdokumentation aktuell halten und Firmware-Update-Status regelmäßig prüfen."
+        : "Hersteller, Modell, Firmware-Version, Update-Status und zuständigen IT-Dienstleister dokumentieren.",
+    scoreImpact: risky ? -5 : documentationIncomplete ? -4 : 0,
+    complianceImpact: documentationComplete ? "none" : "documentation",
     evidence: {
       source: fingerprint.source,
       raw: {
         vendor: fingerprint.vendor ?? null,
         model: fingerprint.model ?? null,
-        managementInterface: fingerprint.managementInterface
+        managementInterface: fingerprint.managementInterface,
+        manufacturerDocumented: structured?.manufacturerDocumented ?? null,
+        modelDocumented: structured?.modelDocumented ?? null,
+        firmwareVersionDocumented: structured?.firmwareVersionDocumented ?? null,
+        updateStatusDocumented: structured?.updateStatusDocumented ?? null,
+        firmwareCurrent: structured?.firmwareCurrent ?? null,
+        itProviderDocumented: structured?.itProviderDocumented ?? null
       },
       measuredAt
     }

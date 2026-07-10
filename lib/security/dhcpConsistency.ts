@@ -64,6 +64,47 @@ export function dhcpConsistencyFinding(assessment: DhcpConsistencyAssessment): N
   };
 }
 
+export function dhcpDocumentationFinding(answers: {
+  authorizedServerDocumented?: boolean;
+  routerIpDocumented?: boolean;
+  dnsServersDocumented?: boolean;
+  exceptionsDocumented?: boolean;
+}): NetworkSecurityFinding {
+  const measuredAt = new Date().toISOString();
+  const complete =
+    answers.authorizedServerDocumented === true &&
+    answers.routerIpDocumented === true &&
+    answers.dnsServersDocumented === true &&
+    answers.exceptionsDocumented === true;
+
+  return {
+    id: complete ? "dhcp_documentation_complete" : "dhcp_documentation_incomplete",
+    checkId: "dhcp_consistency",
+    title: complete ? "DHCP-Konfiguration dokumentiert" : "DHCP-Sicherheitsangaben fehlen",
+    severity: "low",
+    status: complete ? "secure" : "warning",
+    detected: !complete,
+    confidence: "medium",
+    details: complete
+      ? "Autorisierter DHCP-Server, Router-IP, DNS-Server und bekannte Ausnahmen wurden per Fragebogen bestätigt."
+      : "Autorisierter DHCP-Server, Router-IP, DNS-Server oder bekannte Ausnahmen sind nicht vollständig dokumentiert.",
+    recommendation:
+      "Autorisierter DHCP-Server, erwartete Router-IP, erlaubte DNS-Server und bekannte DHCP-Ausnahmen dokumentieren, um Rogue-DHCP-Abweichungen schneller zu erkennen.",
+    scoreImpact: complete ? 0 : -4,
+    complianceImpact: complete ? "none" : "documentation",
+    evidence: {
+      source: "questionnaire",
+      raw: {
+        authorizedServerDocumented: answers.authorizedServerDocumented ?? null,
+        routerIpDocumented: answers.routerIpDocumented ?? null,
+        dnsServersDocumented: answers.dnsServersDocumented ?? null,
+        exceptionsDocumented: answers.exceptionsDocumented ?? null
+      },
+      measuredAt
+    }
+  };
+}
+
 function isSameSubnet(ipAddress: string, candidate: string, subnetMask: string) {
   const ip = ipv4ToInt(ipAddress);
   const other = ipv4ToInt(candidate);

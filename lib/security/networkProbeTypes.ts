@@ -292,6 +292,14 @@ export interface RouterFingerprint {
   vendor?: string;
   model?: string;
   firmwareHint?: string;
+  structured?: {
+    manufacturerDocumented?: boolean;
+    modelDocumented?: boolean;
+    firmwareVersionDocumented?: boolean;
+    updateStatusDocumented?: boolean;
+    firmwareCurrent?: boolean;
+    itProviderDocumented?: boolean;
+  };
   managementInterface: "https" | "http" | "both" | "unknown";
   evidence: string[];
   source: ProbeSource;

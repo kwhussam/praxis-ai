@@ -1,13 +1,14 @@
 import { classifyDevice } from "@/lib/security/deviceClassification";
 import { assessDnsFilterTests, assessDnsOperation, classifyDnsResolvers } from "@/lib/security/dnsAssessment";
-import { assessDhcpConsistencyInput } from "@/lib/security/dhcpConsistency";
+import { assessDhcpConsistencyInput, dhcpDocumentationFinding } from "@/lib/security/dhcpConsistency";
 import { assessFirewallBaseline } from "@/lib/security/firewallBaseline";
 import { assessGuestNetwork } from "@/lib/security/guestNetworkAssessment";
 import { assessIpv6, buildIpv6NetworkInfo, ipv6ReachabilityFinding } from "@/lib/security/ipv6Assessment";
 import { assessGatewaySecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
 import { assessRogueAccessPoints } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices } from "@/lib/security/rogueDeviceAssessment";
-import { fingerprintRouter } from "@/lib/security/routerFingerprint";
+import { assessRouterCredentialRisk } from "@/lib/security/routerCredentialRisk";
+import { fingerprintRouter, routerFirmwareFinding } from "@/lib/security/routerFingerprint";
 import { assessNetworkSegmentation, buildNetworkSegmentObservation, buildSegmentReachabilityTargets } from "@/lib/security/segmentationAssessment";
 import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
@@ -171,6 +172,17 @@ describe("network security assessment", () => {
       dnsServers: ["192.168.10.1"]
     });
     expect(assessment.status).toBe("critical");
+  });
+
+  it("erfasst DHCP-Sicherheitsangaben als Fragebogenkontrolle", () => {
+    const finding = dhcpDocumentationFinding({
+      authorizedServerDocumented: true,
+      routerIpDocumented: true,
+      dnsServersDocumented: false,
+      exceptionsDocumented: true
+    });
+    expect(finding.status).toBe("warning");
+    expect(finding.evidence.source).toBe("questionnaire");
   });
 
   it("erkennt Gastnetz-Heuristik aus SSID und Isolation", () => {
@@ -392,6 +404,36 @@ describe("network security assessment", () => {
       http: [{ host: "192.168.1.1", port: 80, state: "open", redirectsToHttps: false, httpsAvailable: false, serverHeader: "FRITZ!Box", source: "measured" }]
     });
     expect(fingerprint.vendor).toBe("AVM FRITZ!Box");
+  });
+
+  it("bewertet strukturierte Routerangaben als Nachweis", () => {
+    const fingerprint = fingerprintRouter({
+      http: [],
+      structured: {
+        manufacturerDocumented: true,
+        modelDocumented: true,
+        firmwareVersionDocumented: true,
+        updateStatusDocumented: true,
+        firmwareCurrent: true,
+        itProviderDocumented: true
+      }
+    });
+    const finding = routerFirmwareFinding(fingerprint);
+    expect(finding.status).toBe("secure");
+    expect(finding.evidence.source).toBe("questionnaire");
+  });
+
+  it("behandelt Default-Passwort ohne Nachweis als unbekannt statt technischen Befund", () => {
+    const assessment = assessRouterCredentialRisk({
+      fingerprint: {
+        managementInterface: "http",
+        evidence: ["Server: Router"],
+        source: "inferred",
+        confidence: "medium"
+      }
+    });
+    expect(assessment.risk).toBe("unknown");
+    expect(assessment.source).toBe("unavailable");
   });
 
   it("bewertet Firewall kritisch bei RDP", () => {

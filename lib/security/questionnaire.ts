@@ -48,6 +48,19 @@ export type QuestionnaireAnswerKey =
   | "dnsPrivacyReviewed"
   | "dnsProviderDocumented"
   | "dnsConfigurationDocumented"
+  | "dhcpAuthorizedServerDocumented"
+  | "dhcpRouterIpDocumented"
+  | "dhcpDnsServersDocumented"
+  | "dhcpExceptionsDocumented"
+  | "routerManufacturerDocumented"
+  | "routerModelDocumented"
+  | "routerFirmwareVersionDocumented"
+  | "routerUpdateStatusDocumented"
+  | "routerFirmwareCurrent"
+  | "routerItProviderDocumented"
+  | "routerAdminPasswordChanged"
+  | "routerPasswordManagerUsed"
+  | "routerMfaAvailable"
   | "ipv6UsedIntentionally"
   | "ipv6FirewallRulesCovered"
   | "ipv6DnsRulesCovered"
@@ -114,6 +127,19 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   dnsPrivacyReviewed: false,
   dnsProviderDocumented: false,
   dnsConfigurationDocumented: false,
+  dhcpAuthorizedServerDocumented: false,
+  dhcpRouterIpDocumented: false,
+  dhcpDnsServersDocumented: false,
+  dhcpExceptionsDocumented: false,
+  routerManufacturerDocumented: false,
+  routerModelDocumented: false,
+  routerFirmwareVersionDocumented: false,
+  routerUpdateStatusDocumented: false,
+  routerFirmwareCurrent: false,
+  routerItProviderDocumented: false,
+  routerAdminPasswordChanged: false,
+  routerPasswordManagerUsed: false,
+  routerMfaAvailable: false,
   ipv6UsedIntentionally: false,
   ipv6FirewallRulesCovered: false,
   ipv6DnsRulesCovered: false,
@@ -202,6 +228,29 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "dnsPrivacyReviewed", label: "Wurde die Datenschutzbewertung des DNS-Resolvers dokumentiert?" },
       { key: "dnsProviderDocumented", label: "Ist der zuständige DNS-Dienstleister oder Betreiber benannt?" },
       { key: "dnsConfigurationDocumented", label: "Ist die DNS-Konfiguration mit Weiterleitungen, Ausnahmen und Verantwortlichem dokumentiert?" }
+    ]
+  },
+  {
+    title: "DHCP-Sicherheit",
+    questions: [
+      { key: "dhcpAuthorizedServerDocumented", label: "Ist der autorisierte DHCP-Server dokumentiert?" },
+      { key: "dhcpRouterIpDocumented", label: "Ist die erwartete Router-/Gateway-IP dokumentiert?" },
+      { key: "dhcpDnsServersDocumented", label: "Sind die erlaubten DNS-Server in der DHCP-Konfiguration dokumentiert?" },
+      { key: "dhcpExceptionsDocumented", label: "Sind bekannte DHCP-Ausnahmen, Reservierungen oder Sondernetze dokumentiert?" }
+    ]
+  },
+  {
+    title: "Router-Nachweis",
+    questions: [
+      { key: "routerManufacturerDocumented", label: "Ist der Router-Hersteller dokumentiert?" },
+      { key: "routerModelDocumented", label: "Ist das Router-Modell dokumentiert?" },
+      { key: "routerFirmwareVersionDocumented", label: "Ist die Firmware-Version dokumentiert?" },
+      { key: "routerUpdateStatusDocumented", label: "Ist der Router-Update-Status dokumentiert?" },
+      { key: "routerFirmwareCurrent", label: "Ist die Router-Firmware laut Dokumentation aktuell?" },
+      { key: "routerItProviderDocumented", label: "Ist der zuständige IT-Dienstleister für Routerbetrieb und Updates benannt?" },
+      { key: "routerAdminPasswordChanged", label: "Ist nachgewiesen, dass das Router-Adminpasswort vom Standard geändert wurde?" },
+      { key: "routerPasswordManagerUsed", label: "Ist der Router-Zugang sicher dokumentiert, z. B. im Passwortmanager?" },
+      { key: "routerMfaAvailable", label: "Ist MFA oder ein gleichwertiger Schutz für Router-/Provider-Zugänge aktiviert, sofern verfügbar?" }
     ]
   },
   {

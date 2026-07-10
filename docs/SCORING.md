@@ -43,6 +43,9 @@ Der Fragebogen trennt Statusangaben von konkreten Nachweisen. Kritische Selbstau
 - Patchmanagement zählt nur mit festem Patchprozess, dokumentiertem Systemumfang, Patch-Frequenz, Verantwortlichem, letztem Patchdatum, Ausnahmen und Update-Protokoll.
 - DSGVO-Dokumentation zählt nur mit AVV, TOMs, Verzeichnis von Verarbeitungstätigkeiten, Löschkonzept, Berechtigungskonzept, dokumentierter Datenschutzschulung und Review/Freigabe in den letzten 12 Monaten.
 - Verantwortlichkeiten zählen über `SECURITY_RESPONSIBILITIES`, wenn verantwortliche Person, Vertretung, Aufgaben und Eskalationswege dokumentiert sind.
+- DHCP-Sicherheit wird zusätzlich als Fragebogenkontrolle erfasst: autorisierter DHCP-Server, erwartete Router-/Gateway-IP, erlaubte DNS-Server und bekannte Ausnahmen oder Reservierungen.
+- Router-Fingerprinting kombiniert weiterhin technische Hinweise mit strukturierten Nachweisen zu Hersteller, Modell, Firmware-Version, Update-Status und zuständigem IT-Dienstleister.
+- Das Default-Passwort-Risiko des Routers wird nicht durch Loginversuche geprüft. Ohne belastbaren Nachweis bleibt der Befund `unknown`/`unavailable`; die Bewertung erfolgt primär über Fragebogenangaben zu geändertem Adminpasswort, sicherer Dokumentation und Zuständigkeit.
 
 ## Ampel
 
