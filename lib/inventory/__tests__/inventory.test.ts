@@ -1,7 +1,9 @@
 import {
   createAccessPoint,
   createKnownDevice,
+  createRouterFirewallRule,
   createPracticeSeedInventory,
+  importRouterFirewallRulesFromCsv,
   isKnownDeviceStale,
   normalizeMacAddress,
   summarizeAccessPoints,
@@ -107,6 +109,46 @@ describe("PracticeInventory", () => {
 
     expect(accessPoint.bssid).toBe("AA:BB:CC:DD:EE:FF");
     expect(summarizeAccessPoints([accessPoint])).toEqual({ total: 1, openExpected: 0 });
+  });
+
+  it("erstellt Router-Firewall-Regeln für manuelle Erfassung", () => {
+    const rule = createRouterFirewallRule(
+      {
+        name: "VPN",
+        sourceView: "external",
+        direction: "wan_to_lan",
+        protocol: "tcp",
+        ports: " 443 ",
+        source: "203.0.113.10",
+        destination: "Firewall",
+        action: "allow",
+        purpose: "VPN-Zugang",
+        owner: "IT",
+        enabled: true,
+        lastReviewedAt: "2026-07-01"
+      },
+      new Date("2026-07-08T00:00:00.000Z")
+    );
+
+    expect(rule.ports).toBe("443");
+    expect(rule.lastReviewedAt).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("importiert Router-Firewall-Regeln aus CSV", () => {
+    const result = importRouterFirewallRulesFromCsv(
+      "name,sourceView,direction,protocol,ports,source,destination,action,purpose,owner,enabled,lastReviewedAt\n" +
+        "RDP,external,wan_to_lan,tcp,3389,any,server,allow,Fernwartung,IT,true,2026-07-01"
+    );
+
+    expect(result.rejectedRows).toHaveLength(0);
+    expect(result.rules[0]).toMatchObject({
+      name: "RDP",
+      sourceView: "external",
+      direction: "wan_to_lan",
+      protocol: "tcp",
+      ports: "3389",
+      action: "allow"
+    });
   });
 });
 

@@ -61,6 +61,9 @@ export type QuestionnaireAnswerKey =
   | "routerAdminPasswordChanged"
   | "routerPasswordManagerUsed"
   | "routerMfaAvailable"
+  | "routerRemoteAccessDisabled"
+  | "routerUpnpDisabled"
+  | "routerPortForwardsDocumented"
   | "ipv6UsedIntentionally"
   | "ipv6FirewallRulesCovered"
   | "ipv6DnsRulesCovered"
@@ -140,6 +143,9 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   routerAdminPasswordChanged: false,
   routerPasswordManagerUsed: false,
   routerMfaAvailable: false,
+  routerRemoteAccessDisabled: false,
+  routerUpnpDisabled: false,
+  routerPortForwardsDocumented: false,
   ipv6UsedIntentionally: false,
   ipv6FirewallRulesCovered: false,
   ipv6DnsRulesCovered: false,
@@ -250,7 +256,10 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "routerItProviderDocumented", label: "Ist der zuständige IT-Dienstleister für Routerbetrieb und Updates benannt?" },
       { key: "routerAdminPasswordChanged", label: "Ist nachgewiesen, dass das Router-Adminpasswort vom Standard geändert wurde?" },
       { key: "routerPasswordManagerUsed", label: "Ist der Router-Zugang sicher dokumentiert, z. B. im Passwortmanager?" },
-      { key: "routerMfaAvailable", label: "Ist MFA oder ein gleichwertiger Schutz für Router-/Provider-Zugänge aktiviert, sofern verfügbar?" }
+      { key: "routerMfaAvailable", label: "Ist MFA/2FA oder ein gleichwertiger Schutz für Router-/Provider-Zugänge aktiviert, sofern verfügbar?" },
+      { key: "routerRemoteAccessDisabled", label: "Ist Router-Fernzugriff aus dem Internet deaktiviert oder auf VPN/definierte Quellen beschränkt?" },
+      { key: "routerUpnpDisabled", label: "Ist UPnP am Router deaktiviert oder sind Ausnahmen dokumentiert freigegeben?" },
+      { key: "routerPortForwardsDocumented", label: "Sind alle Router-Portfreigaben mit Zweck, Zielsystem und Verantwortlichem dokumentiert?" }
     ]
   },
   {

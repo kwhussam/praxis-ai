@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { createAccessPoint, createInventoryItem, createKnownDevice, createPracticeSeedInventory } from "@/lib/inventory/inventory";
+import { createAccessPoint, createInventoryItem, createKnownDevice, createPracticeSeedInventory, createRouterFirewallRule } from "@/lib/inventory/inventory";
 import type {
   AccessPoint,
   AccessPointDraft,
@@ -9,6 +9,8 @@ import type {
   InventoryItem,
   KnownDevice,
   KnownDeviceDraft,
+  RouterFirewallRule,
+  RouterFirewallRuleDraft,
   RouterWifiConfiguration
 } from "@/lib/inventory/types";
 import type { Practice } from "@/lib/store/session";
@@ -19,11 +21,13 @@ type InventoryState = {
   knownDevicesByPractice: Record<string, KnownDevice[]>;
   accessPointsByPractice: Record<string, AccessPoint[]>;
   routerWifiConfigByPractice: Record<string, RouterWifiConfiguration>;
+  routerFirewallRulesByPractice: Record<string, RouterFirewallRule[]>;
   ensurePracticeInventory: (practice: Practice | null) => void;
   getItems: (practiceId?: string) => InventoryItem[];
   getKnownDevices: (practiceId?: string) => KnownDevice[];
   getAccessPoints: (practiceId?: string) => AccessPoint[];
   getRouterWifiConfig: (practiceId?: string) => RouterWifiConfiguration | null;
+  getRouterFirewallRules: (practiceId?: string) => RouterFirewallRule[];
   addItem: (practiceId: string, draft: InventoryDraft) => void;
   removeItem: (practiceId: string, itemId: string) => void;
   addKnownDevice: (practiceId: string, draft: KnownDeviceDraft) => void;
@@ -32,6 +36,9 @@ type InventoryState = {
   addAccessPoint: (practiceId: string, draft: AccessPointDraft) => void;
   removeAccessPoint: (practiceId: string, accessPointId: string) => void;
   updateRouterWifiConfig: (practiceId: string, config: Omit<RouterWifiConfiguration, "updatedAt">) => void;
+  addRouterFirewallRule: (practiceId: string, draft: RouterFirewallRuleDraft) => void;
+  importRouterFirewallRules: (practiceId: string, drafts: RouterFirewallRuleDraft[]) => void;
+  removeRouterFirewallRule: (practiceId: string, ruleId: string) => void;
 };
 
 const storage = createStringStorage("praxisshield-inventory");
@@ -43,6 +50,7 @@ export const useInventoryStore = create<InventoryState>()(
       knownDevicesByPractice: {},
       accessPointsByPractice: {},
       routerWifiConfigByPractice: {},
+      routerFirewallRulesByPractice: {},
       ensurePracticeInventory: (practice) => {
         if (!practice) return;
         const existing = get().itemsByPractice[practice.id];
@@ -59,6 +67,7 @@ export const useInventoryStore = create<InventoryState>()(
       getKnownDevices: (practiceId) => (practiceId ? get().knownDevicesByPractice[practiceId] ?? [] : []),
       getAccessPoints: (practiceId) => (practiceId ? get().accessPointsByPractice[practiceId] ?? [] : []),
       getRouterWifiConfig: (practiceId) => (practiceId ? get().routerWifiConfigByPractice[practiceId] ?? null : null),
+      getRouterFirewallRules: (practiceId) => (practiceId ? get().routerFirewallRulesByPractice[practiceId] ?? [] : []),
       addItem: (practiceId, draft) =>
         set((state) => ({
           itemsByPractice: {
@@ -120,6 +129,33 @@ export const useInventoryStore = create<InventoryState>()(
               ...config,
               updatedAt: new Date().toISOString()
             }
+          }
+        })),
+      addRouterFirewallRule: (practiceId, draft) =>
+        set((state) => ({
+          routerFirewallRulesByPractice: {
+            ...state.routerFirewallRulesByPractice,
+            [practiceId]: [...(state.routerFirewallRulesByPractice[practiceId] ?? []), createRouterFirewallRule(draft)]
+          }
+        })),
+      importRouterFirewallRules: (practiceId, drafts) =>
+        set((state) => {
+          const importedAt = new Date();
+          return {
+            routerFirewallRulesByPractice: {
+              ...state.routerFirewallRulesByPractice,
+              [practiceId]: [
+                ...(state.routerFirewallRulesByPractice[practiceId] ?? []),
+                ...drafts.map((draft) => createRouterFirewallRule(draft, new Date(), importedAt))
+              ]
+            }
+          };
+        }),
+      removeRouterFirewallRule: (practiceId, ruleId) =>
+        set((state) => ({
+          routerFirewallRulesByPractice: {
+            ...state.routerFirewallRulesByPractice,
+            [practiceId]: (state.routerFirewallRulesByPractice[practiceId] ?? []).filter((rule) => rule.id !== ruleId)
           }
         }))
     }),

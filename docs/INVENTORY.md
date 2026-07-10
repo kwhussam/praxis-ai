@@ -41,3 +41,16 @@ Die manuelle Router-/WLAN-Konfigurationsabfrage dokumentiert:
 - WPS
 
 Diese Angaben dienen als Selbstauskunft, wenn Router- oder WLAN-Konfigurationsdetails technisch nicht zuverlässig auslesbar sind.
+
+## Router-/Firewall-Regeln
+
+Router- und Firewall-Regeln können manuell erfasst oder aus CSV-/Tabellenexporten importiert werden. Jede Regel dokumentiert:
+
+- interne oder externe Sicht
+- Richtung, z. B. WAN zu LAN, LAN zu WAN, LAN zu LAN oder VPN zu LAN
+- Protokoll und Ports
+- Quelle und Ziel
+- erlaubende oder blockierende Aktion
+- Zweck, Verantwortlichen und letztes Review-Datum
+
+Der WLAN-Scan nutzt diese Regeln als Kontext für den Firewall-Basischeck. Externe Freigaben werden getrennt von intern sichtbaren Diensten bewertet; offene interne Dienste werden dadurch nicht automatisch als Internet-Exposition gewertet.

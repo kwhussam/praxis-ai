@@ -13,6 +13,7 @@ import { assessNetworkSegmentation, buildNetworkSegmentObservation, buildSegment
 import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 import { parseWifiCapabilities } from "@/lib/security/wifiCapabilities";
 import { buildIpv4SubnetCandidates } from "@/lib/security/ipv4Subnet";
+import { createRouterFirewallRule } from "@/lib/inventory/inventory";
 
 describe("wifi capability parsing", () => {
   it("erkennt offene WLANs", () => {
@@ -436,9 +437,37 @@ describe("network security assessment", () => {
     expect(assessment.source).toBe("unavailable");
   });
 
-  it("bewertet Firewall kritisch bei RDP", () => {
+  it("bewertet interne offene Dienste nur als Kontextbedarf", () => {
     const assessment = assessFirewallBaseline(gatewayProbe([3389]));
+    expect(assessment.status).toBe("partial");
+    expect(assessment.internalOpenCriticalPorts).toEqual([3389]);
+    expect(assessment.externalAllowedPorts).toEqual([]);
+  });
+
+  it("bewertet undokumentierte externe Portfreigaben kritisch", () => {
+    const assessment = assessFirewallBaseline(gatewayProbe([]), {
+      firewallRules: [
+        createRouterFirewallRule(
+          {
+            name: "RDP extern",
+            sourceView: "external",
+            direction: "wan_to_lan",
+            protocol: "tcp",
+            ports: "3389",
+            source: "any",
+            destination: "server",
+            action: "allow",
+            purpose: "",
+            owner: "",
+            enabled: true
+          },
+          new Date("2026-07-08T00:00:00.000Z")
+        )
+      ]
+    });
     expect(assessment.status).toBe("critical");
+    expect(assessment.externalAllowedPorts).toEqual([3389]);
+    expect(assessment.undocumentedExternalAllowedPorts).toEqual([3389]);
   });
 });
 

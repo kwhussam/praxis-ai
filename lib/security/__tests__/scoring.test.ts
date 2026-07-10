@@ -211,7 +211,13 @@ describe("SecurityScoring", () => {
       "processingDirectoryAvailable",
       "deletionConceptAvailable",
       "accessConceptAvailable",
-      "privacyTrainingDocumented"
+      "privacyTrainingDocumented",
+      "routerAdminPasswordChanged",
+      "routerPasswordManagerUsed",
+      "routerMfaAvailable",
+      "routerRemoteAccessDisabled",
+      "routerUpnpDisabled",
+      "routerPortForwardsDocumented"
     ];
 
     requiredKeys.forEach((key) => {

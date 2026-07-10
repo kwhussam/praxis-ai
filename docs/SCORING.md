@@ -46,6 +46,7 @@ Der Fragebogen trennt Statusangaben von konkreten Nachweisen. Kritische Selbstau
 - DHCP-Sicherheit wird zusätzlich als Fragebogenkontrolle erfasst: autorisierter DHCP-Server, erwartete Router-/Gateway-IP, erlaubte DNS-Server und bekannte Ausnahmen oder Reservierungen.
 - Router-Fingerprinting kombiniert weiterhin technische Hinweise mit strukturierten Nachweisen zu Hersteller, Modell, Firmware-Version, Update-Status und zuständigem IT-Dienstleister.
 - Das Default-Passwort-Risiko des Routers wird nicht durch Loginversuche geprüft. Ohne belastbaren Nachweis bleibt der Befund `unknown`/`unavailable`; die Bewertung erfolgt primär über Fragebogenangaben zu geändertem Adminpasswort, sicherer Dokumentation und Zuständigkeit.
+- Router-Sicherheitsfragen erfassen zusätzlich MFA/2FA, Fernzugriff, UPnP und dokumentierte Portfreigaben.
 
 ## Ampel
 
@@ -62,6 +63,8 @@ Der WLAN-Scanner erzeugt strukturierte `NetworkSecurityFinding`-Objekte für WLA
 Die Prüfungen sind local-first und dürfen keine Patientendaten, Dateien, SMB-/NFS-Freigaben, Druckjobs, Datenbankinhalte oder medizinische Protokollinhalte lesen. Nicht verfügbare native Plattformfunktionen werden als `unknown`/`unavailable` dokumentiert und nicht als offene Ports gewertet. Der WPS-Status wird als `not_supported`/`unavailable` gekennzeichnet, solange er technisch nicht zuverlässig auslesbar ist. JetDirect 9100 wird nur per TCP-Connect geprüft; es werden keine Nutzdaten an RAW-Druckports gesendet. Die SMB-Sicherheitsprüfung darf nur Protokollmetadaten wie SMB-Version, Signing und möglichen Gastzugriff bewerten; sie darf keine Shares auflisten und keine Dateien öffnen.
 
 Der lokale Portscan läuft standardmäßig gegen Gateway und ausgewählte Kandidaten-IP-Adressen. Ein vollständiger IPv4-Subnetzscan ist nur im Audit-Modus mit expliziter zusätzlicher Einwilligung vorgesehen und nutzt gedrosselte TCP-Connect-Probes. Portbefunde enthalten Kontextfragen, ob der Dienst absichtlich erreichbar ist und auf welche Quellgeräte oder Quell-IP-Adressen er beschränkt sein sollte.
+
+Der Firewall-Basischeck trennt interne Sicht aus lokalen Probes von externer Sicht aus dokumentierten Router-/Firewall-Regeln. Interne offene Dienste erzeugen Kontextbedarf, werden aber nicht pauschal als Internet-Exposition bewertet. Externe Portfreigaben werden nur als kontrolliert betrachtet, wenn Zweck, Zielsystem, Verantwortlicher und Review-Datum dokumentiert sind.
 
 Segmentierungsprüfungen können nacheinander aus Praxis-WLAN, Gäste-WLAN, Servernetz, Druckernetz und Medizingerätenetz ausgeführt werden. Jeder Lauf speichert nur Segment, sichtbare Geräteklassen und offene Dienstmetadaten; die Bewertung aggregiert die letzten Beobachtungen pro Segment und markiert auffällige Überschneidungen. Wenn aus früheren Segmentläufen konkrete Ziel-IP-/Port-Kombinationen bekannt sind, prüft ein späterer Lauf gezielt deren TCP-Erreichbarkeit aus dem aktuellen Segment. So werden Client-Isolation und VLAN-Trennung nachvollziehbar bewertet, ohne vollständige Quersegment-Scans zu erzwingen.
 

@@ -3,7 +3,7 @@ import * as Device from "expo-device";
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
-import type { AccessPoint, KnownDevice } from "@/lib/inventory/types";
+import type { AccessPoint, KnownDevice, RouterFirewallRule } from "@/lib/inventory/types";
 import {
   getCurrentWifiSsid,
   scanLocalDevices,
@@ -408,7 +408,11 @@ type WlanSecurityScanOptions = {
     passwordManagerUsed?: boolean;
     routerMfaAvailable?: boolean;
     managedByItProvider?: boolean;
+    remoteAccessDisabled?: boolean;
+    upnpDisabled?: boolean;
+    portForwardsDocumented?: boolean;
   };
+  firewallRules?: RouterFirewallRule[];
   ipv6Security?: {
     usedIntentionally?: boolean;
     firewallRulesCovered?: boolean;
@@ -502,7 +506,8 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     dnsOperation: options?.dnsOperation ?? {},
     dhcpDocumentation: options?.dhcpDocumentation ?? {},
     routerDocumentation: options?.routerDocumentation ?? {},
-    routerCredentials: options?.routerCredentials ?? {}
+    routerCredentials: options?.routerCredentials ?? {},
+    firewallRules: options?.firewallRules ?? []
   });
   context.securityFindings.push(...advancedFindings);
   context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
@@ -764,6 +769,7 @@ function buildAdvancedNetworkFindings(
     dhcpDocumentation: NonNullable<WlanSecurityScanOptions["dhcpDocumentation"]>;
     routerDocumentation: NonNullable<WlanSecurityScanOptions["routerDocumentation"]>;
     routerCredentials: NonNullable<WlanSecurityScanOptions["routerCredentials"]>;
+    firewallRules: RouterFirewallRule[];
   }
 ) {
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
@@ -827,7 +833,14 @@ function buildAdvancedNetworkFindings(
       fingerprint: routerFingerprint,
       answers: inventory.routerCredentials
     });
-    const firewallBaseline = assessFirewallBaseline(context.gatewayProbe);
+    const firewallBaseline = assessFirewallBaseline(context.gatewayProbe, {
+      firewallRules: inventory.firewallRules,
+      routerSecurity: {
+        remoteAccessDisabled: inventory.routerCredentials.remoteAccessDisabled,
+        upnpDisabled: inventory.routerCredentials.upnpDisabled,
+        portForwardsDocumented: inventory.routerCredentials.portForwardsDocumented
+      }
+    });
     findings.push(routerFirmwareFinding(routerFingerprint));
     findings.push(defaultPasswordRiskFinding(credentialRisk));
     findings.push(firewallBaselineFinding(firewallBaseline));

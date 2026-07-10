@@ -6,7 +6,13 @@ import type {
   InventoryItem,
   InventoryItemType,
   KnownDevice,
-  KnownDeviceDraft
+  KnownDeviceDraft,
+  RouterFirewallRule,
+  RouterFirewallRuleAction,
+  RouterFirewallRuleDirection,
+  RouterFirewallRuleDraft,
+  RouterFirewallRuleProtocol,
+  RouterFirewallRuleSourceView
 } from "@/lib/inventory/types";
 
 export type InventorySummary = {
@@ -24,6 +30,11 @@ export type KnownDeviceSummary = {
 export type AccessPointSummary = {
   total: number;
   openExpected: number;
+};
+
+export type RouterFirewallRuleImportResult = {
+  rules: RouterFirewallRuleDraft[];
+  rejectedRows: Array<{ row: number; reason: string }>;
 };
 
 const emptyCounts: Record<InventoryItemType, number> = {
@@ -98,6 +109,29 @@ export function createAccessPoint(draft: AccessPointDraft, now = new Date()): Ac
   };
 }
 
+export function createRouterFirewallRule(draft: RouterFirewallRuleDraft, now = new Date(), importedAt?: Date): RouterFirewallRule {
+  const timestamp = now.toISOString();
+
+  return {
+    id: `router-firewall-rule-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: draft.name.trim() || `${draft.protocol.toUpperCase()} ${draft.ports.trim() || "alle Ports"}`,
+    sourceView: draft.sourceView,
+    direction: draft.direction,
+    protocol: draft.protocol,
+    ports: normalizePorts(draft.ports),
+    source: draft.source.trim() || "any",
+    destination: draft.destination.trim() || "any",
+    action: draft.action,
+    purpose: draft.purpose.trim(),
+    owner: draft.owner.trim(),
+    enabled: draft.enabled,
+    lastReviewedAt: normalizeOptionalDateInput(draft.lastReviewedAt),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    importedAt: importedAt?.toISOString()
+  };
+}
+
 export function summarizeKnownDevices(devices: KnownDevice[], now = new Date()): KnownDeviceSummary {
   return devices.reduce<KnownDeviceSummary>(
     (summary, device) => ({
@@ -114,6 +148,54 @@ export function summarizeAccessPoints(accessPoints: AccessPoint[]): AccessPointS
     total: accessPoints.length,
     openExpected: accessPoints.filter((accessPoint) => accessPoint.expectedEncryption === "OPEN").length
   };
+}
+
+export function importRouterFirewallRulesFromCsv(input: string): RouterFirewallRuleImportResult {
+  const rows = parseDelimitedRows(input);
+  const [header, ...dataRows] = rows;
+  if (!header || header.length === 0) return { rules: [], rejectedRows: [] };
+
+  const headerMap = new Map(header.map((name, index) => [normalizeHeader(name), index]));
+  const rules: RouterFirewallRuleDraft[] = [];
+  const rejectedRows: RouterFirewallRuleImportResult["rejectedRows"] = [];
+
+  dataRows.forEach((row, index) => {
+    if (row.every((cell) => cell.trim().length === 0)) return;
+    const rowNumber = index + 2;
+    const get = (...keys: string[]) => {
+      const foundKey = keys.map(normalizeHeader).find((key) => headerMap.has(key));
+      if (!foundKey) return "";
+      return row[headerMap.get(foundKey) ?? -1]?.trim() ?? "";
+    };
+    const name = get("name", "regel", "rule");
+    const protocol = parseProtocol(get("protocol", "protokoll"));
+    const direction = parseDirection(get("direction", "richtung"));
+    const action = parseAction(get("action", "aktion"));
+    const sourceView = parseSourceView(get("sourceView", "sicht", "view"));
+    const ports = get("ports", "port", "portfreigabe");
+
+    if (!protocol || !direction || !action || !sourceView) {
+      rejectedRows.push({ row: rowNumber, reason: "Protokoll, Richtung, Aktion oder Sicht ist unbekannt." });
+      return;
+    }
+
+    rules.push({
+      name,
+      sourceView,
+      direction,
+      protocol,
+      ports,
+      source: get("source", "quelle"),
+      destination: get("destination", "ziel"),
+      action,
+      purpose: get("purpose", "zweck", "begruendung", "begründung"),
+      owner: get("owner", "verantwortlich", "zuständig", "zustaendig"),
+      enabled: parseEnabled(get("enabled", "aktiv", "status")),
+      lastReviewedAt: get("lastReviewedAt", "lastReview", "review", "letztePruefung", "letztePrüfung")
+    });
+  });
+
+  return { rules, rejectedRows };
 }
 
 export function isKnownDeviceStale(device: KnownDevice, now = new Date()) {
@@ -166,4 +248,87 @@ function normalizeDateInput(value: string, fallback: Date) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return fallback.toISOString();
   return parsed.toISOString();
+}
+
+function normalizeOptionalDateInput(value?: string) {
+  if (!value?.trim()) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return undefined;
+  return parsed.toISOString();
+}
+
+function normalizePorts(value: string) {
+  return value.trim().replace(/\s+/g, "");
+}
+
+function parseDelimitedRows(input: string) {
+  return input
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => parseDelimitedLine(line, line.includes(";") ? ";" : ","));
+}
+
+function parseDelimitedLine(line: string, delimiter: string) {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+    if (char === "\"" && quoted && next === "\"") {
+      current += "\"";
+      index += 1;
+    } else if (char === "\"") {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current);
+  return cells;
+}
+
+function normalizeHeader(value: string) {
+  return value.trim().toLowerCase().replace(/[\s_-]/g, "");
+}
+
+function parseProtocol(value: string): RouterFirewallRuleProtocol | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "tcp" || normalized === "udp" || normalized === "icmp" || normalized === "any") return normalized;
+  if (normalized === "alle" || normalized === "all") return "any";
+  return null;
+}
+
+function parseDirection(value: string): RouterFirewallRuleDirection | null {
+  const normalized = normalizeHeader(value);
+  if (normalized === "wantolan" || normalized === "externnachintern" || normalized === "incoming" || normalized === "inbound") return "wan_to_lan";
+  if (normalized === "lantowan" || normalized === "internnachextern" || normalized === "outgoing" || normalized === "outbound") return "lan_to_wan";
+  if (normalized === "lantolan" || normalized === "intern") return "lan_to_lan";
+  if (normalized === "vpntolan" || normalized === "vpn") return "vpn_to_lan";
+  return null;
+}
+
+function parseAction(value: string): RouterFirewallRuleAction | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "allow" || normalized === "permit" || normalized === "erlauben" || normalized === "zulassen") return "allow";
+  if (normalized === "deny" || normalized === "block" || normalized === "verweigern" || normalized === "blockieren") return "deny";
+  return null;
+}
+
+function parseSourceView(value: string): RouterFirewallRuleSourceView | null {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "external" || normalized === "extern" || normalized === "wan" || normalized === "internet") return "external";
+  if (normalized === "internal" || normalized === "intern" || normalized === "lan") return "internal";
+  return null;
+}
+
+function parseEnabled(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  return normalized === "true" || normalized === "yes" || normalized === "ja" || normalized === "aktiv" || normalized === "enabled" || normalized === "1";
 }

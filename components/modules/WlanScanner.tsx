@@ -39,6 +39,7 @@ export function WlanScanner() {
   const practiceId = useSessionStore((store) => store.practice?.id);
   const knownDevices = useInventoryStore((store) => store.getKnownDevices(practiceId));
   const accessPoints = useInventoryStore((store) => store.getAccessPoints(practiceId));
+  const firewallRules = useInventoryStore((store) => store.getRouterFirewallRules(practiceId));
   const [state, setState] = useState<ScannerState>("consent");
   const [accepted, setAccepted] = useState(false);
   const [progress, setProgress] = useState<WlanScanProgress | null>(null);
@@ -109,8 +110,12 @@ export function WlanScanner() {
           adminPasswordChanged: questionnaireAnswers.routerAdminPasswordChanged,
           passwordManagerUsed: questionnaireAnswers.routerPasswordManagerUsed,
           routerMfaAvailable: questionnaireAnswers.routerMfaAvailable,
-          managedByItProvider: questionnaireAnswers.routerItProviderDocumented
+          managedByItProvider: questionnaireAnswers.routerItProviderDocumented,
+          remoteAccessDisabled: questionnaireAnswers.routerRemoteAccessDisabled,
+          upnpDisabled: questionnaireAnswers.routerUpnpDisabled,
+          portForwardsDocumented: questionnaireAnswers.routerPortForwardsDocumented
         },
+        firewallRules,
         ipv6Security: {
           usedIntentionally: questionnaireAnswers.ipv6UsedIntentionally,
           firewallRulesCovered: questionnaireAnswers.ipv6FirewallRulesCovered,

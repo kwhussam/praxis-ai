@@ -318,6 +318,14 @@ export interface FirewallBaselineAssessment {
   status: "good" | "partial" | "critical" | "unknown";
   exposedCriticalPorts: number[];
   exposedManagementPorts: number[];
+  internalOpenCriticalPorts: number[];
+  internalOpenManagementPorts: number[];
+  externalAllowedPorts: number[];
+  undocumentedExternalAllowedPorts: number[];
+  documentedExternalAllowedPorts: number[];
+  remoteAccessEnabled: boolean | null;
+  upnpEnabledByQuestionnaire: boolean | null;
+  documentedPortForwards: boolean | null;
   ipv6Risk: boolean;
   source: ProbeSource;
   confidence: ProbeConfidence;

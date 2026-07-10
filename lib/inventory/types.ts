@@ -19,6 +19,10 @@ export type KnownDeviceType =
   | "iot"
   | "unknown";
 export type AccessPointExpectedEncryption = "WPA2_AES" | "WPA2_WPA3_MIXED" | "WPA3" | "OPEN" | "UNKNOWN";
+export type RouterFirewallRuleDirection = "wan_to_lan" | "lan_to_wan" | "lan_to_lan" | "vpn_to_lan";
+export type RouterFirewallRuleProtocol = "tcp" | "udp" | "icmp" | "any";
+export type RouterFirewallRuleAction = "allow" | "deny";
+export type RouterFirewallRuleSourceView = "external" | "internal";
 
 export type InventoryItem = {
   id: string;
@@ -91,6 +95,40 @@ export type RouterWifiConfiguration = {
   openWifi: boolean;
   wps: boolean;
   updatedAt?: string;
+};
+
+export type RouterFirewallRule = {
+  id: string;
+  name: string;
+  sourceView: RouterFirewallRuleSourceView;
+  direction: RouterFirewallRuleDirection;
+  protocol: RouterFirewallRuleProtocol;
+  ports: string;
+  source: string;
+  destination: string;
+  action: RouterFirewallRuleAction;
+  purpose: string;
+  owner: string;
+  enabled: boolean;
+  lastReviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  importedAt?: string;
+};
+
+export type RouterFirewallRuleDraft = {
+  name: string;
+  sourceView: RouterFirewallRuleSourceView;
+  direction: RouterFirewallRuleDirection;
+  protocol: RouterFirewallRuleProtocol;
+  ports: string;
+  source: string;
+  destination: string;
+  action: RouterFirewallRuleAction;
+  purpose: string;
+  owner: string;
+  enabled: boolean;
+  lastReviewedAt?: string;
 };
 
 export type InventoryCategory = {
