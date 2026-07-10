@@ -42,6 +42,10 @@ type MonitoringRunRequest = {
   practiceId?: string;
   domain?: string;
   email?: string;
+  domains?: string[];
+  subdomains?: string[];
+  emails?: string[];
+  leakConsentAccepted?: boolean;
 };
 
 type QuestionnaireRequest = {
@@ -238,6 +242,31 @@ type ExternalCheckResult = {
   scoreImpact: number;
   providers: Record<string, boolean>;
   provider_statuses: Record<ProviderName, ProviderStatus>;
+};
+
+type RiskHistoryState = "new" | "recurring" | "resolved" | "unchanged";
+
+type MonitoringComparisonSummary = {
+  critical_ports: number[];
+  dns_fingerprint: string;
+  dmarc_policy: EmailSecurityCheck["dmarc"]["policy"];
+  dmarc_exists: boolean;
+  cert_fingerprint: string;
+  ssl_expires_at: string | null;
+  ssl_issuer: string;
+  findings: string[];
+};
+
+type MonitoringComparison = {
+  previous: MonitoringComparisonSummary | null;
+  current: MonitoringComparisonSummary;
+  states: Record<string, RiskHistoryState>;
+  resolved_findings: string[];
+  dns_changed: boolean;
+  dmarc_worsened: boolean;
+  certificate_changed: boolean;
+  new_ports: number[];
+  recurring_ports: number[];
 };
 
 type CheckData = {
@@ -1196,7 +1225,7 @@ function pdfUtf16Hex(value: string) {
   return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
-async function performExternalCheck(domain: string, email: string | null, env: Env): Promise<ExternalCheckResult> {
+async function performExternalCheck(domain: string, email: string | string[] | null, env: Env): Promise<ExternalCheckResult> {
   const timestamp = new Date().toISOString();
   const [dns, ssl, emailSecurity, ports, reputation, leaks, subdomains] = await Promise.all([
     checkDns(domain),
@@ -1265,10 +1294,18 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
   }
 
   const practiceId = access?.practice.id ?? payload.practiceId ?? "";
-  const result = await performExternalCheck(domain, normalizeEmail(payload.email ?? access?.practice.email), c.env);
-  const previousPorts = practiceId ? await fetchPreviousCriticalPorts(c.env, practiceId) : new Set<number>();
-  const snapshot = buildMonitoringSnapshot(practiceId, result, "manual");
-  const events = buildMonitoringEvents(result, ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"], previousPorts).map(
+  const targetDomains = monitoringTargetDomains(payload, domain);
+  const approvedEmails = payload.leakConsentAccepted === true
+    ? uniqueEmails([payload.email, access?.practice.email, ...(payload.emails ?? [])].filter((item): item is string => Boolean(item)))
+    : [];
+  const results = await Promise.all(
+    targetDomains.map((targetDomain, index) => performExternalCheck(targetDomain, index === 0 ? approvedEmails : null, c.env))
+  );
+  const result = aggregateMonitoringResult(results);
+  const previousSummary = practiceId ? await fetchPreviousMonitoringSummary(c.env, practiceId) : null;
+  const comparison = buildMonitoringComparison(results, previousSummary);
+  const snapshot = buildMonitoringSnapshot(practiceId, result, "manual", comparison, targetDomains, approvedEmails.length);
+  const events = buildMonitoringEvents(result, ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"], comparison).map(
     (event) => ({ ...event, practice_id: practiceId })
   );
 
@@ -1608,16 +1645,24 @@ async function runScheduledMonitoring(cron: string, env: Env) {
   await Promise.all(
     targets.map(async (target) => {
       const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env);
-      const previousPorts = await fetchPreviousCriticalPorts(env, target.id);
-      const snapshot = buildMonitoringSnapshot(target.id, result, "scheduled");
-      const events = buildMonitoringEvents(result, modules, previousPorts);
+      const previousSummary = await fetchPreviousMonitoringSummary(env, target.id);
+      const comparison = buildMonitoringComparison([result], previousSummary);
+      const snapshot = buildMonitoringSnapshot(target.id, result, "scheduled", comparison, [target.domain], target.email ? 1 : 0);
+      const events = buildMonitoringEvents(result, modules, comparison);
 
       await persistMonitoringResult(env, snapshot, events);
     })
   );
 }
 
-function buildMonitoringSnapshot(practiceId: string, result: ExternalCheckResult, source: "manual" | "scheduled") {
+function buildMonitoringSnapshot(
+  practiceId: string,
+  result: ExternalCheckResult,
+  source: "manual" | "scheduled",
+  comparison: MonitoringComparison,
+  monitoredTargets: string[],
+  approvedEmailCount: number
+) {
   const checks = result.checks;
 
   return {
@@ -1649,12 +1694,22 @@ function buildMonitoringSnapshot(practiceId: string, result: ExternalCheckResult
       known: 0,
       unknown: 0
     },
-    checks,
+    checks: {
+      ...checks,
+      monitoring_targets: monitoredTargets,
+      approved_email_count: approvedEmailCount,
+      comparison: {
+        current: comparison.current,
+        previous: comparison.previous,
+        states: comparison.states,
+        resolved_findings: comparison.resolved_findings
+      }
+    },
     checked_at: result.timestamp
   };
 }
 
-function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringModule[], previousCriticalPorts: Set<number>) {
+function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringModule[], comparison: MonitoringComparison) {
   const events: Array<{
     id: string;
     practice_id: string;
@@ -1680,7 +1735,20 @@ function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringM
       severity: "critical",
       title: "SSL-Zertifikat läuft in 14 Tagen ab",
       message: `Das Zertifikat für ${result.domain} läuft in ${checks.ssl.days_remaining} Tagen ab.`,
-      details: { days_remaining: checks.ssl.days_remaining, expires_at: checks.ssl.expires_at },
+      details: { days_remaining: checks.ssl.days_remaining, expires_at: checks.ssl.expires_at, risk_state: comparison.states["ssl_expiry"] ?? "new" },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("ssl_check") && comparison.certificate_changed) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "ssl_expiry",
+      severity: "info",
+      title: "Zertifikatsänderung erkannt",
+      message: `Das TLS-Zertifikat oder der Aussteller für ${result.domain} hat sich gegenüber dem letzten Lauf geändert.`,
+      details: { risk_state: "new", current: comparison.current.cert_fingerprint, previous: comparison.previous?.cert_fingerprint ?? null },
       created_at: timestamp
     });
   }
@@ -1693,7 +1761,33 @@ function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringM
       severity: "critical",
       title: "DMARC-Eintrag wurde entfernt",
       message: "Für die Praxis-Domain wurde kein DMARC-Eintrag gefunden.",
-      details: { domain: result.domain },
+      details: { domain: result.domain, risk_state: comparison.states["dmarc_missing"] ?? "new" },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("dns_check") && comparison.dmarc_worsened) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "dmarc_missing",
+      severity: "critical",
+      title: "DMARC-Verschlechterung erkannt",
+      message: "Die DMARC-Policy ist schwächer als im vorherigen Monitoring-Lauf.",
+      details: { previous_policy: comparison.previous?.dmarc_policy ?? null, current_policy: comparison.current.dmarc_policy, risk_state: "new" },
+      created_at: timestamp
+    });
+  }
+
+  if (modules.includes("dns_check") && comparison.dns_changed) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "dns_changed",
+      severity: "warning",
+      title: "DNS-Änderung erkannt",
+      message: "DNS-Antworten für überwachte Domains oder Subdomains haben sich gegenüber dem letzten Lauf geändert.",
+      details: { previous_fingerprint: comparison.previous?.dns_fingerprint ?? null, current_fingerprint: comparison.current.dns_fingerprint, risk_state: "new" },
       created_at: timestamp
     });
   }
@@ -1706,23 +1800,27 @@ function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringM
       severity: "critical",
       title: "Neuer Datenleck mit Praxis-E-Mail gefunden",
       message: `${checks.leaks.breach_count} bekannte Datenleck-Einträge betreffen die geprüfte E-Mail.`,
-      details: { breach_count: checks.leaks.breach_count, breaches: checks.leaks.breaches },
+      details: { breach_count: checks.leaks.breach_count, breaches: checks.leaks.breaches, risk_state: comparison.states["leak_detected"] ?? "new" },
       created_at: timestamp
     });
   }
 
   if (modules.includes("port_scan")) {
     for (const port of checks.ports.open_ports.filter((item) => item.severity === "critical")) {
-      if (previousCriticalPorts.has(port.port)) continue;
+      const riskState: RiskHistoryState = comparison.new_ports.includes(port.port)
+        ? "new"
+        : comparison.recurring_ports.includes(port.port)
+          ? "recurring"
+          : "unchanged";
 
       events.push({
         id: crypto.randomUUID(),
         practice_id: "",
         type: "port_open",
         severity: "critical",
-        title: "Neuer offener kritischer Port erkannt",
+        title: riskState === "new" ? "Neuer offener kritischer Port erkannt" : "Kritischer Port weiterhin offen",
         message: `${port.service} ist auf Port ${port.port}/${port.protocol} öffentlich erreichbar.`,
-        details: port as unknown as Record<string, unknown>,
+        details: { ...(port as unknown as Record<string, unknown>), risk_state: riskState },
         created_at: timestamp
       });
     }
@@ -1736,7 +1834,20 @@ function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringM
       severity: "critical",
       title: "Domain auf Blacklist eingetragen",
       message: `${result.domain} ist bei ${checks.reputation.blacklists.length} Reputation-Quelle(n) auffällig.`,
-      details: { blacklists: checks.reputation.blacklists },
+      details: { blacklists: checks.reputation.blacklists, risk_state: comparison.states["domain_blacklisted"] ?? "new" },
+      created_at: timestamp
+    });
+  }
+
+  for (const finding of comparison.resolved_findings) {
+    events.push({
+      id: crypto.randomUUID(),
+      practice_id: "",
+      type: "monitoring_run",
+      severity: "info",
+      title: "Befund behoben",
+      message: `Der vorherige Befund ${finding} ist im aktuellen Lauf nicht mehr sichtbar.`,
+      details: { finding, risk_state: "resolved" },
       created_at: timestamp
     });
   }
@@ -1749,12 +1860,154 @@ function buildMonitoringEvents(result: ExternalCheckResult, modules: MonitoringM
       severity: result.critical_count > 0 ? "warning" : "info",
       title: "Monitoring-Lauf abgeschlossen",
       message: `${result.critical_count} kritische und ${result.warning_count} Warn-Ereignisse im aktuellen Lauf.`,
-      details: { score: result.overall_score },
+      details: { score: result.overall_score, risk_state: result.critical_count > 0 || result.warning_count > 0 ? "unchanged" : "unchanged" },
       created_at: timestamp
     });
   }
 
   return events;
+}
+
+function monitoringTargetDomains(payload: MonitoringRunRequest, primaryDomain: string) {
+  return uniqueDomains([
+    primaryDomain,
+    ...(payload.domains ?? []),
+    ...(payload.subdomains ?? [])
+  ]).slice(0, 25);
+}
+
+function aggregateMonitoringResult(results: ExternalCheckResult[]): ExternalCheckResult {
+  const [primary, ...additional] = results;
+  if (!primary) {
+    throw new Error("No monitoring result available");
+  }
+  const allFindings = results.flatMap((result) =>
+    result.findings.map((finding) => ({
+      ...finding,
+      id: `${result.domain}:${finding.id}`,
+      title: result.domain === primary.domain ? finding.title : `${result.domain}: ${finding.title}`
+    }))
+  );
+  const critical_count = allFindings.filter((finding) => finding.severity === "critical").length;
+  const warning_count = allFindings.filter((finding) => finding.severity === "warning").length;
+  const overall_score = Math.min(primary.overall_score, ...additional.map((result) => result.overall_score));
+  const openPorts = results.flatMap((result) =>
+    result.checks.ports.open_ports.map((port) => ({
+      ...port,
+      service: result.domain === primary.domain ? port.service : `${result.domain} ${port.service}`
+    }))
+  );
+  const knownVulnerabilities = results.flatMap((result) =>
+    result.checks.ports.known_vulnerabilities.map((vulnerability) => ({
+      ...vulnerability,
+      summary: result.domain === primary.domain ? vulnerability.summary : `${result.domain}: ${vulnerability.summary}`
+    }))
+  );
+
+  return {
+    ...primary,
+    checks: {
+      ...primary.checks,
+      ports: {
+        open_ports: openPorts,
+        known_vulnerabilities: knownVulnerabilities
+      }
+    },
+    overall_score,
+    critical_count,
+    warning_count,
+    findings: allFindings,
+    scoreImpact: overall_score - 100
+  };
+}
+
+function buildMonitoringComparison(results: ExternalCheckResult[], previous: MonitoringComparisonSummary | null): MonitoringComparison {
+  const current = buildMonitoringComparisonSummary(results);
+  const previousFindings = new Set(previous?.findings ?? []);
+  const currentFindings = new Set(current.findings);
+  const states: Record<string, RiskHistoryState> = {};
+
+  current.findings.forEach((finding) => {
+    states[finding] = previousFindings.has(finding) ? "recurring" : "new";
+  });
+  const resolved_findings = [...previousFindings].filter((finding) => !currentFindings.has(finding));
+  resolved_findings.forEach((finding) => {
+    states[finding] = "resolved";
+  });
+  if (previous) {
+    ["dns_fingerprint", "cert_fingerprint"].forEach((key) => {
+      const stateKey = key === "dns_fingerprint" ? "dns_changed" : "certificate_changed";
+      states[stateKey] = previous[key as keyof MonitoringComparisonSummary] === current[key as keyof MonitoringComparisonSummary] ? "unchanged" : "new";
+    });
+  }
+  const previousPorts = new Set(previous?.critical_ports ?? []);
+  const currentPorts = new Set(current.critical_ports);
+
+  return {
+    previous,
+    current,
+    states,
+    resolved_findings,
+    dns_changed: Boolean(previous && previous.dns_fingerprint !== current.dns_fingerprint),
+    dmarc_worsened: Boolean(previous && dmarcRank(current.dmarc_policy, current.dmarc_exists) < dmarcRank(previous.dmarc_policy, previous.dmarc_exists)),
+    certificate_changed: Boolean(previous && previous.cert_fingerprint !== current.cert_fingerprint),
+    new_ports: [...currentPorts].filter((port) => !previousPorts.has(port)),
+    recurring_ports: [...currentPorts].filter((port) => previousPorts.has(port))
+  };
+}
+
+function buildMonitoringComparisonSummary(results: ExternalCheckResult[]): MonitoringComparisonSummary {
+  const criticalPorts = new Set<number>();
+  const dnsParts: string[] = [];
+  const certParts: string[] = [];
+  const findings = new Set<string>();
+  let weakestDmarcPolicy: EmailSecurityCheck["dmarc"]["policy"] = "reject";
+  let dmarcExists = true;
+
+  results.forEach((result) => {
+    result.checks.ports.open_ports
+      .filter((port) => port.severity === "critical")
+      .forEach((port) => criticalPorts.add(port.port));
+    dnsParts.push(`${result.domain}:${[
+      ...result.checks.dns.a_records,
+      ...result.checks.dns.aaaa_records,
+      ...result.checks.dns.cname_records,
+      ...result.checks.dns.ns_records,
+      ...result.checks.email_security.mx_records.records
+    ].sort().join(",")}`);
+    certParts.push(`${result.domain}:${result.checks.ssl.issuer}:${result.checks.ssl.expires_at}:${result.checks.ssl.grade}`);
+    result.findings
+      .filter((finding) => finding.severity === "critical" || finding.severity === "warning")
+      .forEach((finding) => findings.add(finding.id.includes(":") ? finding.id : `${result.domain}:${finding.id}`));
+    dmarcExists = dmarcExists && result.checks.email_security.dmarc.exists;
+    if (dmarcRank(result.checks.email_security.dmarc.policy, result.checks.email_security.dmarc.exists) < dmarcRank(weakestDmarcPolicy, true)) {
+      weakestDmarcPolicy = result.checks.email_security.dmarc.policy;
+    }
+  });
+
+  const first = results[0];
+  return {
+    critical_ports: [...criticalPorts].sort((left, right) => left - right),
+    dns_fingerprint: stableFingerprint(dnsParts),
+    dmarc_policy: weakestDmarcPolicy,
+    dmarc_exists: dmarcExists,
+    cert_fingerprint: stableFingerprint(certParts),
+    ssl_expires_at: first?.checks.ssl.expires_at ?? null,
+    ssl_issuer: first?.checks.ssl.issuer ?? "unknown",
+    findings: [...findings].sort()
+  };
+}
+
+function dmarcRank(policy: EmailSecurityCheck["dmarc"]["policy"], exists: boolean) {
+  if (!exists) return 0;
+  if (policy === "reject") return 3;
+  if (policy === "quarantine") return 2;
+  if (policy === "none") return 1;
+  return 0;
+}
+
+function stableFingerprint(parts: string[]) {
+  return parts.sort().join("|");
 }
 
 async function persistMonitoringResult(
@@ -1770,7 +2023,8 @@ async function persistMonitoringResult(
     ...snapshot,
     checks: {
       categories: snapshot.category_scores,
-      checked_at: snapshot.checked_at
+      checked_at: snapshot.checked_at,
+      comparison: asRecordOrNull(snapshot.checks.comparison)
     },
     encrypted_checks: encryptedChecks,
     payload_sha256: payloadHash
@@ -1810,9 +2064,8 @@ async function fetchMonitoringTargets(env: Env): Promise<PracticeMonitorTarget[]
     .filter((target) => isUuid(target.id) && Boolean(normalizeDomain(target.domain)));
 }
 
-async function fetchPreviousCriticalPorts(env: Env, practiceId: string) {
-  const ports = new Set<number>();
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !isUuid(practiceId)) return ports;
+async function fetchPreviousMonitoringSummary(env: Env, practiceId: string): Promise<MonitoringComparisonSummary | null> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !isUuid(practiceId)) return null;
 
   try {
     const data = await supabaseRest<unknown[]>(
@@ -1822,20 +2075,13 @@ async function fetchPreviousCriticalPorts(env: Env, practiceId: string) {
     );
     const previous = asRecordOrNull(data[0]);
     const checks = asRecordOrNull(previous?.checks);
-    const portCheck = asRecordOrNull(checks?.ports);
-    const openPorts = Array.isArray(portCheck?.open_ports) ? portCheck.open_ports : [];
-
-    for (const item of openPorts) {
-      const port = asRecordOrNull(item);
-      if (typeof port?.port === "number" && port.severity === "critical") {
-        ports.add(port.port);
-      }
-    }
+    const comparison = asRecordOrNull(checks?.comparison);
+    const current = asRecordOrNull(comparison?.current);
+    if (!current) return null;
+    return readMonitoringComparisonSummary(current);
   } catch {
-    return ports;
+    return null;
   }
-
-  return ports;
 }
 
 async function supabaseRest<T>(
@@ -2155,7 +2401,7 @@ async function checkPorts(domain: string, apiKey?: string): Promise<PortCheck> {
   }
 }
 
-async function checkLeaks(domain: string, email: string | null, apiKey?: string): Promise<LeakCheck> {
+async function checkLeaks(domain: string, email: string | string[] | null, apiKey?: string): Promise<LeakCheck> {
   const empty: LeakCheck = {
     email_found: false,
     breach_count: 0,
@@ -2166,28 +2412,32 @@ async function checkLeaks(domain: string, email: string | null, apiKey?: string)
 
   if (!apiKey) return empty;
 
+  const emails = uniqueEmails(Array.isArray(email) ? email : email ? [email] : []);
+
   try {
-    const [breachesResponse, pastesResponse, domainBreachesResponse] = await Promise.all([
-      email
-        ? fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
+    const accountResults = await Promise.all(
+      emails.map(async (mail) => {
+        const [breachesResponse, pastesResponse] = await Promise.all([
+          fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(mail)}?truncateResponse=false`, {
+            headers: hibpHeaders(apiKey)
+          }),
+          fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(mail)}`, {
             headers: hibpHeaders(apiKey)
           })
-        : null,
-      email
-        ? fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(email)}`, {
-            headers: hibpHeaders(apiKey)
-          })
-        : null,
-      fetch(`https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`, {
-        headers: hibpHeaders(apiKey)
+        ]);
+        const breaches =
+          breachesResponse.status === 404 || !breachesResponse.ok
+            ? []
+            : ((await breachesResponse.json()) as Array<{ Name?: string; BreachDate?: string; DataClasses?: string[] }>);
+        const pastes = pastesResponse.status === 404 || !pastesResponse.ok ? [] : ((await pastesResponse.json()) as unknown[]);
+        return { breaches, pasteCount: pastes.length };
       })
-    ]);
-    const breaches =
-      !breachesResponse || breachesResponse.status === 404 || !breachesResponse.ok
-        ? []
-        : ((await breachesResponse.json()) as Array<{ Name?: string; BreachDate?: string; DataClasses?: string[] }>);
-    const pastes =
-      !pastesResponse || pastesResponse.status === 404 || !pastesResponse.ok ? [] : ((await pastesResponse.json()) as unknown[]);
+    );
+    const domainBreachesResponse = await fetch(`https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`, {
+      headers: hibpHeaders(apiKey)
+    });
+    const breaches = accountResults.flatMap((result) => result.breaches);
+    const pasteCount = accountResults.reduce((sum, result) => sum + result.pasteCount, 0);
     const domainBreaches =
       domainBreachesResponse.status === 404 || !domainBreachesResponse.ok
         ? []
@@ -2202,7 +2452,7 @@ async function checkLeaks(domain: string, email: string | null, apiKey?: string)
         data_types: breach.DataClasses ?? []
       })),
       domain_found: domainBreaches.length > 0,
-      paste_count: pastes.length
+      paste_count: pasteCount
     };
   } catch {
     return empty;
@@ -2654,6 +2904,30 @@ function hibpHeaders(apiKey: string) {
 
 function uniqueDomains(domains: string[]) {
   return [...new Set(domains.map((domain) => normalizeDomain(domain)).filter(Boolean))].sort();
+}
+
+function uniqueEmails(emails: string[]) {
+  return [...new Set(emails.map((email) => normalizeEmail(email)).filter((email): email is string => Boolean(email)))].sort();
+}
+
+function readMonitoringComparisonSummary(value: Record<string, unknown>): MonitoringComparisonSummary {
+  return {
+    critical_ports: Array.isArray(value.critical_ports)
+      ? value.critical_ports.filter((port): port is number => typeof port === "number")
+      : [],
+    dns_fingerprint: typeof value.dns_fingerprint === "string" ? value.dns_fingerprint : "",
+    dmarc_policy:
+      value.dmarc_policy === "none" || value.dmarc_policy === "quarantine" || value.dmarc_policy === "reject"
+        ? value.dmarc_policy
+        : null,
+    dmarc_exists: typeof value.dmarc_exists === "boolean" ? value.dmarc_exists : false,
+    cert_fingerprint: typeof value.cert_fingerprint === "string" ? value.cert_fingerprint : "",
+    ssl_expires_at: typeof value.ssl_expires_at === "string" ? value.ssl_expires_at : null,
+    ssl_issuer: typeof value.ssl_issuer === "string" ? value.ssl_issuer : "unknown",
+    findings: Array.isArray(value.findings)
+      ? value.findings.filter((finding): finding is string => typeof finding === "string")
+      : []
+  };
 }
 
 function providerLabel(provider: ProviderName) {

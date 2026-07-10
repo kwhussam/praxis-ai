@@ -102,10 +102,70 @@ describe("POST /api/check/external", () => {
       expect(result.provider_statuses.virusTotal).toBe("not_configured");
       expect(result.provider_statuses.securityTrails).toBe("not_configured");
       expect(result.findings.some((finding) => finding.id === "not-checked-shodan")).toBe(true);
-      expect(result.checks.subdomains.evaluated[0]).toMatchObject({ domain: "www.praxis.de" });
+      expect(result.checks.subdomains.evaluated.some((item) => item.domain === "www.praxis.de")).toBe(true);
       expect(result.checks.email_security.mta_sts.exists).toBe(true);
       expect(result.checks.email_security.tls_rpt.exists).toBe(true);
       expect(result.checks.email_security.caa.exists).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("nutzt Monitoring-Ziele und sendet E-Mail-Leak-Abfragen nur mit Einwilligung", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://praxis.de") || url.startsWith("https://portal.praxis.de") || url.startsWith("https://www.praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        const name = requestUrl.searchParams.get("name");
+        const type = requestUrl.searchParams.get("type");
+        return Response.json(dnsResponse(name ?? "", type ?? ""));
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/monitoring/run", {
+          method: "POST",
+          body: JSON.stringify({
+            domain: "praxis.de",
+            subdomains: ["portal.praxis.de"],
+            emails: ["kontakt@praxis.de"],
+            leakConsentAccepted: false
+          })
+        }),
+        { ...baseEnv, HIBP_API_KEY: "hibp-test" },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = await res.json() as {
+        snapshot: { checks: { monitoring_targets: string[]; approved_email_count: number } };
+        events: Array<{ details: { risk_state?: string } }>;
+      };
+      expect(result.snapshot.checks.monitoring_targets).toEqual(["portal.praxis.de", "praxis.de"]);
+      expect(result.snapshot.checks.approved_email_count).toBe(0);
+      expect(result.events.some((event) => event.details.risk_state === "new" || event.details.risk_state === "unchanged")).toBe(true);
+      expect(requestedUrls.some((url) => url.includes("haveibeenpwned.com/api/v3/breachedaccount"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -135,6 +195,9 @@ function dnsResponse(name: string, type: string) {
     },
     "www.praxis.de": {
       A: ["203.0.113.11"]
+    },
+    "portal.praxis.de": {
+      A: ["203.0.113.12"]
     }
   };
   const values = records[name]?.[type] ?? [];

@@ -7,6 +7,7 @@ import {
   Download,
   MailCheck,
   Play,
+  Plus,
   Server,
   ShieldAlert,
   ShieldCheck,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react-native";
 import { MotiView } from "moti";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BarChart } from "@/components/charts/BarChart";
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
@@ -42,8 +43,12 @@ import {
   type DashboardData,
   type MonitoringEvent,
   type MonitoringSeverity,
-  type MonitoringSnapshot
+  type MonitoringSnapshot,
+  type MonitoringTargets,
+  type RiskHistoryState
 } from "@/lib/monitoring/types";
+import type { InventoryItemType } from "@/lib/inventory/types";
+import { useInventoryStore } from "@/lib/store/inventory";
 import { useSessionStore } from "@/lib/store/session";
 
 type AlertFilter = "all" | MonitoringSeverity;
@@ -51,6 +56,10 @@ type AlertFilter = "all" | MonitoringSeverity;
 export default function MonitoringScreen() {
   const practice = useSessionStore((state) => state.practice);
   const practiceId = practice?.id ?? "";
+  const ensurePracticeInventory = useInventoryStore((state) => state.ensurePracticeInventory);
+  const inventoryItems = useInventoryStore((state) => state.getItems(practiceId));
+  const addInventoryItem = useInventoryStore((state) => state.addItem);
+  const removeInventoryItem = useInventoryStore((state) => state.removeItem);
   const [dashboard, setDashboard] = useState<DashboardData>(() =>
     AppConfig.isDemoMode && practiceId.startsWith("demo-") ? buildDemoDashboard(practiceId) : buildEmptyDashboard(practiceId)
   );
@@ -58,6 +67,14 @@ export default function MonitoringScreen() {
   const [scanning, setScanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<AlertFilter>("all");
+  const [domainDraft, setDomainDraft] = useState("");
+  const [subdomainDraft, setSubdomainDraft] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [leakConsentAccepted, setLeakConsentAccepted] = useState(false);
+
+  useEffect(() => {
+    ensurePracticeInventory(practice);
+  }, [ensurePracticeInventory, practice]);
 
   useEffect(() => {
     let mounted = true;
@@ -123,6 +140,26 @@ export default function MonitoringScreen() {
     () => dashboard.events.filter((event) => filter === "all" || event.severity === filter),
     [dashboard.events, filter]
   );
+  const monitoringTargets = useMemo<MonitoringTargets>(() => {
+    const domains = uniqueStrings([
+      practice?.domain,
+      ...inventoryItems.filter((item) => item.type === "domain").map((item) => item.name)
+    ].filter((value): value is string => Boolean(value)).map(normalizeDomainInput));
+    const subdomains = uniqueStrings(
+      inventoryItems.filter((item) => item.type === "subdomain").map((item) => normalizeDomainInput(item.name))
+    );
+    const emails = uniqueStrings([
+      practice?.email,
+      ...inventoryItems.filter((item) => item.type === "email").map((item) => item.name)
+    ].filter((value): value is string => Boolean(value)).map((value) => value.trim().toLowerCase()));
+
+    return {
+      domains,
+      subdomains,
+      emails,
+      leakConsentAccepted
+    };
+  }, [inventoryItems, leakConsentAccepted, practice?.domain, practice?.email]);
 
   async function handleManualScan() {
     if (!practice) return;
@@ -131,7 +168,7 @@ export default function MonitoringScreen() {
     setNotice(null);
 
     try {
-      const result = await startManualMonitoringScan(practice);
+      const result = await startManualMonitoringScan(practice, monitoringTargets);
       setDashboard((current) => ({
         snapshot: result.snapshot,
         events: [...result.events, ...current.events].slice(0, 40),
@@ -143,6 +180,22 @@ export default function MonitoringScreen() {
     } finally {
       setScanning(false);
     }
+  }
+
+  function handleAddTarget(type: InventoryItemType, rawValue: string, clear: (value: string) => void) {
+    if (!practice) return;
+    const value = type === "email" ? rawValue.trim().toLowerCase() : normalizeDomainInput(rawValue);
+    if (!value) {
+      Alert.alert("Monitoring-Ziel", "Bitte einen gültigen Wert eintragen.");
+      return;
+    }
+    addInventoryItem(practice.id, {
+      type,
+      name: value,
+      detail: type === "email" ? "Für Leak-Prüfung freigegebene Adresse" : "Externes Monitoring-Ziel",
+      criticality: type === "domain" ? "high" : "medium"
+    });
+    clear("");
   }
 
   return (
@@ -197,6 +250,26 @@ export default function MonitoringScreen() {
       </View>
       {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
+      <MonitoringTargetCard
+        targets={monitoringTargets}
+        domainDraft={domainDraft}
+        subdomainDraft={subdomainDraft}
+        emailDraft={emailDraft}
+        leakConsentAccepted={leakConsentAccepted}
+        onDomainDraftChange={setDomainDraft}
+        onSubdomainDraftChange={setSubdomainDraft}
+        onEmailDraftChange={setEmailDraft}
+        onAddDomain={() => handleAddTarget("domain", domainDraft, setDomainDraft)}
+        onAddSubdomain={() => handleAddTarget("subdomain", subdomainDraft, setSubdomainDraft)}
+        onAddEmail={() => handleAddTarget("email", emailDraft, setEmailDraft)}
+        onToggleLeakConsent={() => setLeakConsentAccepted((current) => !current)}
+        onRemoveTarget={(value) => {
+          if (!practice) return;
+          const item = inventoryItems.find((candidate) => candidate.name === value && (candidate.type === "domain" || candidate.type === "subdomain" || candidate.type === "email"));
+          if (item) removeInventoryItem(practice.id, item.id);
+        }}
+      />
+
       <LiveFeed events={dashboard.events.slice(0, 5)} />
       <BarChart title="Kategorie-Scores" data={categoryData} />
 
@@ -210,6 +283,119 @@ export default function MonitoringScreen() {
       <AlertHistory events={filteredEvents} activeFilter={filter} onFilterChange={setFilter} />
       <ScheduleCard />
     </Screen>
+  );
+}
+
+function MonitoringTargetCard({
+  targets,
+  domainDraft,
+  subdomainDraft,
+  emailDraft,
+  leakConsentAccepted,
+  onDomainDraftChange,
+  onSubdomainDraftChange,
+  onEmailDraftChange,
+  onAddDomain,
+  onAddSubdomain,
+  onAddEmail,
+  onToggleLeakConsent,
+  onRemoveTarget
+}: {
+  targets: MonitoringTargets;
+  domainDraft: string;
+  subdomainDraft: string;
+  emailDraft: string;
+  leakConsentAccepted: boolean;
+  onDomainDraftChange: (value: string) => void;
+  onSubdomainDraftChange: (value: string) => void;
+  onEmailDraftChange: (value: string) => void;
+  onAddDomain: () => void;
+  onAddSubdomain: () => void;
+  onAddEmail: () => void;
+  onToggleLeakConsent: () => void;
+  onRemoveTarget: (value: string) => void;
+}) {
+  return (
+    <GlassCard style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Prüfziele</Text>
+        <Text style={styles.sectionMeta}>{targets.domains.length + targets.subdomains.length + targets.emails.length} Ziele</Text>
+      </View>
+      <Text style={styles.detailCopy}>
+        Domains und Subdomains werden extern auf DNS, TLS, Mail-Sicherheit, Ports und Reputation geprüft. E-Mail-Adressen werden nur nach separater Einwilligung für Leak-Abfragen verwendet.
+      </Text>
+
+      <TargetInput label="Domain" value={domainDraft} placeholder="praxis.de" onChangeText={onDomainDraftChange} onAdd={onAddDomain} />
+      <TargetInput label="Subdomain" value={subdomainDraft} placeholder="vpn.praxis.de" onChangeText={onSubdomainDraftChange} onAdd={onAddSubdomain} />
+      <TargetInput label="E-Mail" value={emailDraft} placeholder="kontakt@praxis.de" onChangeText={onEmailDraftChange} onAdd={onAddEmail} keyboardType="email-address" />
+
+      <Pressable style={styles.consentRow} onPress={onToggleLeakConsent}>
+        <View style={[styles.checkbox, leakConsentAccepted ? styles.checkboxActive : null]}>
+          {leakConsentAccepted ? <CheckCircle2 color={colors.ink} size={14} /> : null}
+        </View>
+        <Text style={styles.consentText}>
+          Ich bin berechtigt, die freigegebenen Praxis-E-Mail-Adressen für Datenleck-Prüfungen zu verwenden. Es werden nur Treffer-Metadaten verarbeitet.
+        </Text>
+      </Pressable>
+
+      <TargetList title="Domains" items={targets.domains} onRemove={onRemoveTarget} />
+      <TargetList title="Subdomains" items={targets.subdomains} onRemove={onRemoveTarget} />
+      <TargetList title="E-Mail-Adressen" items={targets.emails} onRemove={onRemoveTarget} disabled={!leakConsentAccepted} />
+    </GlassCard>
+  );
+}
+
+function TargetInput({
+  label,
+  value,
+  placeholder,
+  keyboardType,
+  onChangeText,
+  onAdd
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  keyboardType?: "email-address";
+  onChangeText: (value: string) => void;
+  onAdd: () => void;
+}) {
+  return (
+    <View style={styles.targetInputRow}>
+      <View style={styles.targetInputBody}>
+        <Text style={styles.targetLabel}>{label}</Text>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.muted}
+          keyboardType={keyboardType}
+          autoCapitalize="none"
+          style={styles.input}
+        />
+      </View>
+      <Pressable style={styles.iconButton} onPress={onAdd}>
+        <Plus color={colors.ink} size={16} />
+      </Pressable>
+    </View>
+  );
+}
+
+function TargetList({ title, items, disabled, onRemove }: { title: string; items: string[]; disabled?: boolean; onRemove: (value: string) => void }) {
+  if (items.length === 0) return null;
+
+  return (
+    <View style={styles.targetList}>
+      <Text style={styles.targetLabel}>{title}</Text>
+      <View style={styles.targetChips}>
+        {items.map((item) => (
+          <Pressable key={item} style={[styles.targetChip, disabled ? styles.targetChipDisabled : null]} onPress={() => onRemove(item)}>
+            <Text style={styles.targetChipText}>{item}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {disabled ? <Text style={styles.privacyHint}>Leak-Prüfung für E-Mail-Adressen ist bis zur Einwilligung deaktiviert.</Text> : null}
+    </View>
   );
 }
 
@@ -352,10 +538,22 @@ function EventRow({ event, compact = false }: { event: MonitoringEvent; compact?
         <Icon color={color} size={18} />
       </View>
       <View style={styles.eventBody}>
-        <Text style={styles.eventTitle}>{event.title}</Text>
+        <View style={styles.eventTitleRow}>
+          <Text style={styles.eventTitle}>{event.title}</Text>
+          {event.risk_state ? <RiskStateBadge state={event.risk_state} /> : null}
+        </View>
         {!compact ? <Text style={styles.eventMessage}>{event.message}</Text> : null}
         <Text style={styles.eventTime}>{relativeTime(event.created_at)}</Text>
       </View>
+    </View>
+  );
+}
+
+function RiskStateBadge({ state }: { state: RiskHistoryState }) {
+  const tone: RiskTone = state === "new" ? "critical" : state === "recurring" ? "warning" : state === "resolved" ? "safe" : "info";
+  return (
+    <View style={[styles.riskStateBadge, { borderColor: riskColors[tone] }]}>
+      <Text style={[styles.riskStateText, { color: riskColors[tone] }]}>{riskStateLabel(state)}</Text>
     </View>
   );
 }
@@ -393,6 +591,21 @@ function relativeTime(value: string) {
 
 function formatHistoryDay(value: string) {
   return new Date(value).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+}
+
+function riskStateLabel(state: RiskHistoryState) {
+  if (state === "new") return "Neu";
+  if (state === "recurring") return "Wiederkehrend";
+  if (state === "resolved") return "Behoben";
+  return "Unverändert";
+}
+
+function normalizeDomainInput(value: string) {
+  return value.trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
 }
 
 const styles = StyleSheet.create({
@@ -509,10 +722,28 @@ const styles = StyleSheet.create({
   eventBody: {
     flex: 1
   },
+  eventTitleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
   eventTitle: {
     color: colors.ink,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: "800"
+  },
+  riskStateBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3
+  },
+  riskStateText: {
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase"
   },
   eventMessage: {
     color: colors.muted,
@@ -639,6 +870,98 @@ const styles = StyleSheet.create({
   empty: {
     color: colors.muted,
     fontSize: 14
+  },
+  targetInputRow: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 12
+  },
+  targetInputBody: {
+    flex: 1
+  },
+  targetLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 6,
+    textTransform: "uppercase"
+  },
+  input: {
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "700",
+    minHeight: 44,
+    paddingHorizontal: 12
+  },
+  iconButton: {
+    alignItems: "center",
+    backgroundColor: colors.electric,
+    borderRadius: 12,
+    height: 44,
+    justifyContent: "center",
+    width: 44
+  },
+  consentRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14
+  },
+  checkbox: {
+    alignItems: "center",
+    borderColor: colors.borderStrong,
+    borderRadius: 6,
+    borderWidth: 1,
+    height: 22,
+    justifyContent: "center",
+    marginTop: 2,
+    width: 22
+  },
+  checkboxActive: {
+    backgroundColor: colors.electric,
+    borderColor: colors.electric
+  },
+  consentText: {
+    color: colors.ink,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19
+  },
+  targetList: {
+    marginTop: 14
+  },
+  targetChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  targetChip: {
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 8
+  },
+  targetChipDisabled: {
+    opacity: 0.55
+  },
+  targetChipText: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  privacyHint: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 8
   },
   scheduleRows: {
     gap: 10,

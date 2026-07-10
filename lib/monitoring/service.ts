@@ -8,7 +8,9 @@ import {
   type MonitoringEvent,
   type MonitoringEventType,
   type MonitoringSeverity,
-  type MonitoringSnapshot
+  type MonitoringSnapshot,
+  type MonitoringTargets,
+  type RiskHistoryState
 } from "@/lib/monitoring/types";
 
 type PracticeRef = {
@@ -120,15 +122,19 @@ export function subscribeToMonitoringRealtime(practiceId: string, handlers: Real
   };
 }
 
-export async function startManualMonitoringScan(practice: PracticeRef) {
+export async function startManualMonitoringScan(practice: PracticeRef, targets?: MonitoringTargets) {
   assertDemoPracticeAccess(practice.id);
 
   return apiRequest<{ snapshot: MonitoringSnapshot; events: MonitoringEvent[] }>("/api/monitoring/run", {
     method: "POST",
     body: {
       practiceId: practice.id,
-      domain: practice.domain,
-      email: practice.email
+      domain: targets?.domains[0] ?? practice.domain,
+      email: targets?.leakConsentAccepted ? targets.emails[0] ?? practice.email : undefined,
+      domains: targets?.domains,
+      subdomains: targets?.subdomains,
+      emails: targets?.leakConsentAccepted ? targets.emails : undefined,
+      leakConsentAccepted: targets?.leakConsentAccepted === true
     }
   });
 }
@@ -276,6 +282,7 @@ function normalizeEvent(row: unknown): MonitoringEvent {
     title: readString(row, "title", titleForType(type)),
     message: readString(row, "message", ""),
     details: readRecord(row, "details"),
+    risk_state: readRiskState(readRecord(row, "details")),
     resolved_at: readNullableString(row, "resolved_at"),
     created_at: readString(row, "created_at", new Date().toISOString())
   };
@@ -334,6 +341,12 @@ function readSeverity(row: unknown): MonitoringSeverity {
   const severity = readString(row, "severity", "info");
   if (severity === "critical" || severity === "warning" || severity === "info") return severity;
   return "info";
+}
+
+function readRiskState(details: Record<string, unknown>): RiskHistoryState | undefined {
+  const state = details.risk_state;
+  if (state === "new" || state === "recurring" || state === "resolved" || state === "unchanged") return state;
+  return undefined;
 }
 
 function readSource(row: unknown): MonitoringSnapshot["source"] {

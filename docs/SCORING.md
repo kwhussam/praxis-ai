@@ -74,4 +74,6 @@ DNS-Sicherheitstests verwenden harmlose Malware-/Phishing-Testdomains und werten
 
 Externe Domain-Checks entdecken Subdomains über SecurityTrails oder begrenzte Cloudflare-DNS-Fallbacks und bewerten jede gefundene Subdomain separat für DNS- und TLS-Signale. Mail-Sicherheitsprüfungen umfassen SPF-/DKIM-/DMARC-Alignment-Bereitschaft, MTA-STS, TLS-RPT und CAA.
 
+Monitoring-Läufe verwenden explizit gepflegte Prüfziele aus Domains, Subdomains und freigegebenen Praxis-E-Mail-Adressen. Leak-Prüfungen für E-Mail-Adressen laufen nur nach separater Einwilligung. Befunde werden historisch als `new`, `recurring`, `resolved` oder `unchanged` markiert; die Einstufung basiert auf reduzierten Vergleichs-Fingerprints für Ports, DNS, DMARC und Zertifikate.
+
 Der DNS-Betrieb wird zusätzlich per Fragebogen dokumentiert: verwendeter Resolver, DNS-Filter, Datenschutzbewertung, zuständiger Dienstleister und dokumentierte Konfiguration. IPv6 wird nur dann als sauber abgedeckt bewertet, wenn die Praxis die bewusste Nutzung sowie Firewall- und DNS-Regeln für IPv6 bestätigt oder technische Befunde dies stützen. Ein optionaler lokaler IPv6-Port-/Erreichbarkeitscheck läuft nur nach expliziter Einwilligung und prüft ausschließlich lokale ULA-/Link-Local-Adressen.

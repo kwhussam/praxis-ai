@@ -26,6 +26,7 @@ export type MonitoringEventType =
   | "monitoring_run";
 
 export type MonitoringSeverity = "critical" | "warning" | "info";
+export type RiskHistoryState = "new" | "recurring" | "resolved" | "unchanged";
 
 export type MonitoringEvent = {
   id: string;
@@ -35,8 +36,16 @@ export type MonitoringEvent = {
   title: string;
   message: string;
   details: Record<string, unknown>;
+  risk_state?: RiskHistoryState;
   resolved_at: string | null;
   created_at: string;
+};
+
+export type MonitoringTargets = {
+  domains: string[];
+  subdomains: string[];
+  emails: string[];
+  leakConsentAccepted: boolean;
 };
 
 export type EmailSecurityStatus = {

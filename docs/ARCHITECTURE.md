@@ -59,3 +59,5 @@ Cloudflare Worker:
 - External checks expose per-provider status (`active`, `not_configured`, `unavailable`) so missing API keys are reported as not checked instead of being interpreted as no risk.
 - Domain checks include bounded subdomain discovery through SecurityTrails, with a Cloudflare DNS common-host fallback, and evaluate each discovered subdomain separately for DNS/TLS posture.
 - Mail security checks cover SPF, DKIM and DMARC alignment readiness plus MTA-STS, TLS-RPT and CAA DNS records.
+- The Monitoring tab lets practices maintain explicit external targets for domains, subdomains and email addresses. Email addresses are sent for leak checks only when the user grants explicit consent for that run.
+- Monitoring snapshots persist a small comparison summary for open critical ports, DNS fingerprints, DMARC policy and certificate fingerprints. This enables historical states for findings: new, recurring, resolved or unchanged, while full check payloads remain encrypted.
