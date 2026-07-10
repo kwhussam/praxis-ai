@@ -23,6 +23,8 @@ Die Gewichtung erfolgt anhand der maximalen Regelpunkte:
 
 Prüfmodule mit `not_checked`- oder `unavailable`-Evidenz erhalten keine Punkte und werden nicht als bestanden markiert. Ausgeführte technische Prüfungen ohne Befund bleiben weiterhin positiv bewertbar, sofern die jeweilige Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
 
+Externe Provider wie Shodan, HIBP, VirusTotal, SecurityTrails, SSL Labs und Cloudflare DNS werden mit separatem Providerstatus ausgewiesen. Fehlende API-Keys erzeugen `not_checked`-Hinweise und werden nicht als “keine Risiken gefunden” gewertet.
+
 ## Kategorien
 
 - `access_control`: Zugriffsschutz, insbesondere MFA.
@@ -69,5 +71,7 @@ Der Firewall-Basischeck trennt interne Sicht aus lokalen Probes von externer Sic
 Segmentierungsprüfungen können nacheinander aus Praxis-WLAN, Gäste-WLAN, Servernetz, Druckernetz und Medizingerätenetz ausgeführt werden. Jeder Lauf speichert nur Segment, sichtbare Geräteklassen und offene Dienstmetadaten; die Bewertung aggregiert die letzten Beobachtungen pro Segment und markiert auffällige Überschneidungen. Wenn aus früheren Segmentläufen konkrete Ziel-IP-/Port-Kombinationen bekannt sind, prüft ein späterer Lauf gezielt deren TCP-Erreichbarkeit aus dem aktuellen Segment. So werden Client-Isolation und VLAN-Trennung nachvollziehbar bewertet, ohne vollständige Quersegment-Scans zu erzwingen.
 
 DNS-Sicherheitstests verwenden harmlose Malware-/Phishing-Testdomains und werten nur DNS-Antworten aus. Es werden keine Webseiten geöffnet, keine Dateien geladen und keine schädlichen Inhalte abgerufen.
+
+Externe Domain-Checks entdecken Subdomains über SecurityTrails oder begrenzte Cloudflare-DNS-Fallbacks und bewerten jede gefundene Subdomain separat für DNS- und TLS-Signale. Mail-Sicherheitsprüfungen umfassen SPF-/DKIM-/DMARC-Alignment-Bereitschaft, MTA-STS, TLS-RPT und CAA.
 
 Der DNS-Betrieb wird zusätzlich per Fragebogen dokumentiert: verwendeter Resolver, DNS-Filter, Datenschutzbewertung, zuständiger Dienstleister und dokumentierte Konfiguration. IPv6 wird nur dann als sauber abgedeckt bewertet, wenn die Praxis die bewusste Nutzung sowie Firewall- und DNS-Regeln für IPv6 bestätigt oder technische Befunde dies stützen. Ein optionaler lokaler IPv6-Port-/Erreichbarkeitscheck läuft nur nach expliziter Einwilligung und prüft ausschließlich lokale ULA-/Link-Local-Adressen.

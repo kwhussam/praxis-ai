@@ -29,17 +29,38 @@ export type EmailSecurityCheck = {
     valid: boolean;
     record: string;
     issues: string[];
+    alignment: "pass" | "warning" | "fail";
+    alignment_mode: "strict" | "relaxed" | null;
   };
   dkim: {
     exists: boolean;
     selector_found: string | null;
     valid: boolean;
+    alignment: "pass" | "warning" | "fail";
+    alignment_mode: "strict" | "relaxed" | null;
   };
   dmarc: {
     exists: boolean;
     policy: "none" | "quarantine" | "reject" | null;
     rua: string | null;
+    spf_alignment_mode: "strict" | "relaxed" | null;
+    dkim_alignment_mode: "strict" | "relaxed" | null;
+    alignment_ready: boolean;
     recommendation: string;
+  };
+  mta_sts: {
+    exists: boolean;
+    mode: "enforce" | "testing" | "none" | null;
+    record: string;
+  };
+  tls_rpt: {
+    exists: boolean;
+    rua: string | null;
+    record: string;
+  };
+  caa: {
+    exists: boolean;
+    records: string[];
   };
   mx_records: {
     exists: boolean;
@@ -89,6 +110,28 @@ export type ReputationCheck = {
   }[];
 };
 
+export type SubdomainSecurityCheck = {
+  domain: string;
+  source: "securitytrails" | "cloudflare_dns_common";
+  checks: {
+    dns: DNSCheck;
+    ssl: SSLCheck;
+  };
+  score: number;
+  findings: SecurityFinding[];
+};
+
+export type SubdomainDiscoveryCheck = {
+  status: "checked" | "partial" | "not_checked";
+  source: "securitytrails" | "cloudflare_dns_common" | "none";
+  discovered: string[];
+  evaluated: SubdomainSecurityCheck[];
+  not_checked_reason?: string;
+};
+
+export type ExternalProviderName = "shodan" | "hibp" | "virusTotal" | "securityTrails" | "sslLabs" | "cloudflareDns";
+export type ExternalProviderStatus = "active" | "not_configured" | "unavailable";
+
 export type ExternalCheckResult = {
   checkId?: string;
   domain: string;
@@ -100,6 +143,7 @@ export type ExternalCheckResult = {
     ports: PortCheck;
     reputation: ReputationCheck;
     leaks: LeakCheck;
+    subdomains: SubdomainDiscoveryCheck;
   };
   overall_score: number;
   critical_count: number;
@@ -108,6 +152,7 @@ export type ExternalCheckResult = {
   checkedAt: string;
   scoreImpact: number;
   providers: Record<string, boolean>;
+  provider_statuses: Record<ExternalProviderName, ExternalProviderStatus>;
 };
 
 export async function runExternalCheck(domain: string, email?: string, practiceId?: string) {

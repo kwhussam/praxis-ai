@@ -109,7 +109,8 @@ export async function generateAiReport(input: AiReportRequest): Promise<AiReport
       findings: input.findings,
       checkedAt: new Date().toISOString(),
       scoreImpact: input.score - 100,
-      providers: {}
+      providers: {},
+      provider_statuses: {}
     } as unknown as ExternalCheckResult
   });
 

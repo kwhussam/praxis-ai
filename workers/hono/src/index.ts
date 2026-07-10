@@ -22,6 +22,8 @@ type Env = {
 };
 
 type FindingSeverity = "critical" | "warning" | "info";
+type ProviderName = "shodan" | "hibp" | "virusTotal" | "securityTrails" | "sslLabs" | "cloudflareDns";
+type ProviderStatus = "active" | "not_configured" | "unavailable";
 
 type SecurityFinding = {
   id: string;
@@ -110,17 +112,38 @@ type EmailSecurityCheck = {
     valid: boolean;
     record: string;
     issues: string[];
+    alignment: "pass" | "warning" | "fail";
+    alignment_mode: "strict" | "relaxed" | null;
   };
   dkim: {
     exists: boolean;
     selector_found: string | null;
     valid: boolean;
+    alignment: "pass" | "warning" | "fail";
+    alignment_mode: "strict" | "relaxed" | null;
   };
   dmarc: {
     exists: boolean;
     policy: "none" | "quarantine" | "reject" | null;
     rua: string | null;
+    spf_alignment_mode: "strict" | "relaxed" | null;
+    dkim_alignment_mode: "strict" | "relaxed" | null;
+    alignment_ready: boolean;
     recommendation: string;
+  };
+  mta_sts: {
+    exists: boolean;
+    mode: "enforce" | "testing" | "none" | null;
+    record: string;
+  };
+  tls_rpt: {
+    exists: boolean;
+    rua: string | null;
+    record: string;
+  };
+  caa: {
+    exists: boolean;
+    records: string[];
   };
   mx_records: {
     exists: boolean;
@@ -176,6 +199,25 @@ type ReputationCheck = {
   dns_history: DNSHistoryEntry[];
 };
 
+type SubdomainSecurityCheck = {
+  domain: string;
+  source: "securitytrails" | "cloudflare_dns_common";
+  checks: {
+    dns: DNSCheck;
+    ssl: SSLCheck;
+  };
+  score: number;
+  findings: SecurityFinding[];
+};
+
+type SubdomainDiscoveryCheck = {
+  status: "checked" | "partial" | "not_checked";
+  source: "securitytrails" | "cloudflare_dns_common" | "none";
+  discovered: string[];
+  evaluated: SubdomainSecurityCheck[];
+  not_checked_reason?: string;
+};
+
 type ExternalCheckResult = {
   domain: string;
   timestamp: string;
@@ -186,6 +228,7 @@ type ExternalCheckResult = {
     ports: PortCheck;
     reputation: ReputationCheck;
     leaks: LeakCheck;
+    subdomains: SubdomainDiscoveryCheck;
   };
   overall_score: number;
   critical_count: number;
@@ -194,6 +237,7 @@ type ExternalCheckResult = {
   checkedAt: string;
   scoreImpact: number;
   providers: Record<string, boolean>;
+  provider_statuses: Record<ProviderName, ProviderStatus>;
 };
 
 type CheckData = {
@@ -1007,6 +1051,7 @@ function redactedExternalSummary(result: ExternalCheckResult) {
     critical_count: result.critical_count,
     warning_count: result.warning_count,
     providers: result.providers,
+    provider_statuses: result.provider_statuses,
     finding_ids: result.findings.map((finding) => finding.id)
   };
 }
@@ -1153,16 +1198,18 @@ function pdfUtf16Hex(value: string) {
 
 async function performExternalCheck(domain: string, email: string | null, env: Env): Promise<ExternalCheckResult> {
   const timestamp = new Date().toISOString();
-  const [dns, ssl, emailSecurity, ports, reputation, leaks] = await Promise.all([
+  const [dns, ssl, emailSecurity, ports, reputation, leaks, subdomains] = await Promise.all([
     checkDns(domain),
     checkSsl(domain),
     checkEmailSecurity(domain),
     checkPorts(domain, env.SHODAN_API_KEY),
     checkReputation(domain, env),
-    checkLeaks(domain, email, env.HIBP_API_KEY)
+    checkLeaks(domain, email, env.HIBP_API_KEY),
+    checkSubdomains(domain, env)
   ]);
-  const checks = { ssl, dns, email_security: emailSecurity, ports, reputation, leaks };
-  const findings = buildFindings(checks);
+  const checks = { ssl, dns, email_security: emailSecurity, ports, reputation, leaks, subdomains };
+  const provider_statuses = buildProviderStatuses(env, { sslLabs: ssl.issuer !== "unknown" || ssl.protocol !== "unknown" });
+  const findings = buildFindings(checks, provider_statuses);
   const critical_count = findings.filter((finding) => finding.severity === "critical").length;
   const warning_count = findings.filter((finding) => finding.severity === "warning").length;
   const overall_score = calculateOverallScore(critical_count, warning_count, findings);
@@ -1178,14 +1225,14 @@ async function performExternalCheck(domain: string, email: string | null, env: E
     checkedAt: timestamp,
     scoreImpact: overall_score - 100,
     providers: {
-      sslLabs: true,
-      cloudflareDns: true,
-      securityTrails: Boolean(env.SECURITYTRAILS_API_KEY),
-      shodan: Boolean(env.SHODAN_API_KEY),
-      hibp: Boolean(env.HIBP_API_KEY),
-      virusTotal: Boolean(env.VIRUSTOTAL_API_KEY),
-      mxToolbox: Boolean(env.MXTOOLBOX_API_KEY)
-    }
+      sslLabs: provider_statuses.sslLabs === "active",
+      cloudflareDns: provider_statuses.cloudflareDns === "active",
+      securityTrails: provider_statuses.securityTrails === "active",
+      shodan: provider_statuses.shodan === "active",
+      hibp: provider_statuses.hibp === "active",
+      virusTotal: provider_statuses.virusTotal === "active"
+    },
+    provider_statuses
   };
 
   return result;
@@ -1845,8 +1892,14 @@ function scoreEmail(email: EmailSecurityCheck) {
   return clampScore(
     (email.spf.exists && email.spf.valid ? 30 : 0) +
       (email.dkim.exists && email.dkim.valid ? 25 : 0) +
-      (email.dmarc.exists ? 20 : 0) +
+      (email.spf.alignment === "pass" ? 8 : email.spf.alignment === "warning" ? 4 : 0) +
+      (email.dkim.alignment === "pass" ? 8 : email.dkim.alignment === "warning" ? 4 : 0) +
+      (email.dmarc.exists ? 16 : 0) +
       (email.dmarc.policy === "reject" ? 15 : email.dmarc.policy === "quarantine" ? 10 : 0) +
+      (email.dmarc.alignment_ready ? 8 : 0) +
+      (email.mta_sts.exists && email.mta_sts.mode === "enforce" ? 8 : 0) +
+      (email.tls_rpt.exists ? 4 : 0) +
+      (email.caa.exists ? 3 : 0) +
       (email.mx_records.secure ? 10 : 0)
   );
 }
@@ -1974,12 +2027,13 @@ async function checkDns(domain: string): Promise<DNSCheck> {
 }
 
 async function checkEmailSecurity(domain: string): Promise<EmailSecurityCheck> {
-  const [txtRecords, mxRecords, dmarcRecords, mtaStsRecords, tlsRptRecords, dkim] = await Promise.all([
+  const [txtRecords, mxRecords, dmarcRecords, mtaStsRecords, tlsRptRecords, caaRecords, dkim] = await Promise.all([
     queryDns(domain, "TXT"),
     queryDns(domain, "MX"),
     queryDns(`_dmarc.${domain}`, "TXT"),
     queryDns(`_mta-sts.${domain}`, "TXT"),
     queryDns(`_smtp._tls.${domain}`, "TXT"),
+    queryDns(domain, "CAA"),
     findDkim(domain)
   ]);
   const spfRecords = txtRecords.filter((record) => record.toLowerCase().startsWith("v=spf1"));
@@ -1987,28 +2041,55 @@ async function checkEmailSecurity(domain: string): Promise<EmailSecurityCheck> {
   const dmarcRecord = dmarcRecords.find((record) => record.toLowerCase().startsWith("v=dmarc1")) ?? "";
   const policy = getDmarcPolicy(dmarcRecord);
   const rua = getTagValue(dmarcRecord, "rua");
+  const spfAlignmentMode = getAlignmentMode(dmarcRecord, "aspf");
+  const dkimAlignmentMode = getAlignmentMode(dmarcRecord, "adkim");
+  const mtaStsRecord = mtaStsRecords.find((record) => record.toLowerCase().startsWith("v=stsv1")) ?? "";
+  const tlsRptRecord = tlsRptRecords.find((record) => record.toLowerCase().startsWith("v=tlsrptv1")) ?? "";
+  const mtaStsMode = getTagValue(mtaStsRecord, "mode")?.toLowerCase() ?? null;
 
   return {
     spf: {
       exists: spfRecords.length > 0,
       valid: spfRecords.length === 1 && spfIssues.length === 0,
       record: spfRecords[0] ?? "",
-      issues: spfIssues
+      issues: spfIssues,
+      alignment: spfRecords.length > 0 && Boolean(dmarcRecord) ? "pass" : spfRecords.length > 0 ? "warning" : "fail",
+      alignment_mode: spfAlignmentMode
     },
-    dkim,
+    dkim: {
+      ...dkim,
+      alignment: dkim.exists && Boolean(dmarcRecord) ? "pass" : dkim.exists ? "warning" : "fail",
+      alignment_mode: dkimAlignmentMode
+    },
     dmarc: {
       exists: Boolean(dmarcRecord),
       policy,
       rua,
+      spf_alignment_mode: spfAlignmentMode,
+      dkim_alignment_mode: dkimAlignmentMode,
+      alignment_ready: Boolean(dmarcRecord) && (spfRecords.length > 0 || dkim.exists),
       recommendation: getDmarcRecommendation(policy)
+    },
+    mta_sts: {
+      exists: Boolean(mtaStsRecord),
+      mode: mtaStsMode === "enforce" || mtaStsMode === "testing" || mtaStsMode === "none" ? mtaStsMode : null,
+      record: mtaStsRecord
+    },
+    tls_rpt: {
+      exists: Boolean(tlsRptRecord),
+      rua: getTagValue(tlsRptRecord, "rua"),
+      record: tlsRptRecord
+    },
+    caa: {
+      exists: caaRecords.length > 0,
+      records: caaRecords
     },
     mx_records: {
       exists: mxRecords.length > 0,
       records: mxRecords,
       secure:
         mxRecords.length > 0 &&
-        (mtaStsRecords.some((record) => record.toLowerCase().startsWith("v=stsv1")) ||
-          tlsRptRecords.some((record) => record.toLowerCase().startsWith("v=tlsrptv1")))
+        (mtaStsRecord.length > 0 || tlsRptRecord.length > 0)
     }
   };
 }
@@ -2083,26 +2164,30 @@ async function checkLeaks(domain: string, email: string | null, apiKey?: string)
     paste_count: 0
   };
 
-  if (!apiKey || !email) return empty;
+  if (!apiKey) return empty;
 
   try {
     const [breachesResponse, pastesResponse, domainBreachesResponse] = await Promise.all([
-      fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
-        headers: hibpHeaders(apiKey)
-      }),
-      fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(email)}`, {
-        headers: hibpHeaders(apiKey)
-      }),
+      email
+        ? fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
+            headers: hibpHeaders(apiKey)
+          })
+        : null,
+      email
+        ? fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(email)}`, {
+            headers: hibpHeaders(apiKey)
+          })
+        : null,
       fetch(`https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`, {
         headers: hibpHeaders(apiKey)
       })
     ]);
     const breaches =
-      breachesResponse.status === 404 || !breachesResponse.ok
+      !breachesResponse || breachesResponse.status === 404 || !breachesResponse.ok
         ? []
         : ((await breachesResponse.json()) as Array<{ Name?: string; BreachDate?: string; DataClasses?: string[] }>);
     const pastes =
-      pastesResponse.status === 404 || !pastesResponse.ok ? [] : ((await pastesResponse.json()) as unknown[]);
+      !pastesResponse || pastesResponse.status === 404 || !pastesResponse.ok ? [] : ((await pastesResponse.json()) as unknown[]);
     const domainBreaches =
       domainBreachesResponse.status === 404 || !domainBreachesResponse.ok
         ? []
@@ -2216,6 +2301,74 @@ async function checkSecurityTrailsHistory(domain: string, apiKey?: string): Prom
   }
 }
 
+async function checkSubdomains(domain: string, env: Env): Promise<SubdomainDiscoveryCheck> {
+  const securityTrails = await discoverSecurityTrailsSubdomains(domain, env.SECURITYTRAILS_API_KEY);
+  const discovered = securityTrails.length > 0 ? securityTrails : await discoverCommonDnsSubdomains(domain);
+  const source = securityTrails.length > 0 ? "securitytrails" : discovered.length > 0 ? "cloudflare_dns_common" : "none";
+  const evaluated = await Promise.all(
+    discovered.slice(0, 12).map(async (subdomain) => evaluateSubdomain(subdomain, source === "securitytrails" ? "securitytrails" : "cloudflare_dns_common"))
+  );
+
+  return {
+    status: securityTrails.length > 0 ? "checked" : "partial",
+    source: source === "none" ? "cloudflare_dns_common" : source,
+    discovered,
+    evaluated,
+    not_checked_reason: discovered.length === 0 && !env.SECURITYTRAILS_API_KEY ? "SECURITYTRAILS_API_KEY fehlt; nur begrenzte DNS-Fallbacks möglich." : undefined
+  };
+}
+
+async function discoverSecurityTrailsSubdomains(domain: string, apiKey?: string) {
+  if (!apiKey) return [];
+
+  try {
+    const response = await fetch(`https://api.securitytrails.com/v1/domain/${encodeURIComponent(domain)}/subdomains`, {
+      headers: { APIKEY: apiKey }
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { subdomains?: string[] };
+    return uniqueDomains((data.subdomains ?? []).map((item) => `${item}.${domain}`));
+  } catch {
+    return [];
+  }
+}
+
+async function discoverCommonDnsSubdomains(domain: string) {
+  const candidates = ["www", "mail", "webmail", "vpn", "remote", "portal", "app", "cloud", "owa", "autodiscover"].map((item) => `${item}.${domain}`);
+  const results = await Promise.all(
+    candidates.map(async (candidate) => {
+      const [a, aaaa, cname] = await Promise.all([queryDns(candidate, "A"), queryDns(candidate, "AAAA"), queryDns(candidate, "CNAME")]);
+      return a.length > 0 || aaaa.length > 0 || cname.length > 0 ? candidate : null;
+    })
+  );
+  return uniqueDomains(results.filter((item): item is string => Boolean(item)));
+}
+
+async function evaluateSubdomain(domain: string, source: SubdomainSecurityCheck["source"]): Promise<SubdomainSecurityCheck> {
+  const [dns, ssl] = await Promise.all([checkDns(domain), checkSsl(domain)]);
+  const findings: SecurityFinding[] = [];
+  if (dns.a_records.length === 0 && dns.aaaa_records.length === 0 && dns.cname_records.length === 0) {
+    findings.push({ id: `subdomain-dns-${domain}`, severity: "warning", title: `${domain}: no DNS target found` });
+  }
+  if (!ssl.valid) {
+    findings.push({ id: `subdomain-ssl-${domain}`, severity: "warning", title: `${domain}: TLS certificate is not valid or not reachable` });
+  }
+  if (ssl.vulnerabilities.length > 0 || ssl.grade === "F") {
+    findings.push({ id: `subdomain-tls-${domain}`, severity: "critical", title: `${domain}: TLS scan reports weak configuration` });
+  }
+  return {
+    domain,
+    source,
+    checks: { dns, ssl },
+    score: calculateOverallScore(
+      findings.filter((finding) => finding.severity === "critical").length,
+      findings.filter((finding) => finding.severity === "warning").length,
+      findings
+    ),
+    findings
+  };
+}
+
 async function queryDns(name: string, type: string): Promise<string[]> {
   try {
     const response = await fetch(
@@ -2259,8 +2412,30 @@ async function findDkim(domain: string) {
   };
 }
 
-function buildFindings(checks: ExternalCheckResult["checks"]): SecurityFinding[] {
+function buildProviderStatuses(
+  env: Env,
+  runtime: { sslLabs: boolean }
+): Record<ProviderName, ProviderStatus> {
+  return {
+    shodan: env.SHODAN_API_KEY ? "active" : "not_configured",
+    hibp: env.HIBP_API_KEY ? "active" : "not_configured",
+    virusTotal: env.VIRUSTOTAL_API_KEY ? "active" : "not_configured",
+    securityTrails: env.SECURITYTRAILS_API_KEY ? "active" : "not_configured",
+    sslLabs: runtime.sslLabs ? "active" : "unavailable",
+    cloudflareDns: "active"
+  };
+}
+
+function buildFindings(checks: ExternalCheckResult["checks"], providers: Record<ProviderName, ProviderStatus>): SecurityFinding[] {
   const findings: SecurityFinding[] = [];
+
+  for (const [provider, status] of Object.entries(providers) as Array<[ProviderName, ProviderStatus]>) {
+    if (status === "not_configured") {
+      findings.push({ id: `not-checked-${provider}`, severity: "info", title: `${providerLabel(provider)} wurde nicht geprüft: API-Key fehlt.` });
+    } else if (status === "unavailable") {
+      findings.push({ id: `unavailable-${provider}`, severity: "info", title: `${providerLabel(provider)} war technisch nicht verfügbar.` });
+    }
+  }
 
   if (!checks.ssl.valid) {
     findings.push({ id: "ssl-invalid", severity: "critical", title: "SSL/TLS certificate is invalid or expired" });
@@ -2285,15 +2460,33 @@ function buildFindings(checks: ExternalCheckResult["checks"]): SecurityFinding[]
   } else if (!checks.email_security.spf.valid) {
     findings.push({ id: "spf-invalid", severity: "warning", title: "SPF record has configuration issues" });
   }
+  if (checks.email_security.spf.alignment !== "pass") {
+    findings.push({ id: "spf-alignment", severity: "warning", title: "SPF alignment is not fully evidenced by DMARC policy" });
+  }
 
   if (!checks.email_security.dkim.exists) {
     findings.push({ id: "dkim-missing", severity: "warning", title: "No common DKIM selector was found" });
+  }
+  if (checks.email_security.dkim.alignment !== "pass") {
+    findings.push({ id: "dkim-alignment", severity: "warning", title: "DKIM alignment is not fully evidenced by DMARC policy" });
   }
 
   if (!checks.email_security.dmarc.exists) {
     findings.push({ id: "dmarc-missing", severity: "critical", title: "DMARC record is missing" });
   } else if (checks.email_security.dmarc.policy === "none") {
     findings.push({ id: "dmarc-policy", severity: "warning", title: "DMARC policy should be quarantine or reject" });
+  }
+  if (!checks.email_security.dmarc.alignment_ready) {
+    findings.push({ id: "dmarc-alignment", severity: "warning", title: "DMARC alignment cannot be confirmed from SPF/DKIM evidence" });
+  }
+  if (!checks.email_security.mta_sts.exists || checks.email_security.mta_sts.mode !== "enforce") {
+    findings.push({ id: "mta-sts-missing", severity: "warning", title: "MTA-STS is missing or not enforced" });
+  }
+  if (!checks.email_security.tls_rpt.exists) {
+    findings.push({ id: "tls-rpt-missing", severity: "warning", title: "TLS-RPT record is missing" });
+  }
+  if (!checks.email_security.caa.exists) {
+    findings.push({ id: "caa-missing", severity: "warning", title: "CAA record is missing" });
   }
 
   for (const port of checks.ports.open_ports) {
@@ -2326,13 +2519,23 @@ function buildFindings(checks: ExternalCheckResult["checks"]): SecurityFinding[]
     findings.push({ id: "phishing-reports", severity: "warning", title: "Phishing reports exist for this domain" });
   }
 
+  for (const subdomain of checks.subdomains.evaluated) {
+    for (const finding of subdomain.findings) {
+      findings.push(finding);
+    }
+  }
+
   return findings;
 }
 
 function calculateOverallScore(criticalCount: number, warningCount: number, findings: SecurityFinding[]) {
-  const infoCount = findings.filter((finding) => finding.severity === "info").length;
+  const infoCount = findings.filter((finding) => finding.severity === "info" && !isNotCheckedFinding(finding)).length;
 
   return Math.max(0, Math.min(100, 100 - criticalCount * 18 - warningCount * 8 - infoCount * 2));
+}
+
+function isNotCheckedFinding(finding: SecurityFinding) {
+  return finding.id.startsWith("not-checked-") || finding.id.startsWith("unavailable-");
 }
 
 function normalizeDomain(value?: string) {
@@ -2408,6 +2611,13 @@ function getDmarcPolicy(record: string): EmailSecurityCheck["dmarc"]["policy"] {
   return null;
 }
 
+function getAlignmentMode(record: string, tag: "aspf" | "adkim"): "strict" | "relaxed" | null {
+  if (!record) return null;
+  const value = getTagValue(record, tag);
+  if (value === "s") return "strict";
+  return "relaxed";
+}
+
 function getTagValue(record: string, tag: string) {
   const match = record.match(new RegExp(`(?:^|;)\\s*${tag}=([^;]+)`, "i"));
   return match?.[1]?.trim() ?? null;
@@ -2440,6 +2650,22 @@ function hibpHeaders(apiKey: string) {
     "hibp-api-key": apiKey,
     "user-agent": "PraxisShield external-check"
   };
+}
+
+function uniqueDomains(domains: string[]) {
+  return [...new Set(domains.map((domain) => normalizeDomain(domain)).filter(Boolean))].sort();
+}
+
+function providerLabel(provider: ProviderName) {
+  const labels: Record<ProviderName, string> = {
+    shodan: "Shodan",
+    hibp: "HIBP",
+    virusTotal: "VirusTotal",
+    securityTrails: "SecurityTrails",
+    sslLabs: "SSL Labs",
+    cloudflareDns: "Cloudflare DNS"
+  };
+  return labels[provider];
 }
 
 export default {

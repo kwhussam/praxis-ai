@@ -55,4 +55,7 @@ Cloudflare Worker:
 - Implement push token registration and alert notification channels.
 - Add PDF rendering with partner logo/theme inputs.
 - Add Supabase generated TypeScript types after the local schema is running.
-- Persist external check results and monitoring deltas after SecurityTrails, Shodan, HIBP, VirusTotal and DNS-over-HTTPS return normalized Worker output.
+- Persist external check results and monitoring deltas after SecurityTrails, Shodan, HIBP, VirusTotal, SSL Labs and Cloudflare DNS return normalized Worker output.
+- External checks expose per-provider status (`active`, `not_configured`, `unavailable`) so missing API keys are reported as not checked instead of being interpreted as no risk.
+- Domain checks include bounded subdomain discovery through SecurityTrails, with a Cloudflare DNS common-host fallback, and evaluate each discovered subdomain separately for DNS/TLS posture.
+- Mail security checks cover SPF, DKIM and DMARC alignment readiness plus MTA-STS, TLS-RPT and CAA DNS records.
