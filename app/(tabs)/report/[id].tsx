@@ -67,10 +67,30 @@ export default function ReportDetailScreen() {
               <Text style={styles.actionMeta}>
                 {priorityLabel(risk.priority)} · {risk.effort_hours} · {risk.cost_estimate}
               </Text>
+              <Text style={styles.evidenceMeta}>
+                Evidenz: {evidenceSourceLabel(risk.evidence_source)} · Zuverlässigkeit: {reliabilityLabel(risk.reliability)}
+              </Text>
               <Text style={styles.nextStep}>Nächster Schritt: {risk.action}</Text>
             </View>
           </View>
         ))}
+      </GlassCard>
+
+      <GlassCard style={styles.card}>
+        <Text style={styles.section}>Nicht geprüft / technische Einschränkungen</Text>
+        {report.not_checked_limitations.length > 0 ? (
+          report.not_checked_limitations.map((limitation) => (
+            <View key={`${limitation.area}-${limitation.reason}`} style={styles.limitation}>
+              <Text style={styles.limitationTitle}>{limitation.area}</Text>
+              <Text style={styles.body}>{limitation.reason}</Text>
+              <Text style={styles.nextStep}>Auswirkung: {limitation.impact}</Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.body}>
+            Keine Einschränkungen im KI-Bericht angegeben. Positive Aussagen gelten nur für tatsächlich geprüfte oder nachgewiesene Bereiche.
+          </Text>
+        )}
       </GlassCard>
 
       <GlassCard style={styles.card}>
@@ -122,6 +142,20 @@ function dsgvoStatusLabel(status: Report["dsgvo_compliance"]["status"]) {
   if (status === "nicht_konform") return "Nicht konform";
   if (status === "teilweise") return "Teilweise konform";
   return "Konform";
+}
+
+function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
+  if (value === "measured") return "gemessen";
+  if (value === "inferred") return "heuristisch";
+  if (value === "self_reported") return "Selbstauskunft";
+  if (value === "not_checked") return "nicht geprüft";
+  return "nicht verfügbar";
+}
+
+function reliabilityLabel(value: Report["top_risks"][number]["reliability"]) {
+  if (value === "high") return "hoch";
+  if (value === "medium") return "mittel";
+  return "niedrig";
 }
 
 const styles = StyleSheet.create({
@@ -188,11 +222,30 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 10
   },
+  evidenceMeta: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 19,
+    marginTop: 6
+  },
   nextStep: {
     color: colors.ink,
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 20,
     marginTop: 8
+  },
+  limitation: {
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 12
+  },
+  limitationTitle: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "900"
   }
 });

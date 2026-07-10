@@ -7,6 +7,8 @@ export type OverallRisk = "critical" | "high" | "medium" | "low";
 export type AmpelColor = "rot" | "gelb" | "grün";
 export type RiskPriority = "sofort" | "diese_woche" | "diesen_monat";
 export type DsgvoStatus = "nicht_konform" | "teilweise" | "konform";
+export type EvidenceSource = "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
+export type FindingReliability = "high" | "medium" | "low";
 
 export type CheckData = {
   practiceId?: string;
@@ -28,6 +30,14 @@ export type TopRisk = {
   effort_hours: string;
   cost_estimate: string;
   priority: RiskPriority;
+  evidence_source: EvidenceSource;
+  reliability: FindingReliability;
+};
+
+export type ReportLimitation = {
+  area: string;
+  reason: string;
+  impact: string;
 };
 
 export type CategoryScores = {
@@ -60,6 +70,7 @@ export type Report = {
   scores_by_category: CategoryScores;
   dsgvo_compliance: DsgvoCompliance;
   quick_wins: QuickWin[];
+  not_checked_limitations: ReportLimitation[];
   monthly_monitoring_recommendation: boolean;
 };
 
@@ -81,6 +92,8 @@ const riskValues = ["critical", "high", "medium", "low"] as const;
 const ampelValues = ["rot", "gelb", "grün"] as const;
 const priorityValues = ["sofort", "diese_woche", "diesen_monat"] as const;
 const dsgvoValues = ["nicht_konform", "teilweise", "konform"] as const;
+const evidenceValues = ["measured", "inferred", "self_reported", "not_checked", "unavailable"] as const;
+const reliabilityValues = ["high", "medium", "low"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
 
 export async function generateReport(data: CheckData): Promise<Report> {
@@ -154,6 +167,9 @@ export function validateReport(value: unknown): Report {
       liability_risk: requireString(dsgvo.liability_risk, "dsgvo_compliance.liability_risk")
     },
     quick_wins: requireArray(report.quick_wins, "quick_wins").map(validateQuickWin),
+    not_checked_limitations: requireArray(report.not_checked_limitations, "not_checked_limitations").map(
+      validateReportLimitation
+    ),
     monthly_monitoring_recommendation: requireBoolean(
       report.monthly_monitoring_recommendation,
       "monthly_monitoring_recommendation"
@@ -172,7 +188,19 @@ function validateTopRisk(value: unknown, index: number): TopRisk {
     action: requireString(risk.action, `top_risks.${index}.action`),
     effort_hours: requireString(risk.effort_hours, `top_risks.${index}.effort_hours`),
     cost_estimate: requireString(risk.cost_estimate, `top_risks.${index}.cost_estimate`),
-    priority: requireEnum(risk.priority, priorityValues, `top_risks.${index}.priority`)
+    priority: requireEnum(risk.priority, priorityValues, `top_risks.${index}.priority`),
+    evidence_source: requireEnum(risk.evidence_source, evidenceValues, `top_risks.${index}.evidence_source`),
+    reliability: requireEnum(risk.reliability, reliabilityValues, `top_risks.${index}.reliability`)
+  };
+}
+
+function validateReportLimitation(value: unknown, index: number): ReportLimitation {
+  const limitation = requireObject(value, `not_checked_limitations.${index}`);
+
+  return {
+    area: requireString(limitation.area, `not_checked_limitations.${index}.area`),
+    reason: requireString(limitation.reason, `not_checked_limitations.${index}.reason`),
+    impact: requireString(limitation.impact, `not_checked_limitations.${index}.impact`)
   };
 }
 

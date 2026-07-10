@@ -27,9 +27,26 @@ export function AiReport({ report }: AiReportProps) {
             <View style={styles.riskText}>
               <Text style={styles.riskTitle}>{risk.title}</Text>
               <Text style={styles.riskCopy}>{risk.action}</Text>
+              <Text style={styles.riskMeta}>
+                Evidenz: {evidenceSourceLabel(risk.evidence_source)} · Zuverlässigkeit: {reliabilityLabel(risk.reliability)}
+              </Text>
             </View>
           </View>
         ))}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Nicht geprüft / technische Einschränkungen</Text>
+        {report.not_checked_limitations.length > 0 ? (
+          report.not_checked_limitations.slice(0, 3).map((limitation) => (
+            <View key={`${limitation.area}-${limitation.reason}`} style={styles.limitation}>
+              <Text style={styles.limitationTitle}>{limitation.area}</Text>
+              <Text style={styles.riskCopy}>{limitation.impact}</Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.riskCopy}>Keine Einschränkungen im KI-Bericht angegeben. Positive Aussagen gelten nur für tatsächlich geprüfte Bereiche.</Text>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -49,6 +66,20 @@ function ampelTone(ampel: Report["ampel"]): RiskTone {
   if (ampel === "rot") return "critical";
   if (ampel === "gelb") return "warning";
   return "safe";
+}
+
+function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
+  if (value === "measured") return "gemessen";
+  if (value === "inferred") return "heuristisch";
+  if (value === "self_reported") return "Selbstauskunft";
+  if (value === "not_checked") return "nicht geprüft";
+  return "nicht verfügbar";
+}
+
+function reliabilityLabel(value: Report["top_risks"][number]["reliability"]) {
+  if (value === "high") return "hoch";
+  if (value === "medium") return "mittel";
+  return "niedrig";
 }
 
 const styles = StyleSheet.create({
@@ -115,6 +146,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 3
+  },
+  riskMeta: {
+    color: colors.electric,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 18,
+    marginTop: 6
+  },
+  limitation: {
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12
+  },
+  limitationTitle: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 3
   },
   quickWin: {
     alignItems: "center",

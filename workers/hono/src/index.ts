@@ -293,6 +293,8 @@ type Report = {
     effort_hours: string;
     cost_estimate: string;
     priority: "sofort" | "diese_woche" | "diesen_monat";
+    evidence_source: "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
+    reliability: "high" | "medium" | "low";
   }>;
   scores_by_category: {
     access_control: number;
@@ -310,6 +312,11 @@ type Report = {
   quick_wins: Array<{
     action: string;
     time_minutes: number;
+    impact: string;
+  }>;
+  not_checked_limitations: Array<{
+    area: string;
+    reason: string;
     impact: string;
   }>;
   monthly_monitoring_recommendation: boolean;
@@ -413,6 +420,11 @@ TONALITÄT:
 - Sensibel für den Praxiskontext (Patientendaten, DSGVO, Haftung)
 
 AUSGABEFORMAT: Antworte ausschließlich als valides JSON gemäß ReportSchema. Keine Markdown-Blöcke, keine Erklärtexte.
+
+NICHT-GEPRÜFT-REGEL:
+- Formuliere nicht geprüfte, technisch nicht verfügbare oder nicht konfigurierte Bereiche niemals als sicher, bestanden, unauffällig, risikofrei oder wirksam geschützt.
+- Wenn eine Prüfung fehlt, darfst du nur die eingeschränkte Aussagekraft und den nächsten Prüfauftrag beschreiben.
+- Top-Risiken müssen die Evidenzquelle und die geschätzte Zuverlässigkeit transparent ausweisen.
 `;
 
 const REPORT_SCHEMA_HINT = `{
@@ -429,7 +441,9 @@ const REPORT_SCHEMA_HINT = `{
       "action": "Konkrete Maßnahme",
       "effort_hours": "Zeitaufwand",
       "cost_estimate": "Kostenrahmen",
-      "priority": "sofort|diese_woche|diesen_monat"
+      "priority": "sofort|diese_woche|diesen_monat",
+      "evidence_source": "measured|inferred|self_reported|not_checked|unavailable",
+      "reliability": "high|medium|low"
     }
   ],
   "scores_by_category": {
@@ -452,10 +466,19 @@ const REPORT_SCHEMA_HINT = `{
       "impact": "Wirkung der Maßnahme"
     }
   ],
+  "not_checked_limitations": [
+    {
+      "area": "Betroffener Prüfbereich",
+      "reason": "Warum nicht oder nur eingeschränkt geprüft",
+      "impact": "Konkrete Auswirkung auf die Aussagekraft"
+    }
+  ],
   "monthly_monitoring_recommendation": true
 }`;
 
 function buildReportPrompt(data: CheckData) {
+  const limitations = buildReportLimitations(data);
+
   return `
 Analysiere folgende Sicherheitsdaten einer Arztpraxis und erstelle einen strukturierten Bericht.
 
@@ -472,16 +495,100 @@ ${JSON.stringify(data.wlan ?? null, null, 2)}
 EXTERNER CHECK:
 ${JSON.stringify(data.external ?? null, null, 2)}
 
+NICHT GEPRÜFT / TECHNISCHE EINSCHRÄNKUNGEN:
+${JSON.stringify(limitations, null, 2)}
+
 Erstelle einen Bericht gemäß diesem Schema:
 ${REPORT_SCHEMA_HINT}
 
 Bewertungsregeln:
 - top_risks: maximal 5 Einträge, nach Dringlichkeit sortiert.
+- Jedes Top-Risiko muss evidence_source und reliability enthalten.
+- not_checked_limitations muss alle oben genannten Einschränkungen übernehmen oder fachlich präziser zusammenfassen.
+- Wenn not_checked_limitations nicht leer ist, muss die executive_summary die begrenzte Aussagekraft erwähnen.
+- Nicht geprüfte oder technisch nicht verfügbare Bereiche dürfen nicht als Schutzwirkung, bestandene Kontrolle oder Entwarnung formuliert werden.
+- Ein Top-Risiko mit evidence_source "not_checked" oder "unavailable" muss klar als fehlender Nachweis, fehlende Prüfung oder technische Einschränkung benannt sein.
 - quick_wins: 2 bis 4 konkrete Maßnahmen mit geringem Aufwand.
 - security_score und scores_by_category immer zwischen 0 und 100.
 - Ampel: rot bei critical/high, gelb bei medium, grün bei low.
 - Nenne keine erfundenen Produktpreise; nutze grobe Kostenrahmen wie "0-100 EUR" oder "IT-Dienstleister, 1-2 Stunden".
 `;
+}
+
+function buildReportLimitations(data: CheckData) {
+  const limitations: Report["not_checked_limitations"] = [];
+  const questionnaire = data.questionnaire ?? {};
+  const wlan = asRecordOrNull(data.wlan);
+  const external = asRecordOrNull(data.external);
+
+  if (Object.keys(questionnaire).length === 0) {
+    limitations.push({
+      area: "Fragebogen/Nachweise",
+      reason: "Es liegen keine Selbstauskünfte oder Nachweisantworten vor.",
+      impact: "Organisatorische Kontrollen wie MFA, Backup, Patchmanagement und DSGVO-Dokumentation können nicht als umgesetzt bewertet werden."
+    });
+  }
+
+  if (!wlan) {
+    limitations.push({
+      area: "Lokales Netzwerk/WLAN",
+      reason: "Es wurden keine lokalen WLAN- oder Netzwerkscan-Ergebnisse übergeben.",
+      impact: "Aussagen zu sichtbaren Geräten, Access Points, Segmentierung und lokalen offenen Ports sind nur eingeschränkt oder gar nicht möglich."
+    });
+  } else {
+    const methodology = asRecordOrNull(wlan.methodology) ?? {};
+    const platformLimitations = Array.isArray(methodology.platformLimitations) ? methodology.platformLimitations : [];
+    for (const limitation of platformLimitations) {
+      if (typeof limitation !== "string" || limitation.trim().length === 0) continue;
+      limitations.push({
+        area: "Lokales Netzwerk/WLAN",
+        reason: limitation.trim(),
+        impact: "Die technische Messung ist plattformbedingt begrenzt und darf nicht als vollständige Entwarnung interpretiert werden."
+      });
+    }
+  }
+
+  if (!external) {
+    limitations.push({
+      area: "Externe Domain-, Mail- und Leak-Prüfungen",
+      reason: "Es wurden keine externen Prüfergebnisse übergeben.",
+      impact: "Aussagen zu SPF/DKIM/DMARC, Subdomains, Leaks, Zertifikaten, Reputation und extern erreichbaren Diensten sind nicht belastbar."
+    });
+  } else {
+    const providerStatuses = asRecordOrNull(external.provider_statuses) ?? {};
+    for (const [provider, status] of Object.entries(providerStatuses)) {
+      if (status === "active") continue;
+      limitations.push({
+        area: `Externer Provider ${provider}`,
+        reason: status === "not_configured" ? "API-Key oder Provider-Konfiguration fehlt." : "Provider war technisch nicht verfügbar.",
+        impact: "Fehlende Providerdaten dürfen nicht als fehlendes Risiko gewertet werden; der betroffene externe Prüfumfang ist reduziert."
+      });
+    }
+
+    const findings = Array.isArray(external.findings) ? external.findings : [];
+    for (const finding of findings) {
+      const findingRecord = asRecordOrNull(finding);
+      if (!findingRecord || typeof findingRecord.id !== "string") continue;
+      if (!findingRecord.id.startsWith("not-checked-") && !findingRecord.id.startsWith("unavailable-")) continue;
+      limitations.push({
+        area: typeof findingRecord.title === "string" ? findingRecord.title : "Externe Prüfung",
+        reason: findingRecord.id.startsWith("not-checked-") ? "Prüfung wurde nicht ausgeführt." : "Prüfung war technisch nicht verfügbar.",
+        impact: "Der Bereich darf im KI-Bericht nicht als sicher oder unauffällig dargestellt werden."
+      });
+    }
+  }
+
+  return dedupeLimitations(limitations);
+}
+
+function dedupeLimitations(limitations: Report["not_checked_limitations"]) {
+  const seen = new Set<string>();
+  return limitations.filter((limitation) => {
+    const key = `${limitation.area}|${limitation.reason}|${limitation.impact}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function parseAnthropicJson(value: unknown): unknown {
@@ -539,6 +646,9 @@ function validateReport(value: unknown): Report {
       liability_risk: requireString(dsgvo.liability_risk, "dsgvo_compliance.liability_risk")
     },
     quick_wins: requireArray(report.quick_wins, "quick_wins").map(validateQuickWin),
+    not_checked_limitations: requireArray(report.not_checked_limitations, "not_checked_limitations").map(
+      validateReportLimitation
+    ),
     monthly_monitoring_recommendation: requireBoolean(
       report.monthly_monitoring_recommendation,
       "monthly_monitoring_recommendation"
@@ -557,7 +667,23 @@ function validateTopRisk(value: unknown, index: number): Report["top_risks"][num
     action: requireString(risk.action, `top_risks.${index}.action`),
     effort_hours: requireString(risk.effort_hours, `top_risks.${index}.effort_hours`),
     cost_estimate: requireString(risk.cost_estimate, `top_risks.${index}.cost_estimate`),
-    priority: requireEnum(risk.priority, ["sofort", "diese_woche", "diesen_monat"], `top_risks.${index}.priority`)
+    priority: requireEnum(risk.priority, ["sofort", "diese_woche", "diesen_monat"], `top_risks.${index}.priority`),
+    evidence_source: requireEnum(
+      risk.evidence_source,
+      ["measured", "inferred", "self_reported", "not_checked", "unavailable"],
+      `top_risks.${index}.evidence_source`
+    ),
+    reliability: requireEnum(risk.reliability, ["high", "medium", "low"], `top_risks.${index}.reliability`)
+  };
+}
+
+function validateReportLimitation(value: unknown, index: number): Report["not_checked_limitations"][number] {
+  const limitation = requireRecord(value, `not_checked_limitations.${index}`);
+
+  return {
+    area: requireString(limitation.area, `not_checked_limitations.${index}.area`),
+    reason: requireString(limitation.reason, `not_checked_limitations.${index}.reason`),
+    impact: requireString(limitation.impact, `not_checked_limitations.${index}.impact`)
   };
 }
 
@@ -805,13 +931,30 @@ function buildPdfSections(input: { reportId: string; practiceName: string; domai
     ...Object.entries(input.report.scores_by_category).map(([category, score]) => `${category}: ${score}/100`),
     "",
     "Kritische Risiken",
-    ...input.report.top_risks.filter((risk) => risk.priority === "sofort").map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
+    ...input.report.top_risks
+      .filter((risk) => risk.priority === "sofort")
+      .map(
+        (risk) =>
+          `${risk.rank}. ${risk.title}: ${risk.action} (Evidenz: ${evidenceSourceLabel(risk.evidence_source)}, Zuverlaessigkeit: ${reliabilityLabel(risk.reliability)})`
+      ),
     "",
     "Warnungen",
-    ...input.report.top_risks.filter((risk) => risk.priority !== "sofort").map((risk) => `${risk.rank}. ${risk.title}: ${risk.action}`),
+    ...input.report.top_risks
+      .filter((risk) => risk.priority !== "sofort")
+      .map(
+        (risk) =>
+          `${risk.rank}. ${risk.title}: ${risk.action} (Evidenz: ${evidenceSourceLabel(risk.evidence_source)}, Zuverlaessigkeit: ${reliabilityLabel(risk.reliability)})`
+      ),
     "",
-    "Bestandenes",
-    input.report.security_score >= 75 ? "Die wichtigsten Basiskontrollen sind sichtbar wirksam." : "Bestandene Kontrollen sind in den Kategoriescores dokumentiert.",
+    "Nicht geprueft / technische Einschraenkungen",
+    ...(input.report.not_checked_limitations.length > 0
+      ? input.report.not_checked_limitations.map(
+          (limitation) => `${limitation.area}: ${limitation.reason} Auswirkung: ${limitation.impact}`
+        )
+      : ["Keine Einschraenkungen im KI-Bericht angegeben. Dies ersetzt keine Vollpruefung."]),
+    "",
+    "Geltungsbereich gepruefter Kontrollen",
+    "Positive Aussagen gelten nur fuer die tatsaechlich gemessenen oder nachgewiesenen Kontrollen. Nicht gepruefte Bereiche sind nicht als sicher zu werten.",
     "",
     "DSGVO-Status",
     `Status: ${input.report.dsgvo_compliance.status}`,
@@ -827,6 +970,20 @@ function buildPdfSections(input: { reportId: string; practiceName: string; domai
     "Über PraxisShield",
     "PraxisShield AI unterstuetzt Arztpraxen und IT-Partner bei Cybersecurity-Transparenz, DSGVO-Dokumentation und Monitoring."
   ];
+}
+
+function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
+  if (value === "measured") return "gemessen";
+  if (value === "inferred") return "heuristisch";
+  if (value === "self_reported") return "Selbstauskunft";
+  if (value === "not_checked") return "nicht geprueft";
+  return "nicht verfuegbar";
+}
+
+function reliabilityLabel(value: Report["top_risks"][number]["reliability"]) {
+  if (value === "high") return "hoch";
+  if (value === "medium") return "mittel";
+  return "niedrig";
 }
 
 async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise<Report | Response> {

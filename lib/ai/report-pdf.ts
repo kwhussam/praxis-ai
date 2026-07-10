@@ -143,6 +143,12 @@ export function buildReportHtml({ practiceName, domain, report, scoreReport }: E
     .risk-title {
       font-weight: 800;
     }
+    .risk-meta {
+      margin-top: 7px;
+      color: #2D7EF8;
+      font-size: 11px;
+      font-weight: 800;
+    }
     .pill {
       display: inline-block;
       padding: 5px 9px;
@@ -174,6 +180,13 @@ export function buildReportHtml({ practiceName, domain, report, scoreReport }: E
       border-left: 4px solid #2ED573;
       border-radius: 10px;
       background: #F4FBF7;
+    }
+    .limitation {
+      margin-bottom: 10px;
+      padding: 13px 15px;
+      border-left: 4px solid #FFA502;
+      border-radius: 10px;
+      background: #FFF8EA;
     }
     .footer {
       padding: 22px 34px 30px;
@@ -222,7 +235,11 @@ export function buildReportHtml({ practiceName, domain, report, scoreReport }: E
         <tbody>
           ${report.top_risks.map((risk) => `<tr>
             <td>${risk.rank}</td>
-            <td><div class="risk-title">${escapeHtml(risk.title)}</div>${escapeHtml(risk.plain_language)}</td>
+            <td>
+              <div class="risk-title">${escapeHtml(risk.title)}</div>
+              ${escapeHtml(risk.plain_language)}
+              <div class="risk-meta">Evidenz: ${escapeHtml(evidenceSourceLabel(risk.evidence_source))} · Zuverlässigkeit: ${escapeHtml(reliabilityLabel(risk.reliability))}</div>
+            </td>
             <td>${escapeHtml(risk.business_impact)}</td>
             <td>${escapeHtml(risk.action)}</td>
             <td>${escapeHtml(risk.effort_hours)}<br />${escapeHtml(risk.cost_estimate)}</td>
@@ -230,6 +247,17 @@ export function buildReportHtml({ practiceName, domain, report, scoreReport }: E
           </tr>`).join("")}
         </tbody>
       </table>
+    </section>
+
+    <section class="section">
+      <h2>Nicht geprüft / technische Einschränkungen</h2>
+      ${report.not_checked_limitations.length > 0
+        ? report.not_checked_limitations.map((limitation) => `<div class="limitation">
+          <strong>${escapeHtml(limitation.area)}</strong><br />
+          ${escapeHtml(limitation.reason)}<br />
+          Auswirkung: ${escapeHtml(limitation.impact)}
+        </div>`).join("")
+        : `<p>Keine Einschränkungen im KI-Bericht angegeben. Positive Aussagen gelten nur für tatsächlich geprüfte oder nachgewiesene Bereiche.</p>`}
     </section>
 
     <section class="section">
@@ -337,6 +365,20 @@ function priorityLabel(value: Report["top_risks"][number]["priority"]) {
   if (value === "sofort") return "Sofort";
   if (value === "diese_woche") return "Diese Woche";
   return "Diesen Monat";
+}
+
+function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
+  if (value === "measured") return "gemessen";
+  if (value === "inferred") return "heuristisch";
+  if (value === "self_reported") return "Selbstauskunft";
+  if (value === "not_checked") return "nicht geprüft";
+  return "nicht verfügbar";
+}
+
+function reliabilityLabel(value: Report["top_risks"][number]["reliability"]) {
+  if (value === "high") return "hoch";
+  if (value === "medium") return "mittel";
+  return "niedrig";
 }
 
 function dsgvoStatusLabel(value: Report["dsgvo_compliance"]["status"]) {
