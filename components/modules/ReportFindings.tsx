@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { colors } from "@/constants/colors";
@@ -9,15 +11,15 @@ type ReportFindingsProps = {
 };
 
 const moduleLabels: Record<string, string> = {
-  MFA_ENABLED: "MFA",
+  MFA_ENABLED: "Zweite Anmeldung",
   BACKUP_TESTED: "Backup",
-  DMARC_POLICY: "DMARC",
+  DMARC_POLICY: "Schutz gegen gefälschte Praxis-Mails",
   PATCHING_CURRENT: "Updates",
-  WLAN_ENCRYPTION: "WLAN-Verschlüsselung",
+  WLAN_ENCRYPTION: "WLAN-Schutz",
   STAFF_TRAINING: "Schulung",
   PRIVACY_DOCUMENTATION: "DSGVO-Dokumentation",
   SECURITY_RESPONSIBILITIES: "Verantwortlichkeiten",
-  ACTIVE_FINDINGS: "Aktive Findings",
+  ACTIVE_FINDINGS: "Aktive Warnungen",
   NETWORK_SECURITY_PROBES: "Netzwerkprüfungen"
 };
 
@@ -30,21 +32,31 @@ const sourceColors: Record<EvidenceSource, string> = {
 };
 
 export function ReportFindings({ scoreReport }: ReportFindingsProps) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <GlassCard style={styles.card}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>Befunde</Text>
-          <Text style={styles.title}>Nachweisart je Prüfmodul</Text>
+          <Text style={styles.kicker}>Für technisch Interessierte</Text>
+          <Text style={styles.title}>Prüfdetails</Text>
         </View>
-        <Text style={styles.coverage}>{scoreReport.evidence_coverage_score}/100</Text>
+        <Pressable style={styles.detailsButton} onPress={() => setExpanded((current) => !current)}>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.ink} />
+          <Text style={styles.detailsButtonText}>{expanded ? "Details ausblenden" : "Details anzeigen"}</Text>
+        </Pressable>
       </View>
 
-      <View style={styles.list}>
-        {scoreReport.rule_results.map((finding) => (
-          <FindingItem key={finding.rule_id} finding={finding} />
-        ))}
-      </View>
+      {expanded ? (
+        <View style={styles.list}>
+          <Text style={styles.explainer}>
+            Diese Rohwerte helfen IT-Partnern bei der Prüfung. Für die Praxis zählt vor allem der Maßnahmenplan oben.
+          </Text>
+          {scoreReport.rule_results.map((finding) => (
+            <FindingItem key={finding.rule_id} finding={finding} />
+          ))}
+        </View>
+      ) : null}
     </GlassCard>
   );
 }
@@ -93,13 +105,30 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 5
   },
-  coverage: {
+  detailsButton: {
+    alignItems: "center",
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  detailsButtonText: {
     color: colors.ink,
-    fontSize: 24,
+    fontSize: 12,
     fontWeight: "900"
   },
   list: {
     marginTop: 16
+  },
+  explainer: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 8
   },
   finding: {
     borderTopColor: colors.border,

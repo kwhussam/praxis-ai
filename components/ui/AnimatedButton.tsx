@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
 import { MotiView } from "moti";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from "react-native";
 
 import { colors } from "@/constants/colors";
 
@@ -18,9 +18,11 @@ export function AnimatedButton({ label, onPress, icon, variant = "primary", styl
   const isDanger = variant === "danger";
   const isGhost = variant === "ghost";
 
-  async function handlePress() {
+  function handlePress() {
     if (disabled) return;
-    await Haptics.impactAsync(isDanger ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS !== "web") {
+      void Haptics.impactAsync(isDanger ? Haptics.ImpactFeedbackStyle.Heavy : Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    }
     onPress();
   }
 

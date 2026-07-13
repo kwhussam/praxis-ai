@@ -20,6 +20,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View 
 
 import { BarChart } from "@/components/charts/BarChart";
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
+import { PracticeGuidanceCard } from "@/components/modules/PracticeGuidanceCard";
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { AmpelBadge } from "@/components/ui/AmpelBadge";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -48,6 +49,7 @@ import {
   type RiskHistoryState
 } from "@/lib/monitoring/types";
 import type { InventoryItemType } from "@/lib/inventory/types";
+import { guidanceFromMonitoring } from "@/lib/security/practiceGuidance";
 import { useInventoryStore } from "@/lib/store/inventory";
 import { useSessionStore } from "@/lib/store/session";
 
@@ -202,9 +204,9 @@ export default function MonitoringScreen() {
     <Screen>
       <View style={styles.header}>
         <View>
-          <Text style={styles.live}>Realtime Monitoring</Text>
-          <Text style={styles.title}>{practice?.name ?? "Praxis"} Security</Text>
-          <Text style={styles.copy}>SSL, DNS, Ports, Leaks und Domain-Reputation laufen als Hintergrundchecks.</Text>
+          <Text style={styles.live}>Laufende Überwachung</Text>
+          <Text style={styles.title}>{practice?.name ?? "Praxis"} Sicherheit</Text>
+          <Text style={styles.copy}>Die wichtigsten Online-Zugänge werden regelmäßig im Hintergrund geprüft.</Text>
         </View>
         <MotiView
           from={{ opacity: 0.7, scale: 0.96 }}
@@ -219,19 +221,20 @@ export default function MonitoringScreen() {
       <GlassCard style={styles.hero}>
         <View style={styles.heroTop}>
           <View>
-            <Text style={styles.cardKicker}>Security Score</Text>
+            <Text style={styles.cardKicker}>Praxiszustand</Text>
             <AmpelBadge tone={tone} label={statusLabel} pulsing={tone === "critical"} />
           </View>
           {loading ? <ActivityIndicator color={colors.electric} /> : <Text style={styles.sync}>Live</Text>}
         </View>
         <View style={styles.scoreArea}>
-          <ScoreRing score={snapshot.score} size={214} stroke={18} />
+          <ScoreRing score={snapshot.score} size={214} stroke={18} label="Sicherheitswert" />
         </View>
         <View style={styles.heroStats}>
           <Metric label="Kritische Alerts" value={`${criticalCount}`} tone={criticalCount > 0 ? "critical" : "safe"} />
           <Metric label="Letzter Lauf" value={relativeTime(snapshot.checked_at)} tone="info" />
         </View>
       </GlassCard>
+      <PracticeGuidanceCard guidance={guidanceFromMonitoring(snapshot.score, criticalCount)} />
 
       <View style={styles.actions}>
         <AnimatedButton
@@ -271,7 +274,7 @@ export default function MonitoringScreen() {
       />
 
       <LiveFeed events={dashboard.events.slice(0, 5)} />
-      <BarChart title="Kategorie-Scores" data={categoryData} />
+      <BarChart title="Kategorie-Überblick" data={categoryData} />
 
       <View style={styles.detailGrid}>
         <SslCountdown snapshot={snapshot} />
@@ -322,11 +325,11 @@ function MonitoringTargetCard({
         <Text style={styles.sectionMeta}>{targets.domains.length + targets.subdomains.length + targets.emails.length} Ziele</Text>
       </View>
       <Text style={styles.detailCopy}>
-        Domains und Subdomains werden extern auf DNS, TLS, Mail-Sicherheit, Ports und Reputation geprüft. E-Mail-Adressen werden nur nach separater Einwilligung für Leak-Abfragen verwendet.
+        Praxisadressen und Unterseiten werden von außen auf erreichbare Dienste, Verschlüsselung und Warnzeichen geprüft. E-Mail-Adressen werden nur nach separater Einwilligung für Datenleck-Hinweise verwendet.
       </Text>
 
-      <TargetInput label="Domain" value={domainDraft} placeholder="praxis.de" onChangeText={onDomainDraftChange} onAdd={onAddDomain} />
-      <TargetInput label="Subdomain" value={subdomainDraft} placeholder="vpn.praxis.de" onChangeText={onSubdomainDraftChange} onAdd={onAddSubdomain} />
+      <TargetInput label="Praxisadresse" value={domainDraft} placeholder="praxis.de" onChangeText={onDomainDraftChange} onAdd={onAddDomain} />
+      <TargetInput label="Unteradresse" value={subdomainDraft} placeholder="vpn.praxis.de" onChangeText={onSubdomainDraftChange} onAdd={onAddSubdomain} />
       <TargetInput label="E-Mail" value={emailDraft} placeholder="kontakt@praxis.de" onChangeText={onEmailDraftChange} onAdd={onAddEmail} keyboardType="email-address" />
 
       <Pressable style={styles.consentRow} onPress={onToggleLeakConsent}>
@@ -338,8 +341,8 @@ function MonitoringTargetCard({
         </Text>
       </Pressable>
 
-      <TargetList title="Domains" items={targets.domains} onRemove={onRemoveTarget} />
-      <TargetList title="Subdomains" items={targets.subdomains} onRemove={onRemoveTarget} />
+      <TargetList title="Praxisadressen" items={targets.domains} onRemove={onRemoveTarget} />
+      <TargetList title="Unteradressen" items={targets.subdomains} onRemove={onRemoveTarget} />
       <TargetList title="E-Mail-Adressen" items={targets.emails} onRemove={onRemoveTarget} disabled={!leakConsentAccepted} />
     </GlassCard>
   );
@@ -403,8 +406,8 @@ function LiveFeed({ events }: { events: MonitoringEvent[] }) {
   return (
     <GlassCard style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Live-Feed</Text>
-        <Text style={styles.sectionMeta}>Supabase Realtime</Text>
+        <Text style={styles.sectionTitle}>Aktuelle Warnungen</Text>
+        <Text style={styles.sectionMeta}>Automatisch geprüft</Text>
       </View>
       <View style={styles.feed}>
         {events.map((event) => (
@@ -425,12 +428,12 @@ function SslCountdown({ snapshot }: { snapshot: MonitoringSnapshot }) {
       <View style={styles.iconBubble}>
         <Clock3 color={riskColors[tone]} size={20} />
       </View>
-      <Text style={styles.detailTitle}>SSL-Countdown</Text>
+      <Text style={styles.detailTitle}>Zertifikat läuft ab</Text>
       <Text style={styles.bigMetric}>{days === null ? "Unbekannt" : `${days} Tage`}</Text>
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${Math.max(4, progress)}%`, backgroundColor: riskColors[tone] }]} />
       </View>
-      <Text style={styles.detailCopy}>{snapshot.ssl.grade ? `Grade ${snapshot.ssl.grade}` : "Zertifikat wird automatisch überwacht."}</Text>
+        <Text style={styles.detailCopy}>{snapshot.ssl.grade ? "Verschlüsselung wirkt aktuell stabil." : "Zertifikat wird automatisch überwacht."}</Text>
     </GlassCard>
   );
 }
@@ -441,11 +444,11 @@ function EmailSecurity({ status }: { status: MonitoringSnapshot["email_security"
       <View style={styles.iconBubble}>
         <MailCheck color={colors.electric} size={20} />
       </View>
-      <Text style={styles.detailTitle}>E-Mail-Security</Text>
+      <Text style={styles.detailTitle}>Schutz vor gefälschten E-Mails</Text>
       <View style={styles.mailRows}>
-        <MailStatus label="SPF" ok={status.spf} />
-        <MailStatus label="DKIM" ok={status.dkim} />
-        <MailStatus label="DMARC" ok={status.dmarc} />
+        <MailStatus label="Absender passt" ok={status.spf} />
+        <MailStatus label="Signatur aktiv" ok={status.dkim} />
+        <MailStatus label="Fälschungen blockieren" ok={status.dmarc} />
       </View>
     </GlassCard>
   );
@@ -489,7 +492,7 @@ function AlertHistory({
   return (
     <GlassCard style={styles.section}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Alert-History</Text>
+        <Text style={styles.sectionTitle}>Warnungsverlauf</Text>
         <Text style={styles.sectionMeta}>{events.length} Treffer</Text>
       </View>
       <View style={styles.filters}>
@@ -502,7 +505,7 @@ function AlertHistory({
         ))}
       </View>
       <View style={styles.feed}>
-        {events.length === 0 ? <Text style={styles.empty}>Keine Alerts in diesem Filter.</Text> : null}
+        {events.length === 0 ? <Text style={styles.empty}>Keine Warnungen in diesem Filter.</Text> : null}
         {events.map((event) => (
           <EventRow key={event.id} event={event} />
         ))}
@@ -514,13 +517,13 @@ function AlertHistory({
 function ScheduleCard() {
   return (
     <GlassCard style={styles.section}>
-      <Text style={styles.sectionTitle}>Monitoring-Takt</Text>
+      <Text style={styles.sectionTitle}>Automatische Prüfungen</Text>
       <View style={styles.scheduleRows}>
         {Object.entries(MONITORING_SCHEDULE).map(([key, cron]) => (
           <View key={key} style={styles.scheduleRow}>
             <Server color={colors.muted} size={16} />
-            <Text style={styles.scheduleLabel}>{key.replace("_", " ")}</Text>
-            <Text style={styles.scheduleCron}>{cron}</Text>
+            <Text style={styles.scheduleLabel}>{scheduleLabel(key)}</Text>
+            <Text style={styles.scheduleCron}>{scheduleText(cron)}</Text>
           </View>
         ))}
       </View>
@@ -533,7 +536,7 @@ function EventRow({ event, compact = false }: { event: MonitoringEvent; compact?
   const Icon = event.severity === "critical" ? ShieldAlert : event.severity === "warning" ? AlertTriangle : ShieldCheck;
 
   return (
-    <View style={styles.eventRow}>
+    <Pressable accessibilityRole="button" style={styles.eventRow} onPress={() => openAlertDetail(event)}>
       <View style={[styles.eventIcon, { backgroundColor: `${color}20` }]}>
         <Icon color={color} size={18} />
       </View>
@@ -545,8 +548,23 @@ function EventRow({ event, compact = false }: { event: MonitoringEvent; compact?
         {!compact ? <Text style={styles.eventMessage}>{event.message}</Text> : null}
         <Text style={styles.eventTime}>{relativeTime(event.created_at)}</Text>
       </View>
-    </View>
+    </Pressable>
   );
+}
+
+function openAlertDetail(event: MonitoringEvent) {
+  router.push({
+    pathname: "/(modal)/alert-detail",
+    params: {
+      id: event.id,
+      type: event.type,
+      severity: event.severity,
+      title: event.title,
+      message: event.message,
+      createdAt: event.created_at,
+      details: JSON.stringify(event.details ?? {})
+    }
+  });
 }
 
 function RiskStateBadge({ state }: { state: RiskHistoryState }) {
@@ -598,6 +616,30 @@ function riskStateLabel(state: RiskHistoryState) {
   if (state === "recurring") return "Wiederkehrend";
   if (state === "resolved") return "Behoben";
   return "Unverändert";
+}
+
+function scheduleLabel(key: string) {
+  const labels: Record<string, string> = {
+    ssl_check: "Verschlüsselung prüfen",
+    dns_check: "Praxisadresse prüfen",
+    port_scan: "Erreichbare Dienste prüfen",
+    leak_check: "Datenleck-Hinweise prüfen",
+    reputation_check: "Warnlisten prüfen"
+  };
+
+  return labels[key] ?? "Prüfung";
+}
+
+function scheduleText(cron: string) {
+  const labels: Record<string, string> = {
+    "0 */4 * * *": "mehrmals täglich",
+    "0 */6 * * *": "mehrmals täglich",
+    "0 */12 * * *": "zweimal täglich",
+    "0 2 * * *": "täglich nachts",
+    "0 3 * * *": "täglich nachts"
+  };
+
+  return labels[cron] ?? "regelmäßig";
 }
 
 function normalizeDomainInput(value: string) {

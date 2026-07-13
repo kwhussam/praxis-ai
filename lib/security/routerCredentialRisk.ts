@@ -35,7 +35,7 @@ export function assessRouterCredentialRisk(input: {
   if (answers.routerMfaAvailable === false) reasons.push("MFA oder gleichwertiger Schutz für Router-/Provider-Zugänge ist nicht dokumentiert.");
   if (answers.remoteAccessDisabled === false) reasons.push("Router-Fernzugriff ist nicht deaktiviert oder nicht auf definierte Quellen beschränkt.");
   if (answers.upnpDisabled === false) reasons.push("UPnP ist nicht deaktiviert oder Ausnahmen sind nicht dokumentiert.");
-  if (answers.portForwardsDocumented === false) reasons.push("Portfreigaben sind nicht vollständig mit Zweck, Zielsystem und Verantwortlichem dokumentiert.");
+  if (answers.portForwardsDocumented === false) reasons.push("Router-Freigaben sind nicht vollständig mit Zweck, Zielsystem und Verantwortlichem dokumentiert.");
 
   const high = answers.adminPasswordChanged === false || reasons.length >= 3;
   const medium = reasons.length > 0;

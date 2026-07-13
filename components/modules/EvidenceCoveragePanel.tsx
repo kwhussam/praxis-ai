@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { colors } from "@/constants/colors";
@@ -9,15 +11,15 @@ type EvidenceCoveragePanelProps = {
 };
 
 const moduleLabels: Record<string, string> = {
-  MFA_ENABLED: "MFA",
+  MFA_ENABLED: "Zweite Anmeldung",
   BACKUP_TESTED: "Backups",
-  DMARC_POLICY: "DMARC",
+  DMARC_POLICY: "Schutz gegen gefälschte Praxis-Mails",
   PATCHING_CURRENT: "Updates",
   WLAN_ENCRYPTION: "WLAN",
   STAFF_TRAINING: "Schulung",
   PRIVACY_DOCUMENTATION: "DSGVO-Doku",
   SECURITY_RESPONSIBILITIES: "Verantwortung",
-  ACTIVE_FINDINGS: "Findings",
+  ACTIVE_FINDINGS: "Aktive Warnungen",
   NETWORK_SECURITY_PROBES: "Netzwerk"
 };
 
@@ -30,32 +32,43 @@ const sourceColors: Record<EvidenceSource, string> = {
 };
 
 export function EvidenceCoveragePanel({ report }: EvidenceCoveragePanelProps) {
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <GlassCard style={styles.card}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.kicker}>Evidence & Coverage</Text>
-          <Text style={styles.title}>Prüfmodule</Text>
+          <Text style={styles.kicker}>Für technisch Interessierte</Text>
+          <Text style={styles.title}>Prüfdetails</Text>
         </View>
-        <Text style={styles.score}>{report.evidence_coverage_score}/100</Text>
+        <Pressable style={styles.detailsButton} onPress={() => setExpanded((current) => !current)}>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.ink} />
+          <Text style={styles.detailsButtonText}>{expanded ? "Details ausblenden" : "Details anzeigen"}</Text>
+        </Pressable>
       </View>
 
-      <View style={styles.rows}>
-        {report.rule_results.map((rule) => (
-          <View key={rule.rule_id} style={styles.row}>
-            <View style={styles.module}>
-              <Text style={styles.moduleName}>{moduleLabels[rule.rule_id] ?? rule.rule_id}</Text>
-              <Text style={styles.moduleMeta}>{rule.points_earned}/{rule.points_max} Punkte</Text>
+      {expanded ? (
+        <View style={styles.rows}>
+          <Text style={styles.explainer}>
+            Diese Werte zeigen, wie belastbar die Prüfung war. Sie sind für IT-Partner gedacht und müssen nicht von Ihnen
+            bewertet werden.
+          </Text>
+          {report.rule_results.map((rule) => (
+            <View key={rule.rule_id} style={styles.row}>
+              <View style={styles.module}>
+                <Text style={styles.moduleName}>{moduleLabels[rule.rule_id] ?? rule.rule_id}</Text>
+                <Text style={styles.moduleMeta}>{rule.points_earned}/{rule.points_max} Punkte</Text>
+              </View>
+              <View style={styles.coverage}>
+                <Text style={[styles.source, { color: sourceColors[rule.evidence_coverage.source] }]}>
+                  {rule.evidence_coverage.label}
+                </Text>
+                <Text style={styles.coverageScore}>{rule.evidence_coverage.score}/100</Text>
+              </View>
             </View>
-            <View style={styles.coverage}>
-              <Text style={[styles.source, { color: sourceColors[rule.evidence_coverage.source] }]}>
-                {rule.evidence_coverage.label}
-              </Text>
-              <Text style={styles.coverageScore}>{rule.evidence_coverage.score}/100</Text>
-            </View>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      ) : null}
     </GlassCard>
   );
 }
@@ -82,13 +95,30 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 5
   },
-  score: {
+  detailsButton: {
+    alignItems: "center",
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  detailsButtonText: {
     color: colors.ink,
-    fontSize: 26,
+    fontSize: 12,
     fontWeight: "900"
   },
   rows: {
     marginTop: 16
+  },
+  explainer: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: 8
   },
   row: {
     alignItems: "center",

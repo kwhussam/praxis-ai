@@ -1,5 +1,5 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
-import { questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
+import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
 export const SCORING_VERSION = "1.4.0";
 
@@ -15,7 +15,7 @@ export type SecurityFinding = {
 };
 
 export type ScoreInput = {
-  questionnaire: Record<string, boolean>;
+  questionnaire: Record<string, QuestionnaireAnswerValue>;
   encryption?: CheckData["encryption"];
   externalFindings?: SecurityFinding[];
   wlanFindings?: SecurityFinding[];
@@ -85,7 +85,7 @@ export type ScoreReport = {
 
 export const EVIDENCE_SOURCE_LABELS: Record<EvidenceSource, string> = {
   measured: "Gemessen",
-  inferred: "Heuristisch",
+  inferred: "Abgeleitet",
   self_reported: "Selbstauskunft",
   not_checked: "Nicht geprüft",
   unavailable: "Nicht verfügbar"

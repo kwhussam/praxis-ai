@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { colors } from "@/constants/colors";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -13,12 +15,14 @@ type DomainCheckProps = {
 
 export function DomainCheck({ domain, checks, providers, subdomains = [] }: DomainCheckProps) {
   const providerEntries = Object.entries(providers ?? {}) as Array<[ExternalProviderName, ExternalProviderStatus]>;
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <GlassCard>
       <Text style={styles.eyebrow}>Externer Praxis-Check</Text>
       <Text style={styles.domain}>{domain}</Text>
-      {providerEntries.length > 0 ? (
+      <Text style={styles.summary}>Wir prüfen von außen, ob die Praxisdomain auffällig oder unsicher erreichbar ist.</Text>
+      {expanded && providerEntries.length > 0 ? (
         <View style={styles.providerGrid}>
           {providerEntries.map(([provider, status]) => (
             <View key={provider} style={styles.providerPill}>
@@ -36,9 +40,15 @@ export function DomainCheck({ domain, checks, providers, subdomains = [] }: Doma
           </View>
         ))}
       </View>
-      {subdomains.length > 0 ? (
+      {subdomains.length > 0 || providerEntries.length > 0 ? (
+        <Pressable style={styles.detailsButton} onPress={() => setExpanded((current) => !current)}>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.ink} />
+          <Text style={styles.detailsButtonText}>{expanded ? "Details ausblenden" : "Details anzeigen"}</Text>
+        </Pressable>
+      ) : null}
+      {expanded && subdomains.length > 0 ? (
         <View style={styles.subdomainBox}>
-          <Text style={styles.sectionTitle}>Subdomains</Text>
+          <Text style={styles.sectionTitle}>Unterseiten und technische Werte</Text>
           {subdomains.map((subdomain) => (
             <View key={subdomain.domain} style={styles.subdomainRow}>
               <Text style={styles.subdomainName}>{subdomain.domain}</Text>
@@ -97,6 +107,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 8
   },
+  summary: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8
+  },
   list: {
     marginTop: 18,
     gap: 12
@@ -147,6 +163,24 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: colors.ink,
     fontSize: 14,
+    fontWeight: "900"
+  },
+  detailsButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 8
+  },
+  detailsButtonText: {
+    color: colors.ink,
+    fontSize: 12,
     fontWeight: "900"
   },
   subdomainRow: {

@@ -1,13 +1,13 @@
 import { create } from "zustand";
 
 import { calculateScore, type CheckData, type ScoreInput, type ScoreReport } from "@/lib/security/scoring";
-import { DEFAULT_QUESTIONNAIRE_ANSWERS, questionnaireAnswersToCheckData } from "@/lib/security/questionnaire";
+import { DEFAULT_QUESTIONNAIRE_ANSWERS, questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
 type CheckState = {
   currentScore: number;
   currentScoreReport: ScoreReport;
-  answers: Record<string, boolean>;
-  setAnswer: (key: string, value: boolean) => void;
+  answers: Record<string, QuestionnaireAnswerValue>;
+  setAnswer: (key: string, value: QuestionnaireAnswerValue) => void;
   recalculate: (input?: Partial<ScoreInput>) => void;
 };
 
@@ -28,7 +28,7 @@ export const useCheckStore = create<CheckState>((set, get) => ({
   }
 }));
 
-function checkDataFromAnswers(answers: Record<string, boolean>, input?: Partial<ScoreInput>): CheckData {
+function checkDataFromAnswers(answers: Record<string, QuestionnaireAnswerValue>, input?: Partial<ScoreInput>): CheckData {
   return {
     ...questionnaireAnswersToCheckData(answers),
     encryption: input?.encryption,

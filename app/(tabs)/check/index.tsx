@@ -10,11 +10,11 @@ export default function CheckStartScreen() {
   return (
     <Screen>
       <Text style={styles.title}>Praxis-Check</Text>
-      <Text style={styles.copy}>Ein kombinierter Check aus Fragebogen, WLAN-Signal und externem Domain-Risiko.</Text>
+      <Text style={styles.copy}>Ein kombinierter Check aus kurzen Fragen, WLAN-Prüfung und Online-Sicht auf Ihre Praxisadresse.</Text>
       <View style={styles.cards}>
         <GlassCard delay={60}>
           <Text style={styles.cardTitle}>1. Schnellfragebogen</Text>
-          <Text style={styles.cardCopy}>Backups, MFA, Updates, Schulungen und Basis-DSGVO.</Text>
+          <Text style={styles.cardCopy}>Datensicherung, sichere Anmeldung, Updates, Schulungen und Datenschutz-Unterlagen.</Text>
         </GlassCard>
         <GlassCard delay={140}>
           <Text style={styles.cardTitle}>2. WLAN-Scan</Text>
@@ -22,7 +22,7 @@ export default function CheckStartScreen() {
         </GlassCard>
         <GlassCard delay={220}>
           <Text style={styles.cardTitle}>3. Externer Check</Text>
-          <Text style={styles.cardCopy}>Domain, Mail-Sicherheit, Zertifikate und bekannte Leaks.</Text>
+          <Text style={styles.cardCopy}>Praxisadresse, E-Mail-Schutz, Verschlüsselung und bekannte Datenleck-Hinweise.</Text>
         </GlassCard>
       </View>
       <AnimatedButton label="Check starten" onPress={() => router.push("/(tabs)/check/questionnaire")} />

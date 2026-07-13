@@ -22,7 +22,14 @@ export default function WelcomeScreen() {
         <Text style={styles.promiseTitle}>Für Arztpraxen und IT-Partner</Text>
         <Text style={styles.copy}>White-Label-fähig, auditierbar und vorbereitet für Monitoring, Reports und konkrete Handlungsempfehlungen.</Text>
       </GlassCard>
-      <AnimatedButton label="Praxis-Check starten" onPress={() => router.push("/(auth)/login")} style={styles.cta} />
+      <View style={styles.actions}>
+        <AnimatedButton
+          label="Praxis kostenlos anlegen"
+          onPress={() => router.push({ pathname: "/(auth)/login", params: { mode: "register" } })}
+          style={styles.cta}
+        />
+        <AnimatedButton label="Einloggen" onPress={() => router.push("/(auth)/login")} variant="ghost" style={styles.loginCta} />
+      </View>
     </Screen>
   );
 }
@@ -70,7 +77,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900"
   },
-  cta: {
+  actions: {
     marginBottom: 10
+  },
+  cta: {
+    minHeight: 60
+  },
+  loginCta: {
+    marginTop: 12,
+    minHeight: 48
   }
 });

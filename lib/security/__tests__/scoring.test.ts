@@ -87,7 +87,7 @@ describe("SecurityScoring", () => {
     expect(result.rule_results.find((rule) => rule.rule_id === "MFA_ENABLED")?.evidence_coverage.source).toBe("self_reported");
     expect(result.rule_results.find((rule) => rule.rule_id === "DMARC_POLICY")?.evidence_coverage.source).toBe("measured");
     expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.source).toBe("inferred");
-    expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.label).toBe("Heuristisch");
+    expect(result.rule_results.find((rule) => rule.rule_id === "ACTIVE_FINDINGS")?.evidence_coverage.label).toBe("Abgeleitet");
     expect(result.rule_results.find((rule) => rule.rule_id === "NETWORK_SECURITY_PROBES")?.evidence_coverage.source).toBe("measured");
     expect(notCheckedResult.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION")?.evidence_coverage.source).toBe("not_checked");
     expect(unavailableResult.rule_results.find((rule) => rule.rule_id === "WLAN_ENCRYPTION")?.evidence_coverage.source).toBe("unavailable");
@@ -185,6 +185,28 @@ describe("SecurityScoring", () => {
     expect(checkData.updates_current).toBe(false);
     expect(checkData.privacy_documents_current).toBe(false);
     expect(checkData.responsibilities_defined).toBe(false);
+  });
+
+  it("behandelt Weiß-ich-nicht-Antworten als unbekannt statt als Nein", () => {
+    const checkData = questionnaireAnswersToCheckData({
+      mfa: null,
+      backups: null,
+      restoreTested: null,
+      patching: null,
+      privacyDocuments: null,
+      securityOwnerAssigned: null,
+      staffTraining: null,
+      dmarc: null
+    });
+
+    expect(checkData.mfa_enabled).toBe(undefined);
+    expect(checkData.backup_frequency).toBe(undefined);
+    expect(checkData.backup_tested).toBe(undefined);
+    expect(checkData.updates_current).toBe(undefined);
+    expect(checkData.privacy_documents_current).toBe(undefined);
+    expect(checkData.responsibilities_defined).toBe(undefined);
+    expect(checkData.staff_training).toBe(undefined);
+    expect(checkData.dmarc_exists).toBe(undefined);
   });
 
   it("enthält die angeforderten Detailfragen im Fragebogenmodell", () => {

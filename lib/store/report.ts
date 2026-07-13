@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { CheckData, Report } from "@/lib/ai/report";
+import { SAMPLE_REPORT, SAMPLE_REPORT_SOURCE } from "@/lib/ai/sample-report";
 import { createStringStorage } from "@/lib/store/storage";
 
 export type StoredReport = {
@@ -20,11 +21,17 @@ type ReportState = {
 };
 
 const storage = createStringStorage("praxisshield-ai-reports");
+export const SAMPLE_STORED_REPORT: StoredReport = {
+  id: "sample-report",
+  report: SAMPLE_REPORT,
+  source: SAMPLE_REPORT_SOURCE,
+  createdAt: new Date(2026, 0, 15, 9, 0, 0).toISOString()
+};
 
 export const useReportStore = create<ReportState>()(
   persist(
     (set) => ({
-      latest: null,
+      latest: SAMPLE_STORED_REPORT,
       saveReport: (report, source) => {
         const storedReport = {
           id: `report-${Date.now()}`,
@@ -41,7 +48,7 @@ export const useReportStore = create<ReportState>()(
           if (!state.latest || state.latest.id !== id) return state;
           return { latest: { ...state.latest, pdfPath } };
         }),
-      clear: () => set({ latest: null })
+      clear: () => set({ latest: SAMPLE_STORED_REPORT })
     }),
     {
       name: "ai-report",

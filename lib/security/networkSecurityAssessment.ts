@@ -267,13 +267,13 @@ function routerHttpFinding(host: string, probes: HttpAdminProbeResult[]): Networ
     return finding({
       id: "router_http_secure",
       checkId: "router_http",
-      title: "Router-HTTP nicht sichtbar",
+      title: "Unverschlüsselte Routerverwaltung nicht sichtbar",
       severity: "low",
       status: probes.some((probe) => probe.source === "measured") ? "secure" : "unknown",
       detected: false,
       confidence: "medium",
-      details: "Auf Port 80 und 8080 wurde keine unverschlüsselte Routerverwaltung erkannt.",
-      recommendation: "HTTPS für die Routerverwaltung beibehalten und Standardpasswörter vermeiden.",
+      details: "Es wurde keine unverschlüsselte Routerverwaltung erkannt.",
+      recommendation: "Verschlüsselte Routerverwaltung beibehalten und Standardpasswörter vermeiden.",
       scoreImpact: 0,
       complianceImpact: "none",
       source: probes.length > 0 ? "measured" : "unavailable",
@@ -286,17 +286,17 @@ function routerHttpFinding(host: string, probes: HttpAdminProbeResult[]): Networ
   return finding({
     id: "router_http_open",
     checkId: "router_http",
-    title: redirects ? "Router-HTTP leitet auf HTTPS um" : "Routerverwaltung über HTTP erreichbar",
+    title: redirects ? "Routerverwaltung leitet auf Verschlüsselung um" : "Routerverwaltung unverschlüsselt erreichbar",
     severity: redirects ? "low" : "medium",
     status: redirects ? "warning" : "critical",
     detected: true,
     confidence: "high",
     details: redirects
-      ? "Die Routerverwaltung antwortet über HTTP, leitet aber wahrscheinlich auf HTTPS weiter."
-      : "Die Routerverwaltung ist über unverschlüsseltes HTTP erreichbar. Zugangsdaten könnten im lokalen Netz mitgelesen werden.",
+      ? "Die Routerverwaltung antwortet unverschlüsselt, leitet aber wahrscheinlich auf eine verschlüsselte Verbindung weiter."
+      : "Die Routerverwaltung ist unverschlüsselt erreichbar. Zugangsdaten könnten im lokalen Netz mitgelesen werden.",
     recommendation: redirects
-      ? "HTTP-Weiterleitung auf HTTPS beibehalten und prüfen, ob HTTP vollständig deaktiviert werden kann."
-      : "Aktivieren Sie HTTPS für die Routerverwaltung oder erzwingen Sie eine Weiterleitung auf HTTPS.",
+      ? "Weiterleitung auf verschlüsselte Routerverwaltung beibehalten und prüfen, ob unverschlüsselte Verwaltung vollständig deaktiviert werden kann."
+      : "Aktivieren Sie verschlüsselte Routerverwaltung oder erzwingen Sie eine Weiterleitung darauf.",
     scoreImpact: redirects ? -2 : -8 * insecureOpen.length,
     complianceImpact: "technical_measure",
     source: "measured",
@@ -319,12 +319,12 @@ function smbFinding(host: string, probes: TcpProbeResult[]): NetworkSecurityFind
     return finding({
       id: "smb_not_visible",
       checkId: "smb",
-      title: "SMB-Dateifreigaben nicht sichtbar",
+      title: "Windows-Dateifreigaben nicht sichtbar",
       severity: "low",
       status: source === "measured" ? "secure" : "unknown",
       detected: false,
       confidence: source === "measured" ? "medium" : "low",
-      details: "Auf den geprüften SMB-Ports 445 und 139 wurde kein erreichbarer Dienst erkannt.",
+      details: "Es wurde keine erreichbare Windows-Dateifreigabe erkannt.",
       recommendation: "Dateifreigaben weiterhin per Firewall auf notwendige Praxisgeräte beschränken.",
       scoreImpact: 0,
       complianceImpact: "none",
@@ -339,15 +339,15 @@ function smbFinding(host: string, probes: TcpProbeResult[]): NetworkSecurityFind
   return finding({
     id: "smb_open",
     checkId: "smb",
-    title: "SMB/Windows-Dateifreigaben erreichbar",
+    title: "Windows-Dateifreigaben erreichbar",
     severity: openPorts.length > 1 ? "high" : "medium",
     status: "warning",
     detected: true,
     confidence: "high",
     details:
-      "SMB-Ports sind erreichbar. Das kann auf Windows-Dateifreigaben, NAS-Systeme oder ältere NetBIOS-Dienste hinweisen.",
+      "Windows-Dateifreigaben sind erreichbar. Das kann auf freigegebene Ordner, Speichergeräte oder ältere Dateidienste hinweisen.",
     recommendation:
-      "SMBv1 deaktivieren, Freigaben mit Benutzerrechten absichern, Firewall-Regeln setzen und Gast-/Patientennetze vom Praxisnetz trennen.",
+      "Alte Dateifreigabe-Technik deaktivieren, Freigaben mit Benutzerrechten absichern, Schutzregeln setzen und Gast-/Patientennetze vom Praxisnetz trennen.",
     scoreImpact: openPorts.length > 1 ? -18 : -10,
     complianceImpact: "technical_measure",
     source: "measured",
@@ -368,13 +368,13 @@ function smbSecurityFinding(host: string, tcp: TcpProbeResult[], smb: SmbSecurit
     return finding({
       id: `smb_security_not_checked_${host}`,
       checkId: "smb_security",
-      title: "SMB-Sicherheitsparameter nicht geprüft",
+      title: "Sicherheit der Windows-Dateifreigaben nicht geprüft",
       severity: "low",
       status: "unknown",
       detected: false,
       confidence: "low",
-      details: "SMB-Version, Signing und Gastzugriff konnten technisch nicht zuverlässig geprüft werden.",
-      recommendation: "SMBv1 deaktivieren, SMB-Signing erzwingen, Gastzugriffe sperren und Freigaben mit Benutzerrechten absichern.",
+      details: "Version, Signaturpflicht und Gastzugriff konnten technisch nicht zuverlässig geprüft werden.",
+      recommendation: "Alte Dateifreigabe-Technik deaktivieren, Signaturpflicht erzwingen, Gastzugriffe sperren und Freigaben mit Benutzerrechten absichern.",
       scoreImpact: 0,
       complianceImpact: "documentation",
       source: "unavailable",
@@ -389,7 +389,7 @@ function smbSecurityFinding(host: string, tcp: TcpProbeResult[], smb: SmbSecurit
   const risks: string[] = [];
   let scoreImpact = 0;
   if (probe?.smb1Supported === true) {
-    risks.push("SMBv1 wird unterstützt.");
+    risks.push("Alte Windows-Dateifreigabe-Technik wird unterstützt.");
     scoreImpact -= 18;
   }
   if (probe?.guestAccess === true) {
@@ -397,10 +397,10 @@ function smbSecurityFinding(host: string, tcp: TcpProbeResult[], smb: SmbSecurit
     scoreImpact -= 16;
   }
   if (probe?.signingRequired === false) {
-    risks.push("SMB-Signing ist nicht verpflichtend.");
+    risks.push("Signaturpflicht für Dateifreigaben ist nicht verpflichtend.");
     scoreImpact -= 8;
   } else if (probe?.signingEnabled === false) {
-    risks.push("SMB-Signing ist nicht aktiv.");
+    risks.push("Signaturpflicht für Dateifreigaben ist nicht aktiv.");
     scoreImpact -= 10;
   }
 
@@ -411,18 +411,18 @@ function smbSecurityFinding(host: string, tcp: TcpProbeResult[], smb: SmbSecurit
   return finding({
     id: hasRisk ? `smb_security_risk_${host}` : measured && !unknownDetails ? `smb_security_hardened_${host}` : `smb_security_partial_${host}`,
     checkId: "smb_security",
-    title: hasRisk ? "SMB-Sicherheitsparameter prüfen" : measured && !unknownDetails ? "SMB-Sicherheitsparameter unauffällig" : "SMB-Sicherheitsparameter teilweise geprüft",
+    title: hasRisk ? "Windows-Dateifreigaben prüfen" : measured && !unknownDetails ? "Windows-Dateifreigaben unauffällig" : "Windows-Dateifreigaben teilweise geprüft",
     severity: hasRisk && scoreImpact <= -18 ? "high" : hasRisk ? "medium" : "low",
     status: hasRisk ? "warning" : measured && !unknownDetails ? "secure" : "unknown",
     detected: hasRisk,
     confidence: measured ? probe.confidence : "low",
     details: hasRisk
-      ? `${risks.join(" ")} Die Prüfung liest keine Freigaben oder Dateien und bewertet nur SMB-Metadaten.`
+      ? `${risks.join(" ")} Die Prüfung liest keine Freigaben oder Dateien und bewertet nur technische Hinweise.`
       : measured && !unknownDetails
-        ? "SMBv1, Gastzugriff und Signing wurden datensparsam über SMB-Metadaten bewertet; es wurden keine Freigaben oder Dateien gelesen."
-        : "SMB ist erreichbar, aber Version, Signing oder Gastzugriff konnten nur teilweise bewertet werden.",
+        ? "Alte Dateifreigabe-Technik, Gastzugriff und Signaturpflicht wurden datensparsam bewertet; es wurden keine Freigaben oder Dateien gelesen."
+        : "Windows-Dateifreigaben sind erreichbar, aber Version, Signaturpflicht oder Gastzugriff konnten nur teilweise bewertet werden.",
     recommendation:
-      "SMBv1 deaktivieren, Gastzugriff sperren, SMB-Signing erzwingen, Freigaben auf Benutzergruppen beschränken und SMB nur aus notwendigen Segmenten erlauben.",
+      "Alte Dateifreigabe-Technik deaktivieren, Gastzugriff sperren, Signaturpflicht erzwingen, Freigaben auf Benutzergruppen beschränken und Zugriff nur aus notwendigen Netzbereichen erlauben.",
     scoreImpact,
     complianceImpact: hasRisk ? "technical_measure" : measured && !unknownDetails ? "none" : "documentation",
     source: probe?.source ?? "unavailable",
@@ -448,13 +448,13 @@ function upnpFinding(result: GatewaySecurityProbeResult): NetworkSecurityFinding
     return finding({
       id: "upnp_not_visible",
       checkId: "upnp_ssdp",
-      title: "UPnP/SSDP nicht sichtbar",
+      title: "Automatische Router-Freigaben nicht sichtbar",
       severity: "low",
       status: result.ssdp.active === false ? "secure" : "unknown",
       detected: false,
       confidence: result.ssdp.confidence,
-      details: "Es wurde kein aktiver UPnP/SSDP-Dienst erkannt.",
-      recommendation: "UPnP im Router deaktiviert lassen, sofern keine zwingende Anforderung besteht.",
+      details: "Es wurde keine automatische Router-Freigabe erkannt.",
+      recommendation: "Automatische Router-Freigaben deaktiviert lassen, sofern keine zwingende Anforderung besteht.",
       scoreImpact: 0,
       complianceImpact: "none",
       source: result.ssdp.source,
@@ -467,13 +467,13 @@ function upnpFinding(result: GatewaySecurityProbeResult): NetworkSecurityFinding
   return finding({
     id: "upnp_enabled",
     checkId: "upnp_ssdp",
-    title: "UPnP/SSDP aktiv",
+    title: "Automatische Router-Freigaben aktiv",
     severity: "medium",
     status: "warning",
     detected: true,
     confidence: result.ssdp.confidence,
-    details: "UPnP kann Geräten erlauben, automatisch Portfreigaben im Router anzulegen.",
-    recommendation: "UPnP sollte in Arztpraxen deaktiviert werden, sofern keine zwingende Anforderung besteht.",
+    details: "Diese Funktion kann Geräten erlauben, automatisch Zugänge im Router anzulegen.",
+    recommendation: "Automatische Router-Freigaben sollten in Arztpraxen deaktiviert werden, sofern keine zwingende Anforderung besteht.",
     scoreImpact: -14,
     complianceImpact: "technical_measure",
     source: result.ssdp.source,
@@ -493,12 +493,12 @@ function databasePortsFinding(host: string, probes: TcpProbeResult[]): NetworkSe
     return finding({
       id: `database_ports_not_visible_${host}`,
       checkId: "database_ports",
-      title: "Datenbankports nicht sichtbar",
+      title: "Datenbankdienste nicht sichtbar",
       severity: "low",
       status: source === "measured" ? "secure" : "unknown",
       detected: false,
       confidence: source === "measured" ? "medium" : "low",
-      details: "MySQL/MariaDB Port 3306 und PostgreSQL Port 5432 waren auf diesem Gerät nicht erreichbar.",
+      details: "Auf diesem Gerät war kein Datenbankdienst erreichbar.",
       recommendation: "Datenbanken weiterhin nur für notwendige Server und nicht für allgemeine Praxisgeräte erreichbar machen.",
       scoreImpact: 0,
       complianceImpact: "none",
@@ -517,8 +517,8 @@ function databasePortsFinding(host: string, probes: TcpProbeResult[]): NetworkSe
     status: "critical",
     detected: true,
     confidence: "high",
-    details: `Auf ${host} sind Datenbankports erreichbar: ${openPorts.map((probe) => probe.port).join(", ")}. Es wurden keine Login-Versuche oder Datenbankabfragen durchgeführt.`,
-    recommendation: "Datenbankports per Firewall auf Applikationsserver beschränken, nicht im allgemeinen Praxis-WLAN bereitstellen.",
+    details: `Auf ${host} sind Datenbankdienste erreichbar. Es wurden keine Login-Versuche oder Datenbankabfragen durchgeführt.`,
+    recommendation: "Datenbankdienste per Schutzregel auf Applikationsserver beschränken, nicht im allgemeinen Praxis-WLAN bereitstellen.",
     scoreImpact: -18 * openPorts.length,
     complianceImpact: "urgent_action",
     source: "measured",
@@ -550,10 +550,10 @@ function printerServicesFinding(
     detected,
     confidence: openPrinterPorts.length > 0 ? "high" : hasPrinterClass ? "medium" : "low",
     details: detected
-      ? `Drucker-Metadaten oder Druckports wurden erkannt${openPrinterPorts.length > 0 ? `: ${openPrinterPorts.map((probe) => probe.port).join(", ")}` : ""}. Es wurden keine Druckjobs, Warteschlangen oder Dateien gelesen.`
-      : "Auf den geprüften Druckerports wurde kein Dienst erkannt.",
+      ? "Drucker-Metadaten oder Druckdienste wurden erkannt. Es wurden keine Druckjobs, Warteschlangen oder Dateien gelesen."
+      : "Es wurde kein Druckdienst erkannt.",
     recommendation: detected
-      ? "Drucker in ein separates Geräte-Netz verschieben, Adminpasswort setzen, Firmware aktualisieren und Port 9100 nur bei Bedarf erlauben."
+      ? "Drucker in ein separates Geräte-Netz verschieben, Adminpasswort setzen, Updates einspielen und Druckdienste nur bei Bedarf erlauben."
       : "Drucker weiter segmentiert betreiben und Webinterfaces nur für Administration freigeben.",
     scoreImpact: openPrinterPorts.some((probe) => probe.port === 9100) ? -8 : detected || hasHttp ? -4 : 0,
     complianceImpact: detected ? "technical_measure" : "none",
@@ -585,13 +585,13 @@ function nasServicesFinding(
     confidence: openPorts.length > 0 ? "high" : hasNasClass ? "medium" : "low",
     details:
       openPorts.length > 0
-        ? `Dateidienst-Ports sind erreichbar: ${openPorts.map((probe) => probe.port).join(", ")}. Es wurden keine Freigaben geöffnet oder Dateien gelesen.`
+        ? "Dateidienste sind erreichbar. Es wurden keine Freigaben geöffnet oder Dateien gelesen."
         : hasNasClass
           ? "Ein Gerät wirkt anhand technischer Metadaten wie ein NAS oder Dateiserver."
-          : "Auf den geprüften NAS-/Dateidienst-Ports wurde kein Dienst erkannt.",
+          : "Es wurde kein NAS- oder Dateidienst erkannt.",
     recommendation:
       openPorts.length > 0 || hasNasClass
-        ? "Dateiserver in ein geschütztes Serversegment legen, SMBv1 deaktivieren, NFS/AFP nur bei Bedarf erlauben und Rechte regelmäßig prüfen."
+        ? "Dateiserver in ein geschütztes Servernetz legen, alte Dateifreigabe-Technik deaktivieren, Dateidienste nur bei Bedarf erlauben und Rechte regelmäßig prüfen."
         : "Dateidienste weiterhin auf notwendige Geräte begrenzen.",
     scoreImpact: openPorts.some((probe) => probe.port === 2049) ? -14 : openPorts.some((probe) => probe.port === 548) ? -8 : hasNasClass ? -4 : 0,
     complianceImpact: openPorts.length > 0 || hasNasClass ? "technical_measure" : "none",
@@ -680,10 +680,10 @@ function tcpServiceFinding(host: string, probes: TcpProbeResult[], port: 23 | 33
       status: probe?.source === "measured" ? "secure" : "unknown",
       detected: false,
       confidence: probe?.source === "measured" ? "medium" : "low",
-      details: `Port ${port} war im lokalen Scan nicht erreichbar.`,
+      details: "Der geprüfte Fernzugang war im lokalen Scan nicht erreichbar.",
       recommendation:
         port === 23
-          ? "Telnet deaktiviert lassen und für Administration nur verschlüsselte Verfahren verwenden."
+          ? "Unsicheren Fernzugang deaktiviert lassen und für Administration nur verschlüsselte Verfahren verwenden."
           : "RDP nur über VPN und mit Firewall-Beschränkung auf Administrationsgeräte erlauben.",
       scoreImpact: 0,
       complianceImpact: "none",
@@ -697,19 +697,19 @@ function tcpServiceFinding(host: string, probes: TcpProbeResult[], port: 23 | 33
   return finding({
     id: port === 23 ? "telnet_open" : "rdp_open",
     checkId,
-    title: port === 23 ? "Telnet-Port offen" : "RDP-Port erreichbar",
+    title: port === 23 ? "Unsicherer Fernzugang offen" : "Direkter Fernzugang erreichbar",
     severity: "critical",
     status: "critical",
     detected: true,
     confidence: "high",
     details:
       port === 23
-        ? "Telnet überträgt Anmeldedaten und Befehle unverschlüsselt. Angreifer im lokalen Netz könnten Zugangsdaten mitlesen."
-        : "RDP sollte nicht direkt im Praxisnetz für beliebige Geräte erreichbar sein und niemals ohne VPN/Firewall-Schutz bereitstehen.",
+        ? "Ein veralteter Fernzugang überträgt Anmeldedaten und Befehle unverschlüsselt. Angreifer im lokalen Netz könnten Zugangsdaten mitlesen."
+        : "Direkter Fernzugang sollte nicht im Praxisnetz für beliebige Geräte erreichbar sein und niemals ohne geschützten Zugang bereitstehen.",
     recommendation:
       port === 23
-        ? "Telnet sofort deaktivieren. Falls Fernadministration nötig ist, SSH mit starker Authentifizierung verwenden."
-        : "RDP hinter VPN betreiben, Firewall-Regeln auf Administrationsgeräte beschränken und MFA/NLA aktivieren.",
+        ? "Unsicheren Fernzugang sofort deaktivieren. Falls Fernadministration nötig ist, ein verschlüsseltes Verfahren mit starker Anmeldung verwenden."
+        : "Direkten Fernzugang hinter geschütztem Zugang betreiben, Schutzregeln auf Administrationsgeräte beschränken und zweite Bestätigung aktivieren.",
     scoreImpact: -25,
     complianceImpact: "urgent_action",
     source: "measured",
@@ -768,10 +768,10 @@ function buildContextQuestions(detected: boolean, ports?: number[], additional: 
   if (!detected || !ports || ports.length === 0) return questions.length > 0 ? Array.from(new Set(questions)) : undefined;
 
   questions.push(...ports.flatMap((port) => {
-    const service = serviceForPort(port)?.service ?? `TCP ${port}`;
+    const service = serviceForPort(port)?.service ?? "dieser Dienst";
     return [
-      `Ist ${service} auf Port ${port} absichtlich aus dem Praxisnetz erreichbar?`,
-      `Auf welche Quellgeräte oder Quell-IP-Adressen sollte Port ${port} beschränkt sein?`
+      `Ist ${service} absichtlich aus dem Praxisnetz erreichbar?`,
+      "Auf welche Geräte sollte dieser Dienst beschränkt sein?"
     ];
   }));
 
@@ -780,10 +780,10 @@ function buildContextQuestions(detected: boolean, ports?: number[], additional: 
 
 function smbContextQuestions() {
   return [
-    "Ist SMBv1 auf diesem System vollständig deaktiviert?",
-    "Ist Gastzugriff auf SMB-Freigaben deaktiviert?",
+    "Ist alte Windows-Dateifreigabe-Technik auf diesem System vollständig deaktiviert?",
+    "Ist Gastzugriff auf Windows-Dateifreigaben deaktiviert?",
     "Welche Benutzergruppen dürfen auf die Freigaben zugreifen?",
-    "Aus welchen Netzsegmenten darf SMB erreichbar sein?",
+    "Aus welchen getrennten Netzbereichen dürfen Dateifreigaben erreichbar sein?",
     "Welchem fachlichen Zweck dienen die Freigaben und wer ist verantwortlich?"
   ];
 }

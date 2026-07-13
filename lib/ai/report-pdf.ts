@@ -238,7 +238,7 @@ export function buildReportHtml({ practiceName, domain, report, scoreReport }: E
             <td>
               <div class="risk-title">${escapeHtml(risk.title)}</div>
               ${escapeHtml(risk.plain_language)}
-              <div class="risk-meta">Evidenz: ${escapeHtml(evidenceSourceLabel(risk.evidence_source))} · Zuverlässigkeit: ${escapeHtml(reliabilityLabel(risk.reliability))}</div>
+              <div class="risk-meta">Grundlage: ${escapeHtml(evidenceSourceLabel(risk.evidence_source))} · Sicherheit der Aussage: ${escapeHtml(reliabilityLabel(risk.reliability))}</div>
             </td>
             <td>${escapeHtml(risk.business_impact)}</td>
             <td>${escapeHtml(risk.action)}</td>
@@ -300,7 +300,7 @@ function reportFindingsSection(scoreReport?: ScoreReport) {
   if (!scoreReport) return "";
 
   return `<section class="section">
-      <h2>Befunde und Nachweisart</h2>
+      <h2>Technische Details für IT-Partner</h2>
       <table>
         <thead>
           <tr>
@@ -369,7 +369,7 @@ function priorityLabel(value: Report["top_risks"][number]["priority"]) {
 
 function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
   if (value === "measured") return "gemessen";
-  if (value === "inferred") return "heuristisch";
+  if (value === "inferred") return "aus technischen Hinweisen abgeleitet";
   if (value === "self_reported") return "Selbstauskunft";
   if (value === "not_checked") return "nicht geprüft";
   return "nicht verfügbar";

@@ -10,16 +10,17 @@ import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import { generateReport } from "@/lib/ai/report";
+import { createFallbackReport } from "@/lib/ai/sample-report";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
-import { useReportStore } from "@/lib/store/report";
+import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
 import { useSessionStore } from "@/lib/store/session";
 
 export default function ReportsScreen() {
   const answers = useCheckStore((state) => state.answers);
   const score = useCheckStore((state) => state.currentScore);
   const practice = useSessionStore((state) => state.practice);
-  const latestReport = useReportStore((state) => state.latest);
+  const latestReport = useReportStore((state) => state.latest) ?? SAMPLE_STORED_REPORT;
   const saveReport = useReportStore((state) => state.saveReport);
   const setPdfPath = useReportStore((state) => state.setPdfPath);
   const [generating, setGenerating] = useState(false);
@@ -44,8 +45,11 @@ export default function ReportsScreen() {
       const report = await generateReport(source);
       const storedReport = saveReport(report, source);
       router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Der KI-Bericht konnte nicht erzeugt werden.");
+    } catch {
+      const fallbackReport = createFallbackReport(source);
+      const storedReport = saveReport(fallbackReport, source);
+      setError("Der KI-Dienst war gerade nicht erreichbar. Ein lokaler Musterbericht wurde geöffnet, damit Sie den fertigen Bericht testen können.");
+      router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
     } finally {
       setGenerating(false);
     }

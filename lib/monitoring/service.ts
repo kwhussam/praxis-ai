@@ -223,9 +223,9 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
       practice_id: practiceId,
       type: "dmarc_missing",
       severity: "critical",
-      title: "DMARC-Eintrag wurde entfernt",
+      title: "Schutz gegen gefälschte Praxis-Mails fehlt",
       message: "Die Domain kann leichter für gefälschte Praxis-Mails missbraucht werden.",
-      details: {},
+      details: { email: "kontakt@demo-praxis.de", domain: "demo-praxis.de" },
       resolved_at: null,
       created_at: addMinutes(now, -14).toISOString()
     },
@@ -234,9 +234,9 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
       practice_id: practiceId,
       type: "ssl_expiry",
       severity: "warning",
-      title: "SSL-Zertifikat läuft bald ab",
+      title: "Zertifikat läuft bald ab",
       message: "Noch 23 Tage bis zum Ablauf. Erneuerung beim IT-Partner vormerken.",
-      details: { days_remaining: 23 },
+      details: { days_remaining: 23, domain: "demo-praxis.de" },
       resolved_at: null,
       created_at: addHours(now, -4).toISOString()
     },
@@ -246,7 +246,7 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
       type: "monitoring_run",
       severity: "info",
       title: "Monitoring-Lauf abgeschlossen",
-      message: "DNS, SSL, E-Mail-Security, Ports, Leaks und Reputation wurden geprüft.",
+      message: "Praxisadresse, Verschlüsselung, E-Mail-Schutz, erreichbare Dienste, Datenleck-Hinweise und Warnlisten wurden geprüft.",
       details: {},
       resolved_at: null,
       created_at: addHours(now, -8).toISOString()
@@ -358,17 +358,17 @@ function readSource(row: unknown): MonitoringSnapshot["source"] {
 function titleForType(type: MonitoringEventType) {
   switch (type) {
     case "ssl_expiry":
-      return "SSL-Zertifikat läuft bald ab";
+      return "Zertifikat läuft bald ab";
     case "dmarc_missing":
-      return "DMARC-Eintrag fehlt";
+      return "Schutz gegen gefälschte Praxis-Mails fehlt";
     case "leak_detected":
       return "Datenleck erkannt";
     case "port_open":
-      return "Kritischer Port offen";
+      return "Kritischer Dienst erreichbar";
     case "domain_blacklisted":
-      return "Domain auf Blacklist";
+      return "Praxisadresse steht auf Warnliste";
     case "dns_changed":
-      return "DNS-Änderung erkannt";
+      return "Praxisadresse wurde geändert";
     case "monitoring_run":
       return "Monitoring-Lauf abgeschlossen";
   }

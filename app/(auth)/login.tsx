@@ -1,5 +1,6 @@
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -11,15 +12,20 @@ import { useSessionStore, type Practice } from "@/lib/store/session";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { mode: requestedMode } = useLocalSearchParams<{ mode?: string }>();
   const setPractice = useSessionStore((store) => store.setPractice);
   const setSession = useSessionStore((store) => store.setSession);
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(() => (requestedMode === "register" ? "register" : "login"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const canSubmit = email.trim().length > 3 && password.length >= 8 && !loading;
+
+  useEffect(() => {
+    if (requestedMode === "register") setMode("register");
+  }, [requestedMode]);
 
   async function handleSubmit() {
     setLoading(true);
@@ -28,7 +34,7 @@ export default function LoginScreen() {
 
     try {
       if (mode === "register") {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
           options: {
@@ -37,7 +43,14 @@ export default function LoginScreen() {
         });
 
         if (signUpError) throw signUpError;
-        setNotice("Registrierung angelegt. Bitte bestätigen Sie Ihre E-Mail, bevor Sie sich einloggen.");
+
+        if (data.session && data.user) {
+          setSession(data.session);
+          router.replace("/(auth)/onboarding");
+          return;
+        }
+
+        setNotice("Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.");
         setMode("login");
         return;
       }
@@ -70,14 +83,25 @@ export default function LoginScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>Willkommen zurück</Text>
+        <Text style={styles.title}>{mode === "login" ? "Willkommen zurück" : "Praxis kostenlos anlegen"}</Text>
         <Text style={styles.copy}>
           {mode === "login"
             ? "Melde dich als Praxis oder White-Label-Partner an."
-            : "Lege einen Zugang an. Der Dashboard-Zugriff startet erst nach E-Mail-Bestätigung."}
+            : "Lege einen Zugang an und starte danach den ersten Praxis-Check."}
         </Text>
       </View>
       <GlassCard>
+        {mode === "register" ? (
+          <View style={styles.infoBox}>
+            <View style={styles.infoIcon}>
+              <Ionicons name="information" size={18} color={colors.electric} />
+            </View>
+            <Text style={styles.infoText}>
+              Es werden keine Patientendaten verarbeitet. Der AVV wird automatisch für Sie erstellt - Sie müssen nichts
+              unterschreiben.
+            </Text>
+          </View>
+        ) : null}
         <Text style={styles.label}>E-Mail</Text>
         <TextInput
           autoCapitalize="none"
@@ -102,13 +126,13 @@ export default function LoginScreen() {
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         <AnimatedButton
           disabled={!canSubmit}
-          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : "Registrieren"}
+          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : "Praxis kostenlos anlegen"}
           onPress={handleSubmit}
           style={styles.button}
         />
         <AnimatedButton
           disabled={loading}
-          label={mode === "login" ? "Neuen Zugang registrieren" : "Zum Login wechseln"}
+          label={mode === "login" ? "Praxis kostenlos anlegen" : "Einloggen"}
           onPress={() => {
             setError(null);
             setNotice(null);
@@ -177,6 +201,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     marginBottom: 14
+  },
+  infoBox: {
+    alignItems: "flex-start",
+    backgroundColor: colors.electricSoft,
+    borderColor: "rgba(45, 126, 248, 0.3)",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 18,
+    padding: 14
+  },
+  infoIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 999,
+    height: 28,
+    justifyContent: "center",
+    marginTop: 1,
+    width: 28
+  },
+  infoText: {
+    color: colors.ink,
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19
   },
   button: {
     marginTop: 8

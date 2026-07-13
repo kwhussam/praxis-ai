@@ -170,11 +170,11 @@ export const SCAN_PHASES = [
     label: "Netzwerkinfo wird gelesen",
     icon: "wifi",
     checks: [
-      "SSID und BSSID ermitteln",
+      "WLAN-Name und Gerätekennung ermitteln",
       "IP-Adressbereich analysieren",
-      "Gateway und DNS-Server prüfen",
+      "Router und Adressdienst prüfen",
       "WLAN-Sicherheitsprotokoll erkennen (WEP/WPA/WPA2/WPA3)",
-      "Rogue-Access-Point-Hinweise aus WLAN-Metadaten ableiten"
+      "Hinweise auf unbekannte WLAN-Zugänge ableiten"
     ]
   },
   {
@@ -192,12 +192,12 @@ export const SCAN_PHASES = [
     label: "Gateway wird analysiert",
     icon: "server",
     checks: [
-      "Router-Webinterface erkennen (Port 80/443/8080)",
-      "Telnet-Zugang prüfen (Port 23 - kritisch)",
-      "SSH-Zugang ermitteln (Port 22)",
-      "UPnP-Service erkennen (Port 1900)",
-      "Datenbankports prüfen (MySQL 3306, PostgreSQL 5432)",
-      "SMB/NFS/AFP-Dateidienste prüfen"
+      "Router-Verwaltung erkennen",
+      "Unsicheren Fernzugang prüfen",
+      "Erlaubte Wartungszugänge ermitteln",
+      "Automatische Router-Freigaben erkennen",
+      "Datenbankdienste prüfen",
+      "Dateifreigaben prüfen"
     ]
   },
   {
@@ -206,20 +206,20 @@ export const SCAN_PHASES = [
     icon: "devices",
     checks: [
       "Schonende Geräteerkennung über bekannte Kandidaten",
-      "Drucker, NAS, Kamera/IoT und medizinische Geräte vorsichtig klassifizieren",
+      "Drucker, Speichergeräte, Kameras und medizinische Geräte vorsichtig klassifizieren",
       "Unbekannte/verdächtige Geräte markieren",
-      "HTTP-, IPP-, JetDirect- und Webinterfaces prüfen",
-      "Rogue-Device-Hinweise mit früheren Scans vergleichen"
+      "Web- und Druckerdienste prüfen",
+      "Hinweise auf unbekannte Geräte mit früheren Prüfungen vergleichen"
     ]
   },
   {
     id: "dns_check",
-    label: "DNS-Sicherheit wird analysiert",
+    label: "Adressdienst-Sicherheit wird analysiert",
     icon: "globe",
     checks: [
-      "DNS-Resolver klassifizieren",
-      "DNS-Filter-/Schutzfunktion ableiten",
-      "DHCP-, Gateway- und DNS-Konsistenz prüfen"
+      "Adressdienst einordnen",
+      "Schutzfunktion für gefährliche Webseiten ableiten",
+      "Router- und Adresseinstellungen auf Plausibilität prüfen"
     ]
   },
   {
@@ -230,7 +230,7 @@ export const SCAN_PHASES = [
       "IPv6-Aktivität und globale IPv6-Adressen bewerten",
       "Unverschlüsselte lokale Adminoberflächen bewerten",
       "Gastnetz- und Segmentierungs-Score berechnen",
-      "Router-Firmware-, Default-Passwort- und Firewall-Basisrisiko bewerten"
+      "Router-Update, Standardpasswort und Schutzregeln bewerten"
     ]
   }
 ] as const;
@@ -247,7 +247,7 @@ export const PLATFORM_LIMITATIONS = {
     "Nicht antwortende Geräte können im mobilen Best-Effort-Scan unsichtbar bleiben."
   ],
   web: [
-    "Browser erlauben keinen lokalen WLAN- oder Portscan.",
+    "Browser erlauben keine aktive lokale WLAN-Prüfung.",
     "Netzwerkdetails sind im Web nur eingeschränkt verfügbar."
   ],
   default: [
@@ -277,27 +277,27 @@ export const WLAN_VULNERABILITIES = {
     category: "encryption"
   },
   OPEN_TELNET: {
-    title: "Telnet-Port offen (Port 23)",
+    title: "Unsicherer Fernzugang offen",
     severity: "critical",
-    description: "Telnet überträgt alle Daten unverschlüsselt. Angreifer im Netz können Passwörter mitlesen.",
-    remediation: "Telnet auf dem Router/Gerät sofort deaktivieren. SSH als Alternative nutzen.",
+    description: "Ein veralteter Fernzugang überträgt Daten unverschlüsselt. Angreifer im Netz könnten Passwörter mitlesen.",
+    remediation: "Unsicheren Fernzugang auf Router oder Gerät sofort deaktivieren. IT-Partner einbinden.",
     cvss: 9.1,
     category: "open_ports"
   },
   OPEN_SMB: {
-    title: "Windows-Dateifreigabe offen (Port 445)",
+    title: "Windows-Dateifreigabe erreichbar",
     severity: "critical",
     description:
-      "SMB Port 445 ist das Hauptangriffsziel von Ransomware (z. B. WannaCry, NotPetya). Kritisch in Praxisumgebungen.",
+      "Eine Dateifreigabe ist erreichbar. Das kann ein Angriffsziel für Erpressungssoftware sein und ist in Praxisumgebungen kritisch.",
     remediation:
-      "SMB-Freigaben absichern: Authentifizierung erzwingen, SMBv1 deaktivieren, Firewall konfigurieren.",
+      "Dateifreigaben absichern: Anmeldung erzwingen, alte Freigabetechnik deaktivieren und Schutzregeln prüfen.",
     cvss: 9.3,
     category: "open_ports"
   },
   UPNP_ENABLED: {
     title: "UPnP am Router aktiviert",
     severity: "medium",
-    description: "UPnP erlaubt Geräten, automatisch Ports im Router zu öffnen - ohne Wissen des Administrators.",
+    description: "UPnP erlaubt Geräten, automatisch Zugänge im Router zu öffnen - ohne Wissen der Praxis.",
     remediation: "UPnP im Router-Menü deaktivieren.",
     cvss: 6.5,
     category: "upnp_enabled"
@@ -327,11 +327,11 @@ export const WLAN_VULNERABILITIES = {
     category: "dns_hijacking"
   },
   HTTP_SERVICES: {
-    title: "Unverschlüsselte HTTP-Dienste erkannt",
+    title: "Unverschlüsselte lokale Dienste erkannt",
     severity: "medium",
     description:
-      "Dienste auf Port 80 übertragen Daten unverschlüsselt - Patientendaten könnten mitgelesen werden.",
-    remediation: "Alle internen Dienste auf HTTPS umstellen.",
+      "Ein lokaler Dienst überträgt Daten unverschlüsselt. Sensible Informationen könnten mitgelesen werden.",
+    remediation: "Interne Dienste auf verschlüsselte Verbindungen umstellen.",
     cvss: 6.1,
     category: "unencrypted_traffic"
   },

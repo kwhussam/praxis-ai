@@ -12,11 +12,11 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
-import { useReportStore } from "@/lib/store/report";
+import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
 
 export default function ReportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const latestReport = useReportStore((state) => state.latest);
+  const latestReport = useReportStore((state) => state.latest) ?? SAMPLE_STORED_REPORT;
   const scoreReport = useMemo(
     () => (latestReport && latestReport.id === id ? buildReportScore(latestReport.source) : null),
     [id, latestReport]
@@ -50,15 +50,15 @@ export default function ReportDetailScreen() {
       <RadarChart title="Risikoprofil" data={categoryRadar(report)} />
 
       <View style={styles.space} />
-      <BarChart title="Kategorie-Scores" data={categoryBars(report)} />
+      <BarChart title="Kategorie-Überblick" data={categoryBars(report)} />
 
       <View style={styles.space} />
       {scoreReport ? <ReportFindings scoreReport={scoreReport} /> : null}
 
       <View style={styles.space} />
       <GlassCard style={styles.card}>
-        <Text style={styles.section}>Maßnahmenplan</Text>
-        {report.top_risks.map((risk) => (
+        <Text style={styles.section}>Was muss ich jetzt tun?</Text>
+        {report.top_risks.slice(0, 3).map((risk) => (
           <View key={`${risk.rank}-${risk.title}`} style={styles.action}>
             <Text style={styles.actionRank}>{risk.rank}</Text>
             <View style={styles.actionText}>
@@ -67,10 +67,7 @@ export default function ReportDetailScreen() {
               <Text style={styles.actionMeta}>
                 {priorityLabel(risk.priority)} · {risk.effort_hours} · {risk.cost_estimate}
               </Text>
-              <Text style={styles.evidenceMeta}>
-                Evidenz: {evidenceSourceLabel(risk.evidence_source)} · Zuverlässigkeit: {reliabilityLabel(risk.reliability)}
-              </Text>
-              <Text style={styles.nextStep}>Nächster Schritt: {risk.action}</Text>
+              <Text style={styles.nextStep}>Nächster Schritt: {plainAction(risk.action)}</Text>
             </View>
           </View>
         ))}
@@ -144,18 +141,15 @@ function dsgvoStatusLabel(status: Report["dsgvo_compliance"]["status"]) {
   return "Konform";
 }
 
-function evidenceSourceLabel(value: Report["top_risks"][number]["evidence_source"]) {
-  if (value === "measured") return "gemessen";
-  if (value === "inferred") return "heuristisch";
-  if (value === "self_reported") return "Selbstauskunft";
-  if (value === "not_checked") return "nicht geprüft";
-  return "nicht verfügbar";
-}
-
-function reliabilityLabel(value: Report["top_risks"][number]["reliability"]) {
-  if (value === "high") return "hoch";
-  if (value === "medium") return "mittel";
-  return "niedrig";
+function plainAction(value: string) {
+  return value
+    .replace(/\bDMARC\b/g, "Schutz gegen gefälschte Praxis-Mails")
+    .replace(/\bSPF\b|\bDKIM\b/g, "E-Mail-Schutz")
+    .replace(/\bVLANs?\b/g, "getrennte Netze")
+    .replace(/\bMFA\b|\b2FA\b/g, "zweite Bestätigung beim Einloggen")
+    .replace(/\bDNS\b/g, "Namensdienst")
+    .replace(/\bIPv6\b/g, "neue Internetadressen")
+    .replace(/\bUPnP\b/g, "automatische Router-Freigaben");
 }
 
 const styles = StyleSheet.create({

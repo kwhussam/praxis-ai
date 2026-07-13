@@ -69,6 +69,13 @@ describe("validateReport", () => {
     expect(report.not_checked_limitations[0].area).toBe("Lokales Netzwerk/WLAN");
   });
 
+  it("formuliert Quick Wins mit Verantwortlichem und Frist", () => {
+    const report = validateReport(validReport);
+
+    expect(report.quick_wins[0].action).toMatch(/^Bitten Sie Ihren IT-Partner bis Freitag,/);
+    expect(report.quick_wins[0].action.includes("DMARC")).toBe(false);
+  });
+
   it("rejects top risks without evidence metadata", () => {
     const invalidReport = {
       ...validReport,

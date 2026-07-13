@@ -3,11 +3,12 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
 import { EvidenceCoveragePanel } from "@/components/modules/EvidenceCoveragePanel";
+import { PracticeGuidanceCard } from "@/components/modules/PracticeGuidanceCard";
 import { ScoreRing } from "@/components/ui/ScoreRing";
-import { RiskCard } from "@/components/ui/RiskCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { PLANS } from "@/lib/billing/plans";
+import { guidanceFromScoreReport } from "@/lib/security/practiceGuidance";
 import { useCheckStore } from "@/lib/store/check";
 import { useSessionStore } from "@/lib/store/session";
 
@@ -24,35 +25,24 @@ export default function DashboardScreen() {
   const scoreReport = useCheckStore((state) => state.currentScoreReport);
   const practice = useSessionStore((state) => state.practice);
   const plan = PLANS[practice?.plan ?? "free"];
+  const guidance = guidanceFromScoreReport(scoreReport);
 
   return (
     <Screen>
       <View style={styles.top}>
         <View>
-          <Text style={styles.kicker}>Live Security Overview</Text>
+          <Text style={styles.kicker}>Praxis-Sicherheitsüberblick</Text>
           <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
         </View>
         <View style={styles.alertIcon}>
           <BellRing color={colors.warning} size={22} />
         </View>
       </View>
+      <PracticeGuidanceCard guidance={guidance} />
       <View style={styles.scoreWrap}>
-        <ScoreRing score={score} />
+        <ScoreRing score={score} label="Sicherheitswert" />
       </View>
       <EvidenceCoveragePanel report={scoreReport} />
-      <RiskCard
-        tone="warning"
-        title="DMARC nicht strikt genug"
-        metric="-9"
-        description="E-Mail-Spoofing ist wahrscheinlicher, wenn die Domain noch keine reject-Policy nutzt."
-      />
-      <RiskCard
-        tone="safe"
-        title="SSL-Zertifikat stabil"
-        metric="+12"
-        description="Die Praxisdomain ist erreichbar, verschlüsselt und aktuell ohne Zertifikatswarnung."
-        delay={120}
-      />
       <View style={styles.planCard}>
         <Text style={styles.planKicker}>Aktueller Tarif</Text>
         <View style={styles.planHeader}>

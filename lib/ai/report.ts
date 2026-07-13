@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import type { ExternalCheckResult } from "@/lib/security/external";
+import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import type { SecurityFinding } from "@/lib/security/scoring";
 import type { WlanScanResult } from "@/lib/security/wlan";
 
@@ -15,7 +16,7 @@ export type CheckData = {
   checkId?: string;
   practiceName?: string;
   domain?: string;
-  questionnaire: Record<string, boolean>;
+  questionnaire: Record<string, QuestionnaireAnswerValue>;
   wlan?: WlanScanResult | null;
   external?: ExternalCheckResult | null;
   score?: number;
@@ -185,7 +186,7 @@ function validateTopRisk(value: unknown, index: number): TopRisk {
     title: requireString(risk.title, `top_risks.${index}.title`),
     plain_language: requireString(risk.plain_language, `top_risks.${index}.plain_language`),
     business_impact: requireString(risk.business_impact, `top_risks.${index}.business_impact`),
-    action: requireString(risk.action, `top_risks.${index}.action`),
+    action: simplifyTechnicalTerms(requireString(risk.action, `top_risks.${index}.action`)),
     effort_hours: requireString(risk.effort_hours, `top_risks.${index}.effort_hours`),
     cost_estimate: requireString(risk.cost_estimate, `top_risks.${index}.cost_estimate`),
     priority: requireEnum(risk.priority, priorityValues, `top_risks.${index}.priority`),
@@ -208,7 +209,7 @@ function validateQuickWin(value: unknown, index: number): QuickWin {
   const quickWin = requireObject(value, `quick_wins.${index}`);
 
   return {
-    action: requireString(quickWin.action, `quick_wins.${index}.action`),
+    action: normalizeQuickWinAction(requireString(quickWin.action, `quick_wins.${index}.action`), index),
     time_minutes: Math.max(5, Math.round(requireNumber(quickWin.time_minutes, `quick_wins.${index}.time_minutes`))),
     impact: requireString(quickWin.impact, `quick_wins.${index}.impact`)
   };
@@ -229,6 +230,34 @@ function requireString(value: unknown, field: string): string {
     throw new Error(`Ungültiger KI-Bericht: ${field} fehlt oder ist leer.`);
   }
   return value.trim();
+}
+
+function normalizeQuickWinAction(value: string, index: number) {
+  const action = simplifyTechnicalTerms(value).replace(/\s+/g, " ").trim();
+  if (/\bbis\b/i.test(action)) return action;
+
+  const deadline = index === 0 ? "bis Freitag" : index === 1 ? "bis Ende der Woche" : "heute";
+  if (/^(Aktivieren|Prüfen|Kontaktieren|Dokumentieren|Erneuern|Benennen|Starten|Lassen|Bitten) Sie\b/.test(action)) {
+    return action.replace(/\.$/, "").replace(/^(\S+ Sie)\b/, `$1 ${deadline}`) + ".";
+  }
+
+  return `Bitten Sie Ihren IT-Partner ${deadline}, ${lowercaseFirst(action.replace(/\.$/, ""))}.`;
+}
+
+function simplifyTechnicalTerms(value: string) {
+  return value
+    .replace(/\bDMARC\b/g, "Schutz gegen gefälschte Praxis-Mails")
+    .replace(/\bSPF\b|\bDKIM\b/g, "E-Mail-Schutz")
+    .replace(/\bVLANs?\b/g, "getrennte Netze")
+    .replace(/\bMFA\b|\b2FA\b/g, "zweite Bestätigung beim Einloggen")
+    .replace(/\bDNS\b/g, "Namensdienst")
+    .replace(/\bIPv6\b/g, "neue Internetadressen")
+    .replace(/\bUPnP\b/g, "automatische Router-Freigaben")
+    .replace(/\bSSL\b|\bTLS\b/g, "Verschlüsselung");
+}
+
+function lowercaseFirst(value: string) {
+  return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
 function requireNumber(value: unknown, field: string): number {

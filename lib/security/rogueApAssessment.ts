@@ -71,7 +71,7 @@ export function rogueApFinding(assessment: RogueApAssessment): NetworkSecurityFi
     detected: suspicious,
     confidence: assessment.confidence,
     details: suspicious
-      ? "Ein WLAN mit gleichem Namen zeigt abweichende oder auffällige technische Merkmale. Mobile Geräte können Rogue APs nur heuristisch erkennen."
+      ? "Ein WLAN mit gleichem Namen zeigt abweichende oder auffällige technische Merkmale. Mobile Geräte können solche Hinweise nur vorsichtig ableiten."
       : "Keine auffälligen Access-Point-Metadaten sichtbar oder Plattformdaten nicht verfügbar.",
     recommendation: suspicious
       ? "BSSID, Standort, Verschlüsselung und Hersteller der Access Points durch den IT-Dienstleister prüfen lassen."

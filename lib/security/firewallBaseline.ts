@@ -73,12 +73,12 @@ export function firewallBaselineFinding(assessment: FirewallBaselineAssessment):
     detected: critical || partial,
     confidence: assessment.confidence,
     details: critical
-      ? "Externe Portfreigaben, Fernzugriff oder globale IPv6-Erreichbarkeit benötigen Prüfung. Interne und externe Sicht werden getrennt bewertet."
+      ? "Externe Router-Freigaben, Fernzugriff oder globale IPv6-Erreichbarkeit benötigen Prüfung. Interne und externe Sicht werden getrennt bewertet."
       : partial
         ? "Interne Dienste oder Router-Sicherheitsangaben benötigen Kontext. Offene interne Dienste werden nicht automatisch als externe Exposition gewertet."
         : "Keine kritischen externen Freigaben oder internen Basisdienste ohne Kontext im lokalen Metadatencheck sichtbar.",
     recommendation:
-      "Firewall-Regeln mit Sicht, Quelle, Ziel, Port, Zweck und Verantwortlichem dokumentieren. Externe Freigaben, Fernzugriff, UPnP und IPv6-Firewall gesondert prüfen.",
+      "Schutzregeln mit Sicht, Quelle, Ziel, Zweck und Verantwortlichem dokumentieren. Externe Freigaben, Fernzugriff, automatische Router-Freigaben und IPv6-Schutz gesondert prüfen.",
     scoreImpact: critical ? -30 : partial ? -10 : 0,
     complianceImpact: critical || partial ? "technical_measure" : "none",
     evidence: {

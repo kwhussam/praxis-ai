@@ -207,10 +207,14 @@ function StartScreen({
         {domainOrEmail.length > 0 && !canStart ? (
           <Text style={styles.validation}>Bitte eine gültige Domain oder E-Mail eingeben.</Text>
         ) : null}
-        <Text style={styles.legal}>
-          DSGVO Art. 13: Diese Angabe wird nur für den Praxis-Sicherheitscheck genutzt. Der AVV wird bei Registrierung
-          automatisch erstellt; der Check ist eine Momentaufnahme, keine Garantie.
-        </Text>
+        <View style={styles.privacyHint}>
+          <Ionicons name="information-circle" size={18} color={colors.electric} />
+          <Text style={styles.privacyHintText}>
+            Es werden keine Patientendaten verarbeitet. Der AVV wird automatisch für Sie erstellt - Sie müssen nichts
+            unterschreiben.
+          </Text>
+        </View>
+        <Text style={styles.legal}>Diese Angabe wird nur für den Praxis-Sicherheitscheck genutzt.</Text>
       </GlassCard>
       <Text style={styles.title}>Kostenloser erster Check.</Text>
       <Text style={styles.copy}>Keine Installation, kein Vertragsabschluss, keine Patientendaten.</Text>
@@ -471,6 +475,24 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 13,
     marginTop: 8
+  },
+  privacyHint: {
+    alignItems: "flex-start",
+    backgroundColor: colors.electricSoft,
+    borderColor: "rgba(45, 126, 248, 0.3)",
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 9,
+    marginTop: 14,
+    padding: 12
+  },
+  privacyHintText: {
+    color: colors.ink,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17
   },
   legal: {
     color: colors.muted,

@@ -66,13 +66,13 @@ describe("network security assessment", () => {
     expect(findings.find((finding) => finding.checkId === "rdp")?.severity).toBe("critical");
   });
 
-  it("ergänzt Kontextfragen für offene Portbefunde", () => {
+  it("ergänzt Kontextfragen für erreichbare Dienste", () => {
     const findings = assessGatewaySecurity(gatewayProbe([445]));
     const smb = findings.find((finding) => finding.checkId === "smb");
     const questions = smb?.contextQuestions ?? [];
-    expect(questions.some((question) => question.includes("Port 445"))).toBe(true);
-    expect(questions.some((question) => question.includes("Quellgeräte"))).toBe(true);
-    expect(questions.some((question) => question.includes("SMBv1"))).toBe(true);
+    expect(questions.some((question) => question.includes("Windows-Dateifreigabe"))).toBe(true);
+    expect(questions.some((question) => question.includes("Geräte"))).toBe(true);
+    expect(questions.some((question) => question.includes("alte Windows-Dateifreigabe-Technik"))).toBe(true);
     expect(questions.some((question) => question.includes("Gastzugriff"))).toBe(true);
   });
 

@@ -13,9 +13,10 @@ type BarDatum = {
 type BarChartProps = {
   title: string;
   data: BarDatum[];
+  showValues?: boolean;
 };
 
-export function BarChart({ title, data }: BarChartProps) {
+export function BarChart({ title, data, showValues = false }: BarChartProps) {
   return (
     <GlassCard>
       <Text style={styles.title}>{title}</Text>
@@ -31,7 +32,7 @@ export function BarChart({ title, data }: BarChartProps) {
                 style={[styles.fill, { backgroundColor: item.color ?? colors.electric }]}
               />
             </View>
-            <Text style={styles.value}>{item.value}</Text>
+            {showValues ? <Text style={styles.value}>{item.value}</Text> : null}
           </View>
         ))}
       </View>

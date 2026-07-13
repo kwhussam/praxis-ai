@@ -11,10 +11,12 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { ScanAnimation, type ScanNode } from "@/components/ui/ScanAnimation";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { VulnerabilityCard } from "@/components/ui/VulnerabilityCard";
-import { colors, type RiskTone } from "@/constants/colors";
+import { colors, riskColors, type RiskTone } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
 import { useInventoryStore } from "@/lib/store/inventory";
 import { useCheckStore } from "@/lib/store/check";
+import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
+import { guidanceFromNetworkFindings, type PracticeGuidance } from "@/lib/security/practiceGuidance";
 import {
   mapWlanVulnerabilitiesToFindings,
   runWlanSecurityScan,
@@ -51,16 +53,18 @@ export function WlanScanner() {
   const [ipv6Accepted, setIpv6Accepted] = useState(false);
   const [scanSegment, setScanSegment] = useState<NetworkSegmentId>("practice_wifi");
 
-  const phase = progress ? SCAN_PHASES[progress.phaseIndex] : SCAN_PHASES[0];
+  const phase = progress ? SCAN_PHASES[progress.phaseIndex] ?? SCAN_PHASES[0] : SCAN_PHASES[0];
   const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
   const sortedVulnerabilities = useMemo(() => sortVulnerabilities(result?.vulnerabilities ?? []), [result]);
-  const scanDisabled = state === "scanning" || (auditMode && !auditAccepted);
+  const scanDisabled = state === "scanning" || (auditMode && !auditAccepted) || !practiceId;
   const scanNodes = useMemo(
     () => mapDevicesToScanNodes(displayedDevices, progress?.vulnerabilities ?? result?.vulnerabilities ?? []),
     [displayedDevices, progress, result]
   );
 
   async function scan() {
+    if (state === "scanning") return;
+
     if (!practiceId) {
       setError("WLAN-Scan erfordert eine angemeldete Praxis.");
       setState("error");
@@ -81,45 +85,45 @@ export function WlanScanner() {
         accessPoints,
         scanSegment,
         networkStructure: {
-          guestWifiExists: questionnaireAnswers.vlanGuests,
-          guestWifiClientIsolation: questionnaireAnswers.guestWifiClientIsolation,
-          networkStructureDocumented: questionnaireAnswers.networkStructureDocumented
+          guestWifiExists: knownBoolean(questionnaireAnswers.vlanGuests),
+          guestWifiClientIsolation: knownBoolean(questionnaireAnswers.guestWifiClientIsolation),
+          networkStructureDocumented: knownBoolean(questionnaireAnswers.networkStructureDocumented)
         },
         dnsOperation: {
-          resolverDocumented: questionnaireAnswers.dnsResolverDocumented,
-          filterEnabled: questionnaireAnswers.dnsFilterEnabled,
-          privacyReviewed: questionnaireAnswers.dnsPrivacyReviewed,
-          providerDocumented: questionnaireAnswers.dnsProviderDocumented,
-          configurationDocumented: questionnaireAnswers.dnsConfigurationDocumented
+          resolverDocumented: knownBoolean(questionnaireAnswers.dnsResolverDocumented),
+          filterEnabled: knownBoolean(questionnaireAnswers.dnsFilterEnabled),
+          privacyReviewed: knownBoolean(questionnaireAnswers.dnsPrivacyReviewed),
+          providerDocumented: knownBoolean(questionnaireAnswers.dnsProviderDocumented),
+          configurationDocumented: knownBoolean(questionnaireAnswers.dnsConfigurationDocumented)
         },
         dhcpDocumentation: {
-          authorizedServerDocumented: questionnaireAnswers.dhcpAuthorizedServerDocumented,
-          routerIpDocumented: questionnaireAnswers.dhcpRouterIpDocumented,
-          dnsServersDocumented: questionnaireAnswers.dhcpDnsServersDocumented,
-          exceptionsDocumented: questionnaireAnswers.dhcpExceptionsDocumented
+          authorizedServerDocumented: knownBoolean(questionnaireAnswers.dhcpAuthorizedServerDocumented),
+          routerIpDocumented: knownBoolean(questionnaireAnswers.dhcpRouterIpDocumented),
+          dnsServersDocumented: knownBoolean(questionnaireAnswers.dhcpDnsServersDocumented),
+          exceptionsDocumented: knownBoolean(questionnaireAnswers.dhcpExceptionsDocumented)
         },
         routerDocumentation: {
-          manufacturerDocumented: questionnaireAnswers.routerManufacturerDocumented,
-          modelDocumented: questionnaireAnswers.routerModelDocumented,
-          firmwareVersionDocumented: questionnaireAnswers.routerFirmwareVersionDocumented,
-          updateStatusDocumented: questionnaireAnswers.routerUpdateStatusDocumented,
-          firmwareCurrent: questionnaireAnswers.routerFirmwareCurrent,
-          itProviderDocumented: questionnaireAnswers.routerItProviderDocumented
+          manufacturerDocumented: knownBoolean(questionnaireAnswers.routerManufacturerDocumented),
+          modelDocumented: knownBoolean(questionnaireAnswers.routerModelDocumented),
+          firmwareVersionDocumented: knownBoolean(questionnaireAnswers.routerFirmwareVersionDocumented),
+          updateStatusDocumented: knownBoolean(questionnaireAnswers.routerUpdateStatusDocumented),
+          firmwareCurrent: knownBoolean(questionnaireAnswers.routerFirmwareCurrent),
+          itProviderDocumented: knownBoolean(questionnaireAnswers.routerItProviderDocumented)
         },
         routerCredentials: {
-          adminPasswordChanged: questionnaireAnswers.routerAdminPasswordChanged,
-          passwordManagerUsed: questionnaireAnswers.routerPasswordManagerUsed,
-          routerMfaAvailable: questionnaireAnswers.routerMfaAvailable,
-          managedByItProvider: questionnaireAnswers.routerItProviderDocumented,
-          remoteAccessDisabled: questionnaireAnswers.routerRemoteAccessDisabled,
-          upnpDisabled: questionnaireAnswers.routerUpnpDisabled,
-          portForwardsDocumented: questionnaireAnswers.routerPortForwardsDocumented
+          adminPasswordChanged: knownBoolean(questionnaireAnswers.routerAdminPasswordChanged),
+          passwordManagerUsed: knownBoolean(questionnaireAnswers.routerPasswordManagerUsed),
+          routerMfaAvailable: knownBoolean(questionnaireAnswers.routerMfaAvailable),
+          managedByItProvider: knownBoolean(questionnaireAnswers.routerItProviderDocumented),
+          remoteAccessDisabled: knownBoolean(questionnaireAnswers.routerRemoteAccessDisabled),
+          upnpDisabled: knownBoolean(questionnaireAnswers.routerUpnpDisabled),
+          portForwardsDocumented: knownBoolean(questionnaireAnswers.routerPortForwardsDocumented)
         },
         firewallRules,
         ipv6Security: {
-          usedIntentionally: questionnaireAnswers.ipv6UsedIntentionally,
-          firewallRulesCovered: questionnaireAnswers.ipv6FirewallRulesCovered,
-          dnsRulesCovered: questionnaireAnswers.ipv6DnsRulesCovered,
+          usedIntentionally: knownBoolean(questionnaireAnswers.ipv6UsedIntentionally),
+          firewallRulesCovered: knownBoolean(questionnaireAnswers.ipv6FirewallRulesCovered),
+          dnsRulesCovered: knownBoolean(questionnaireAnswers.ipv6DnsRulesCovered),
           reachabilityConsentAccepted: ipv6Accepted
         },
         auditMode: {
@@ -160,9 +164,11 @@ export function WlanScanner() {
         </View>
         <Text style={styles.title}>WLAN-Sicherheitsscanner</Text>
         <Text style={styles.copy}>
-          Der Scan analysiert nur Netzwerkstruktur, WLAN-Konfiguration und sichtbare Dienste. Wir greifen NICHT auf
-          Patientendaten, Praxissoftware-Inhalte oder Dateien zu.
+          Der Scan prüft nur technische Netzwerkdaten: Router, WLAN-Konfiguration und sichtbare Geräte wie Kartenterminal,
+          TI-Konnektor, Drucker oder Praxis-PCs. Es werden keine Patientendaten, keine Praxissoftware-Inhalte und keine
+          Dateien gelesen.
         </Text>
+        <AffectedDevices />
         <View style={styles.noticeBox}>
           <Text style={styles.noticeTitle}>Rechtlicher Hinweis</Text>
           <Text style={styles.noticeText}>Nur im eigenen Praxisnetz oder mit ausdrücklicher Erlaubnis verwenden.</Text>
@@ -177,6 +183,7 @@ export function WlanScanner() {
           <Text style={styles.consentText}>Ich darf dieses Netzwerk prüfen und stimme dem lokalen Scan zu.</Text>
         </Pressable>
         <AnimatedButton
+          disabled={!accepted}
           label="Scan vorbereiten"
           onPress={() => {
             if (accepted) setState("idle");
@@ -200,8 +207,11 @@ export function WlanScanner() {
 
       <Text style={styles.title}>WLAN-Sicherheitscheck</Text>
       <Text style={styles.copy}>
-        Lokaler Best-Effort-Scan für das verbundene Praxis-WLAN. Keine Inhalte, Dateien oder Patientendaten werden gelesen.
+        Lokaler Best-Effort-Scan für das verbundene Praxis-WLAN. Geprüft werden Router/Gateway, DNS, DHCP, WLAN-Schutz und
+        sichtbare Geräte wie Kartenterminal, TI-Konnektor, Drucker, NAS oder PCs. Keine Inhalte, Dateien oder
+        Patientendaten werden gelesen.
       </Text>
+      <AffectedDevices />
 
       <View style={styles.segmentBox}>
         <Text style={styles.segmentTitle}>Ausgeführtes Netz</Text>
@@ -252,7 +262,7 @@ export function WlanScanner() {
           </View>
           <View style={styles.auditText}>
             <Text style={styles.auditTitle}>IPv6-Erreichbarkeit prüfen</Text>
-            <Text style={styles.auditDescription}>Optionale lokale IPv6-Portprüfung für erkannte ULA-/Link-Local-Adressen.</Text>
+            <Text style={styles.auditDescription}>Optionale lokale Prüfung, ob Geräte über IPv6 unnötig erreichbar sind.</Text>
           </View>
         </Pressable>
       </View>
@@ -270,7 +280,7 @@ export function WlanScanner() {
           </Text>
           <Text style={styles.phaseTitle}>{state === "done" ? "Scan abgeschlossen" : phase.label}</Text>
           <Text style={styles.phaseCheck}>
-            {state === "scanning" && progress ? progress.check : "Bereit für Gateway-, DNS- und Geräteanalyse."}
+            {state === "scanning" && progress ? progress.check : "Bereit für Router-, Adress- und Geräteanalyse."}
           </Text>
           <ProgressBar value={state === "done" ? 1 : progress?.progress ?? 0} />
         </View>
@@ -278,7 +288,8 @@ export function WlanScanner() {
 
       {state === "idle" ? (
         <AnimatedButton
-          label={auditMode ? "Audit-Scan starten" : "WLAN jetzt prüfen"}
+          disabled={scanDisabled}
+          label={auditMode ? "Erweiterte Prüfung starten" : "WLAN jetzt prüfen"}
           onPress={() => {
             if (!scanDisabled) void scan();
           }}
@@ -287,7 +298,7 @@ export function WlanScanner() {
         />
       ) : null}
       {state === "idle" && auditMode && !auditAccepted ? (
-        <Text style={styles.helper}>Für den Audit-Modus ist eine separate Einwilligung erforderlich.</Text>
+        <Text style={styles.helper}>Für die erweiterte Prüfung ist eine separate Einwilligung erforderlich.</Text>
       ) : null}
 
       {state === "scanning" ? (
@@ -303,16 +314,17 @@ export function WlanScanner() {
 
       {state === "done" && result ? (
         <View style={styles.results}>
+          <InlineGuidance guidance={guidanceFromNetworkFindings(result.riskScore, result.securityFindings)} />
           <View style={styles.scoreRow}>
-            <ScoreRing score={result.riskScore} size={128} stroke={12} />
+            <ScoreRing score={result.riskScore} size={128} stroke={12} label="WLAN-Wert" />
             <View style={styles.scoreCopy}>
               <Text style={styles.resultTitle}>{result.networkName}</Text>
               <FindingRow label={`IP ${result.ipAddress}`} source={result.findings.ipAddress.source} />
-              <FindingRow label={`Gateway ${result.gatewayIp || "unbekannt"}`} source={result.findings.gatewayIp.source} />
+              <FindingRow label={`Router ${result.gatewayIp || "unbekannt"}`} source={result.findings.gatewayIp.source} />
               <FindingRow label={`Verschlüsselung: ${result.securityProtocol}`} source={result.findings.securityProtocol.source} />
               <FindingRow label={`Geräte: ${result.connectedDevices.length}`} source={result.findings.connectedDevices.source} />
               <FindingRow label={`Segment: ${segmentLabel(result.scanSegment)}`} source="questionnaire" />
-              <FindingRow label={`Scanmodus: ${result.scanMode === "audit" ? "Audit" : "Standard"}`} source={result.findings.openPorts.source} />
+              <FindingRow label={`Prüfumfang: ${result.scanMode === "audit" ? "erweitert" : "Standard"}`} source={result.findings.openPorts.source} />
             </View>
           </View>
 
@@ -379,8 +391,53 @@ function scanErrorMessage(error: unknown) {
   return "Der lokale WLAN-Scan konnte nicht abgeschlossen werden. Prüfen Sie WLAN-Berechtigungen und ob das Gerät mit dem Praxis-WLAN verbunden ist.";
 }
 
+function knownBoolean(value: QuestionnaireAnswerValue | undefined) {
+  return value ?? undefined;
+}
+
 function segmentLabel(segmentId: NetworkSegmentId) {
   return NETWORK_SEGMENTS.find((segment) => segment.id === segmentId)?.label ?? segmentId;
+}
+
+function AffectedDevices() {
+  const devices: Array<{ icon: IoniconName; title: string; copy: string }> = [
+    { icon: "server", title: "Router", copy: "Internet-Zugang, Schutzregeln, Adressen und sichtbare Routerdienste." },
+    { icon: "card", title: "Kartenterminal", copy: "Nur wenn es im Netzwerk sichtbar ist; keine Zahlungsdaten." },
+    { icon: "medkit", title: "TI-Konnektor", copy: "Nur technische Erreichbarkeit; keine medizinischen Inhalte." },
+    { icon: "desktop", title: "Praxis-PCs & Drucker", copy: "Nur Gerätehinweise und erreichbare Dienste; keine Dateien." }
+  ];
+
+  return (
+    <View style={styles.deviceScopeBox}>
+      <Text style={styles.deviceScopeTitle}>Was wird konkret geprüft?</Text>
+      {devices.map((device) => (
+        <View key={device.title} style={styles.deviceScopeRow}>
+          <Ionicons name={device.icon} size={16} color={colors.electric} />
+          <View style={styles.deviceScopeText}>
+            <Text style={styles.deviceScopeName}>{device.title}</Text>
+            <Text style={styles.deviceScopeCopy}>{device.copy}</Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function InlineGuidance({ guidance }: { guidance: PracticeGuidance }) {
+  return (
+    <View style={[styles.guidancePanel, { borderColor: riskColors[guidance.tone] }]}>
+      <Text style={styles.guidanceKicker}>Einordnung</Text>
+      <Text style={styles.guidanceTitle}>{guidance.headline}</Text>
+      <Text style={styles.guidanceSummary}>{guidance.summary}</Text>
+      <Text style={styles.guidanceActionsTitle}>Was muss ich jetzt tun?</Text>
+      {guidance.actions.slice(0, 3).map((action, index) => (
+        <View key={`${index}-${action}`} style={styles.guidanceAction}>
+          <Text style={[styles.guidanceIndex, { color: riskColors[guidance.tone] }]}>{index + 1}.</Text>
+          <Text style={styles.guidanceActionText}>{action}</Text>
+        </View>
+      ))}
+    </View>
+  );
 }
 
 function FindingRow({ label, source }: { label: string; source: WlanScanResult["findings"]["networkName"]["source"] }) {
@@ -395,9 +452,9 @@ function FindingRow({ label, source }: { label: string; source: WlanScanResult["
 function Methodology({ result }: { result: WlanScanResult }) {
   return (
     <View style={styles.methodologyBox}>
-      <Text style={styles.methodologyTitle}>Methodik & Einschränkungen</Text>
-      <FindingRow label={`DNS-Server: ${result.dnsServers.length || "nicht sichtbar"}`} source={result.findings.dnsServers.source} />
-      <FindingRow label={`Gateway-Ports: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
+      <Text style={styles.methodologyTitle}>So wurde geprüft</Text>
+      <FindingRow label={`Adressdienst: ${result.dnsServers.length || "nicht sichtbar"}`} source={result.findings.dnsServers.source} />
+      <FindingRow label={`Erreichbare Routerdienste: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
       <FindingRow
         label={`Subnetz-Hosts: ${result.subnetScan.scannedHosts}/${result.subnetScan.candidateHosts || result.subnetScan.scannedHosts}`}
         source={result.findings.openPorts.source}
@@ -465,7 +522,7 @@ function DeviceList({ devices }: { devices: DeviceInfo[] }) {
           <View style={styles.deviceText}>
             <Text style={styles.deviceName}>{device.hostname}</Text>
             <Text style={styles.meta}>
-              {device.ipAddress} · {device.deviceType} · {device.openPorts.filter((port) => port.state === "open").length} offene Ports
+              {device.ipAddress} · {device.deviceType} · {device.openPorts.filter((port) => port.state === "open").length} erreichbare Dienste
             </Text>
           </View>
         </View>
@@ -666,6 +723,39 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     marginTop: 4
   },
+  deviceScopeBox: {
+    backgroundColor: colors.electricSoft,
+    borderColor: "rgba(45, 126, 248, 0.3)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    marginTop: 16,
+    padding: 12
+  },
+  deviceScopeTitle: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  deviceScopeRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 9
+  },
+  deviceScopeText: {
+    flex: 1
+  },
+  deviceScopeName: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "900"
+  },
+  deviceScopeCopy: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2
+  },
   consentRow: {
     alignItems: "center",
     flexDirection: "row",
@@ -828,6 +918,57 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     marginTop: 18,
     paddingTop: 18
+  },
+  guidancePanel: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 18,
+    padding: 14
+  },
+  guidanceKicker: {
+    color: colors.electric,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  guidanceTitle: {
+    color: colors.ink,
+    fontSize: 19,
+    fontWeight: "900",
+    lineHeight: 25,
+    marginTop: 6
+  },
+  guidanceSummary: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8
+  },
+  guidanceActionsTitle: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "900",
+    marginTop: 14
+  },
+  guidanceAction: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8
+  },
+  guidanceIndex: {
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 20,
+    width: 22
+  },
+  guidanceActionText: {
+    color: colors.ink,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20
   },
   scoreRow: {
     alignItems: "center",

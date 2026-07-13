@@ -9,11 +9,11 @@ export const MONITORING_SCHEDULE = {
 } as const;
 
 export const CRITICAL_ALERTS = [
-  "SSL-Zertifikat läuft in 14 Tagen ab",
+  "Zertifikat läuft in 14 Tagen ab",
   "Neuer Datenleck mit Praxis-E-Mail gefunden",
-  "DMARC-Eintrag wurde entfernt",
-  "Neuer offener kritischer Port erkannt",
-  "Domain auf Blacklist eingetragen"
+  "Schutz gegen gefälschte Praxis-Mails fehlt",
+  "Neuer kritischer Dienst erreichbar",
+  "Praxisadresse steht auf Warnliste"
 ] as const;
 
 export type MonitoringEventType =
@@ -83,12 +83,12 @@ export type DashboardData = {
 };
 
 export const categoryLabels: Record<string, string> = {
-  ssl: "SSL/TLS",
-  dns: "DNS",
+  ssl: "Verschlüsselung",
+  dns: "Praxisadresse",
   email: "E-Mail",
-  ports: "Ports",
-  reputation: "Reputation",
-  leaks: "Leaks"
+  ports: "Erreichbare Dienste",
+  reputation: "Warnlisten",
+  leaks: "Datenleck-Hinweise"
 };
 
 export function toneForScore(score: number): RiskTone {

@@ -70,7 +70,8 @@ export type QuestionnaireAnswerKey =
   | "staffTraining"
   | "dmarc";
 
-export type QuestionnaireAnswers = Record<QuestionnaireAnswerKey, boolean>;
+export type QuestionnaireAnswerValue = boolean | null;
+export type QuestionnaireAnswers = Record<QuestionnaireAnswerKey, QuestionnaireAnswerValue>;
 
 export type QuestionnaireQuestion = {
   key: QuestionnaireAnswerKey;
@@ -83,74 +84,74 @@ export type QuestionnaireSection = {
 };
 
 export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
-  mfa: false,
-  mfaEvidence: false,
-  mfaEmail: false,
-  mfaPracticeSoftware: false,
-  mfaVpn: false,
-  mfaCloudServices: false,
-  mfaAdminAccounts: false,
-  mfaRemoteMaintenance: false,
-  backups: true,
-  backupFrequencyDocumented: false,
-  backupTargetDocumented: false,
-  backupOfflineOrImmutable: false,
-  backupOwnerDocumented: false,
-  backupDocumented: false,
-  restoreTested: false,
-  lastRestoreTestDocumented: false,
-  restoreTestEvidence: false,
-  patching: false,
-  patchScopeDocumented: false,
-  patchFrequencyDefined: false,
-  patchOwnerDocumented: false,
-  lastPatchDateDocumented: false,
-  patchExceptionsDocumented: false,
-  patchingEvidence: false,
-  privacyDocuments: false,
-  avvAvailable: false,
-  tomsAvailable: false,
-  processingDirectoryAvailable: false,
-  deletionConceptAvailable: false,
-  accessConceptAvailable: false,
-  privacyTrainingDocumented: false,
-  privacyReviewEvidence: false,
-  securityOwnerAssigned: false,
-  responsibilityDocumented: false,
-  networkStructureDocumented: false,
-  vlanPracticeDevices: false,
-  vlanGuests: false,
-  vlanServers: false,
-  vlanPrinters: false,
-  vlanIot: false,
-  vlanMedicalDevices: false,
-  guestWifiClientIsolation: false,
-  dnsResolverDocumented: false,
-  dnsFilterEnabled: false,
-  dnsPrivacyReviewed: false,
-  dnsProviderDocumented: false,
-  dnsConfigurationDocumented: false,
-  dhcpAuthorizedServerDocumented: false,
-  dhcpRouterIpDocumented: false,
-  dhcpDnsServersDocumented: false,
-  dhcpExceptionsDocumented: false,
-  routerManufacturerDocumented: false,
-  routerModelDocumented: false,
-  routerFirmwareVersionDocumented: false,
-  routerUpdateStatusDocumented: false,
-  routerFirmwareCurrent: false,
-  routerItProviderDocumented: false,
-  routerAdminPasswordChanged: false,
-  routerPasswordManagerUsed: false,
-  routerMfaAvailable: false,
-  routerRemoteAccessDisabled: false,
-  routerUpnpDisabled: false,
-  routerPortForwardsDocumented: false,
-  ipv6UsedIntentionally: false,
-  ipv6FirewallRulesCovered: false,
-  ipv6DnsRulesCovered: false,
-  staffTraining: true,
-  dmarc: false
+  mfa: null,
+  mfaEvidence: null,
+  mfaEmail: null,
+  mfaPracticeSoftware: null,
+  mfaVpn: null,
+  mfaCloudServices: null,
+  mfaAdminAccounts: null,
+  mfaRemoteMaintenance: null,
+  backups: null,
+  backupFrequencyDocumented: null,
+  backupTargetDocumented: null,
+  backupOfflineOrImmutable: null,
+  backupOwnerDocumented: null,
+  backupDocumented: null,
+  restoreTested: null,
+  lastRestoreTestDocumented: null,
+  restoreTestEvidence: null,
+  patching: null,
+  patchScopeDocumented: null,
+  patchFrequencyDefined: null,
+  patchOwnerDocumented: null,
+  lastPatchDateDocumented: null,
+  patchExceptionsDocumented: null,
+  patchingEvidence: null,
+  privacyDocuments: null,
+  avvAvailable: null,
+  tomsAvailable: null,
+  processingDirectoryAvailable: null,
+  deletionConceptAvailable: null,
+  accessConceptAvailable: null,
+  privacyTrainingDocumented: null,
+  privacyReviewEvidence: null,
+  securityOwnerAssigned: null,
+  responsibilityDocumented: null,
+  networkStructureDocumented: null,
+  vlanPracticeDevices: null,
+  vlanGuests: null,
+  vlanServers: null,
+  vlanPrinters: null,
+  vlanIot: null,
+  vlanMedicalDevices: null,
+  guestWifiClientIsolation: null,
+  dnsResolverDocumented: null,
+  dnsFilterEnabled: null,
+  dnsPrivacyReviewed: null,
+  dnsProviderDocumented: null,
+  dnsConfigurationDocumented: null,
+  dhcpAuthorizedServerDocumented: null,
+  dhcpRouterIpDocumented: null,
+  dhcpDnsServersDocumented: null,
+  dhcpExceptionsDocumented: null,
+  routerManufacturerDocumented: null,
+  routerModelDocumented: null,
+  routerFirmwareVersionDocumented: null,
+  routerUpdateStatusDocumented: null,
+  routerFirmwareCurrent: null,
+  routerItProviderDocumented: null,
+  routerAdminPasswordChanged: null,
+  routerPasswordManagerUsed: null,
+  routerMfaAvailable: null,
+  routerRemoteAccessDisabled: null,
+  routerUpnpDisabled: null,
+  routerPortForwardsDocumented: null,
+  ipv6UsedIntentionally: null,
+  ipv6FirewallRulesCovered: null,
+  ipv6DnsRulesCovered: null,
+  staffTraining: null,
+  dmarc: null
 };
 
 export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
@@ -259,7 +260,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "routerMfaAvailable", label: "Ist MFA/2FA oder ein gleichwertiger Schutz für Router-/Provider-Zugänge aktiviert, sofern verfügbar?" },
       { key: "routerRemoteAccessDisabled", label: "Ist Router-Fernzugriff aus dem Internet deaktiviert oder auf VPN/definierte Quellen beschränkt?" },
       { key: "routerUpnpDisabled", label: "Ist UPnP am Router deaktiviert oder sind Ausnahmen dokumentiert freigegeben?" },
-      { key: "routerPortForwardsDocumented", label: "Sind alle Router-Portfreigaben mit Zweck, Zielsystem und Verantwortlichem dokumentiert?" }
+      { key: "routerPortForwardsDocumented", label: "Sind alle Router-Freigaben mit Zweck, Zielsystem und Verantwortlichem dokumentiert?" }
     ]
   },
   {
@@ -274,12 +275,34 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     title: "Weitere Basisfragen",
     questions: [
       { key: "staffTraining", label: "Gab es in den letzten 12 Monaten Awareness-Schulung?" },
-      { key: "dmarc", label: "Ist DMARC für die Praxisdomain aktiv?" }
+      { key: "dmarc", label: "Ist der Schutz gegen gefälschte Praxis-E-Mails aktiv?" }
     ]
   }
 ];
 
-export function questionnaireAnswersToCheckData(answers: Partial<Record<string, boolean>>): CheckData {
+export function questionnaireAnswersToCheckData(answers: Partial<Record<string, QuestionnaireAnswerValue>>): CheckData {
+  const mfaKeys: QuestionnaireAnswerKey[] = ["mfa", "mfaEvidence", "mfaEmail", "mfaAdminAccounts", "mfaRemoteMaintenance"];
+  const restoreKeys: QuestionnaireAnswerKey[] = ["restoreTested", "lastRestoreTestDocumented", "restoreTestEvidence"];
+  const patchKeys: QuestionnaireAnswerKey[] = [
+    "patching",
+    "patchScopeDocumented",
+    "patchFrequencyDefined",
+    "patchOwnerDocumented",
+    "lastPatchDateDocumented",
+    "patchExceptionsDocumented",
+    "patchingEvidence"
+  ];
+  const privacyKeys: QuestionnaireAnswerKey[] = [
+    "privacyDocuments",
+    "avvAvailable",
+    "tomsAvailable",
+    "processingDirectoryAvailable",
+    "deletionConceptAvailable",
+    "accessConceptAvailable",
+    "privacyTrainingDocumented",
+    "privacyReviewEvidence"
+  ];
+  const responsibilityKeys: QuestionnaireAnswerKey[] = ["securityOwnerAssigned", "responsibilityDocumented"];
   const hasMfaEvidence =
     answers.mfa === true &&
     answers.mfaEvidence === true &&
@@ -316,13 +339,17 @@ export function questionnaireAnswersToCheckData(answers: Partial<Record<string, 
     answers.privacyReviewEvidence === true;
 
   return {
-    mfa_enabled: hasMfaEvidence,
-    backup_tested: hasRestoreEvidence,
-    backup_frequency: answers.backups === undefined ? undefined : hasDailyBackupEvidence ? "daily" : answers.backups ? "weekly" : "none",
-    dmarc_exists: answers.dmarc,
-    updates_current: hasPatchEvidence,
-    staff_training: answers.staffTraining === true && answers.privacyTrainingDocumented === true,
-    privacy_documents_current: hasPrivacyEvidence,
-    responsibilities_defined: answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true
+    mfa_enabled: hasKnownAnswer(answers, mfaKeys) ? hasMfaEvidence : undefined,
+    backup_tested: hasKnownAnswer(answers, restoreKeys) ? hasRestoreEvidence : undefined,
+    backup_frequency: answers.backups == null ? undefined : hasDailyBackupEvidence ? "daily" : answers.backups ? "weekly" : "none",
+    dmarc_exists: answers.dmarc ?? undefined,
+    updates_current: hasKnownAnswer(answers, patchKeys) ? hasPatchEvidence : undefined,
+    staff_training: hasKnownAnswer(answers, ["staffTraining", "privacyTrainingDocumented"]) ? answers.staffTraining === true && answers.privacyTrainingDocumented === true : undefined,
+    privacy_documents_current: hasKnownAnswer(answers, privacyKeys) ? hasPrivacyEvidence : undefined,
+    responsibilities_defined: hasKnownAnswer(answers, responsibilityKeys) ? answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true : undefined
   };
+}
+
+function hasKnownAnswer(answers: Partial<Record<string, QuestionnaireAnswerValue>>, keys: QuestionnaireAnswerKey[]) {
+  return keys.some((key) => answers[key] !== undefined && answers[key] !== null);
 }
