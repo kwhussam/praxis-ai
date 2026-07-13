@@ -11,6 +11,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:secrets": "jest --runTestsByPath security/__tests__/secret-exposure.test.ts",
     "test:unit": "jest lib/security/__tests__",
     "test:worker": "jest workers/hono/__tests__",
     "test:rls": "jest supabase/__tests__ --runInBand",

@@ -55,7 +55,7 @@ serve(async (req) => {
   const data = await response.json();
 
   if (!response.ok) {
-    return Response.json({ error: "anthropic_request_failed", details: data }, { status: 502 });
+    return Response.json({ error: "anthropic_request_failed" }, { status: 502 });
   }
 
   try {

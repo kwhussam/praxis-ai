@@ -6,10 +6,11 @@ declare const process: {
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
     SUPABASE_URL?: string;
     SUPABASE_ANON_KEY?: string;
-    SUPABASE_SERVICE_KEY?: string;
+    SUPABASE_SERVICE_ROLE_KEY?: string;
     TEST_PRACTICE_A_EMAIL?: string;
     TEST_PRACTICE_A_PASSWORD?: string;
     TEST_PRACTICE_B_ID?: string;
+    CI?: string;
   };
 };
 

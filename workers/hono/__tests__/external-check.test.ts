@@ -49,6 +49,106 @@ describe("POST /api/check/external", () => {
     expect(await res.json()).toMatchObject({ error: "consent_required" });
   });
 
+  it("nutzt den Service-Role-Key nicht als Fallback, wenn der Supabase Anon Key fehlt", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const requestedUrls: string[] = [];
+    const errors: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return Response.json({}, { status: 200 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        { ...baseEnv, SUPABASE_ANON_KEY: undefined },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal_server_error" });
+      expect(requestedUrls).toEqual([]);
+      expect(errors[0]).toEqual(["worker_misconfigured_supabase_auth"]);
+      expect((errors[1] as unknown[])[0]).toBe("practice_access_auth_failed");
+      expect(errors).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+
+  it("gibt Quota-Fehler nur als generische Antwort zurück", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const errors: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json({ message: "internal database detail" }, { status: 500 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal_server_error" });
+      const loggedError = errors[0] as [string, { action: string; error: Error }];
+      expect(loggedError[0]).toBe("external_quota_check_failed");
+      expect(loggedError[1].action).toBe("external_check");
+      expect(loggedError[1].error.message).toBe("Supabase request failed with 500");
+      expect(JSON.stringify(errors).includes("internal database detail")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+
   it("kennzeichnet fehlende Provider-Keys als nicht geprüft und bewertet Subdomains separat", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {

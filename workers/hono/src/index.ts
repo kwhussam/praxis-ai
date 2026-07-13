@@ -777,7 +777,8 @@ async function handleExternalCheck(
   }
 
   if (access) {
-    const allowed = await consumeExternalQuota(c.env, access);
+    const allowed = await consumeExternalQuotaOrErrorResponse(c, access, "external_check");
+    if (allowed instanceof Response) return allowed;
     if (!allowed) {
       await auditPracticeAccess(c, access, "quota_denied", "external_check", { plan: access.practice.plan });
       return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
@@ -1034,7 +1035,14 @@ async function requirePracticeAccess(
     return c.json({ error: "practiceId is required" }, 400);
   }
 
-  const user = await getAuthenticatedUser(c);
+  let user: AuthUser | null;
+  try {
+    user = await getAuthenticatedUser(c);
+  } catch (error) {
+    console.error("practice_access_auth_failed", error);
+    return c.json({ error: "internal_server_error" }, 500);
+  }
+
   if (!user) {
     return c.json({ error: "unauthorized" }, 401);
   }
@@ -1076,7 +1084,10 @@ async function getPartnerRole(env: Env, userId: string, practiceId: string): Pro
 }
 
 async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<AuthUser | null> {
-  if (!c.env.SUPABASE_URL || !c.env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  if (!c.env.SUPABASE_URL || !c.env.SUPABASE_SERVICE_ROLE_KEY || !c.env.SUPABASE_ANON_KEY) {
+    console.error("worker_misconfigured_supabase_auth");
+    throw new Error("Supabase auth credentials are not configured");
+  }
 
   const token = getBearerToken(c.req.header("authorization"));
   if (!token) return null;
@@ -1084,7 +1095,7 @@ async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<Auth
   try {
     const response = await fetch(`${c.env.SUPABASE_URL}/auth/v1/user`, {
       headers: {
-        apikey: c.env.SUPABASE_ANON_KEY ?? c.env.SUPABASE_SERVICE_ROLE_KEY,
+        apikey: c.env.SUPABASE_ANON_KEY,
         authorization: `Bearer ${token}`
       }
     });
@@ -1132,7 +1143,10 @@ function normalizePractice(value: unknown): PracticeRecord | null {
 
 async function consumeExternalQuota(env: Env, access: PracticeAccess) {
   if (access.practice.plan !== "free") return true;
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return false;
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("worker_misconfigured_external_quota");
+    throw new Error("Supabase service credentials are not configured");
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_external_check_quota", {
@@ -1147,6 +1161,19 @@ async function consumeExternalQuota(env: Env, access: PracticeAccess) {
   });
 
   return allowed === true;
+}
+
+async function consumeExternalQuotaOrErrorResponse(
+  c: Context<{ Bindings: Env }>,
+  access: PracticeAccess,
+  action: string
+): Promise<boolean | Response> {
+  try {
+    return await consumeExternalQuota(c.env, access);
+  } catch (error) {
+    console.error("external_quota_check_failed", { action, error });
+    return c.json({ error: "internal_server_error" }, 500);
+  }
 }
 
 async function persistSecurityCheck(
@@ -1443,7 +1470,8 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
   }
 
   if (access) {
-    const allowed = await consumeExternalQuota(c.env, access);
+    const allowed = await consumeExternalQuotaOrErrorResponse(c, access, "monitoring_run");
+    if (allowed instanceof Response) return allowed;
     if (!allowed) {
       await auditPracticeAccess(c, access, "quota_denied", "monitoring_run", { plan: access.practice.plan });
       return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
