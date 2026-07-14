@@ -2,6 +2,8 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-types";
 
+import { calculateScore, SCORING_VERSION as SECURITY_SCORING_VERSION } from "@/lib/security/scoring";
+import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { addDays, RETENTION_PERIODS, type DeletionReport } from "./privacy";
 
 type Env = {
@@ -50,7 +52,7 @@ type MonitoringRunRequest = {
 
 type QuestionnaireRequest = {
   practiceId?: string;
-  questionnaire?: Record<string, boolean>;
+  questionnaire?: Record<string, QuestionnaireAnswerValue>;
 };
 
 type ReportRequest = CheckData & {
@@ -273,7 +275,7 @@ type CheckData = {
   practiceId?: string;
   practiceName?: string;
   domain?: string;
-  questionnaire?: Record<string, boolean>;
+  questionnaire?: Record<string, QuestionnaireAnswerValue>;
   wlan?: unknown;
   external?: unknown;
   score?: number;
@@ -356,7 +358,7 @@ type PracticeAccess = {
 };
 
 const REPORT_FORMAT_VERSION = "1.0.0";
-const SCORING_VERSION = "1.0.0";
+const SCORING_VERSION = SECURITY_SCORING_VERSION;
 const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
 
 const DNS_TYPE_CODES: Record<string, number> = {
@@ -811,26 +813,33 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "questionnaire_check");
+  const access = await requirePracticeAccess(c, payload.practiceId, "questionnaire_check", "manager");
   if (access instanceof Response) return access;
 
   const questionnaire = payload.questionnaire ?? {};
-  const score = scoreQuestionnaire(questionnaire);
+  const scoreReport = calculateScore(questionnaireAnswersToCheckData(questionnaire));
   const findings = questionnaireFindings(questionnaire);
-  const checkId = await persistSecurityCheck(c.env, access.practice.id, "questionnaire", score, {
-    summary: {
-      score,
-      answered: Object.keys(questionnaire).length,
-      risk_count: findings.length
-    },
-    encryptedPayload: { questionnaire, score, findings }
-  });
+  const results = {
+    questionnaire,
+    scoreReport
+  };
+  let checkId: string;
+  try {
+    checkId = await persistSecurityCheck(c.env, access.practice.id, "questionnaire", scoreReport.score, {
+      summary: results,
+      encryptedPayload: { ...results, findings }
+    });
+  } catch (error) {
+    console.error("questionnaire_check_persist_failed", { practice_id: access.practice.id, error });
+    return c.json({ error: "questionnaire_save_failed", message: "Fragebogen konnte nicht gespeichert werden." }, 500);
+  }
 
   await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "questionnaire" });
 
   return c.json({
     checkId,
-    score,
+    score: scoreReport.score,
+    scoreReport,
     findings,
     checkedAt: new Date().toISOString()
   });
@@ -1046,7 +1055,8 @@ async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise
 async function requirePracticeAccess(
   c: Context<{ Bindings: Env }>,
   practiceId: string | undefined,
-  action: string
+  action: string,
+  requiredRole?: "owner" | "manager" | "viewer"
 ): Promise<PracticeAccess | Response> {
   if (!practiceId || !isUuid(practiceId)) {
     return c.json({ error: "practiceId is required" }, 400);
@@ -1064,27 +1074,63 @@ async function requirePracticeAccess(
     return c.json({ error: "unauthorized" }, 401);
   }
 
-  const practices = await supabaseRest<unknown[]>(
-    c.env,
-    `/rest/v1/practices?select=id,owner_id,name,domain,email,plan,white_label_partner_id&id=eq.${encodeURIComponent(practiceId)}&limit=1`,
-    { method: "GET" }
-  );
+  let practices: unknown[];
+  try {
+    practices = await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/practices?select=id,owner_id,name,domain,email,plan,white_label_partner_id&id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+      { method: "GET" }
+    );
+  } catch (error) {
+    console.error("practice_access_practice_lookup_failed", { practice_id: practiceId, action, error });
+    return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
+  }
   const practice = normalizePractice(practices[0]);
 
   if (!practice) {
     return c.json({ error: "forbidden" }, 403);
   }
 
-  const role = practice.owner_id === user.id ? "owner" : await getPartnerRole(c.env, user.id, practice.id);
+  let role: PracticeAccess["role"] | null;
+  try {
+    role = practice.owner_id === user.id ? "owner" : await getPartnerRole(c.env, user.id, practice.id);
+  } catch (error) {
+    console.error("practice_access_role_lookup_failed", { practice_id: practice.id, user_id: user.id, action, error });
+    return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
+  }
 
   if (!role) {
     return c.json({ error: "forbidden" }, 403);
+  }
+
+  if (requiredRole) {
+    let allowed: boolean;
+    try {
+      allowed = await canAccessPractice(c.env, user.id, practice.id, requiredRole);
+    } catch (error) {
+      console.error("practice_access_rpc_failed", { practice_id: practice.id, user_id: user.id, required_role: requiredRole, action, error });
+      return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
+    }
+    if (!allowed) {
+      return c.json({ error: "forbidden" }, 403);
+    }
   }
 
   const access = { user, practice, role };
   await auditPracticeAccess(c, access, "access", action);
 
   return access;
+}
+
+async function canAccessPractice(env: Env, userId: string, practiceId: string, requiredRole: "owner" | "manager" | "viewer") {
+  return supabaseRest<boolean>(env, "/rest/v1/rpc/can_access_practice", {
+    method: "POST",
+    body: {
+      p_user_id: userId,
+      p_practice_id: practiceId,
+      p_required_role: requiredRole
+    }
+  });
 }
 
 async function getPartnerRole(env: Env, userId: string, practiceId: string): Promise<PracticeAccess["role"] | null> {
@@ -1389,7 +1435,7 @@ function scoreQuestionnaire(questionnaire: Record<string, unknown>) {
   return clampScore((positive / answers.length) * 100);
 }
 
-function questionnaireFindings(questionnaire: Record<string, boolean>): SecurityFinding[] {
+function questionnaireFindings(questionnaire: Record<string, QuestionnaireAnswerValue>): SecurityFinding[] {
   return Object.entries(questionnaire)
     .filter(([, value]) => value === false)
     .slice(0, 10)

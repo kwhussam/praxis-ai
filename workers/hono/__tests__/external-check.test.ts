@@ -1,4 +1,6 @@
 import worker from "../src/index";
+import { calculateScore } from "@/lib/security/scoring";
+import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
 const baseEnv = {
   ANTHROPIC_API_KEY: "test",
@@ -803,6 +805,191 @@ describe("POST /api/check/external", () => {
       });
       expect(loggedError[1].error.message).toBe("Supabase request failed with 500");
       expect(JSON.stringify(errors).includes("internal database detail")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+});
+
+describe("POST /api/check/questionnaire", () => {
+  it("speichert beim Fragebogen-Abschluss eine security_checks-Zeile mit Praxis-ID und Score", async () => {
+    const originalFetch = globalThis.fetch;
+    const practiceId = "11111111-1111-4111-8111-111111111111";
+    const userId = "22222222-2222-4222-8222-222222222222";
+    const questionnaire: Record<string, QuestionnaireAnswerValue> = {
+      mfa: true,
+      mfaEvidence: true,
+      mfaEmail: true,
+      mfaAdminAccounts: true,
+      mfaRemoteMaintenance: true,
+      backups: true,
+      backupFrequencyDocumented: true,
+      backupTargetDocumented: true,
+      backupOfflineOrImmutable: true,
+      backupOwnerDocumented: true,
+      backupDocumented: true,
+      restoreTested: false,
+      lastRestoreTestDocumented: null,
+      restoreTestEvidence: null,
+      patching: true,
+      patchScopeDocumented: true,
+      patchFrequencyDefined: true,
+      patchOwnerDocumented: true,
+      lastPatchDateDocumented: true,
+      patchExceptionsDocumented: true,
+      patchingEvidence: true,
+      privacyDocuments: true,
+      avvAvailable: true,
+      tomsAvailable: true,
+      processingDirectoryAvailable: true,
+      deletionConceptAvailable: true,
+      accessConceptAvailable: true,
+      privacyTrainingDocumented: true,
+      privacyReviewEvidence: true,
+      securityOwnerAssigned: true,
+      responsibilityDocumented: true,
+      staffTraining: true,
+      dmarc: false
+    };
+    const expectedScoreReport = calculateScore(questionnaireAnswersToCheckData(questionnaire));
+    const securityChecksRows: Array<Record<string, unknown>> = [];
+    let canAccessRequest: Record<string, unknown> | null = null;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: userId, email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: practiceId,
+            owner_id: userId,
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        canAccessRequest = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        securityChecksRows.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+        return new Response(null, { status: 201 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/questionnaire", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId,
+            questionnaire
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = await res.json() as { score: number; scoreReport: { score: number }; checkId: string };
+      expect(result.score).toBe(expectedScoreReport.score);
+      expect(result.scoreReport.score).toBe(expectedScoreReport.score);
+      expect(canAccessRequest).toEqual({
+        p_user_id: userId,
+        p_practice_id: practiceId,
+        p_required_role: "manager"
+      });
+      expect(securityChecksRows).toHaveLength(1);
+      expect(securityChecksRows[0]).toMatchObject({
+        id: result.checkId,
+        practice_id: practiceId,
+        type: "questionnaire",
+        score: expectedScoreReport.score,
+        scoring_version: expectedScoreReport.scoring_version
+      });
+      expect(securityChecksRows[0].results).toMatchObject({
+        questionnaire,
+        scoreReport: {
+          score: expectedScoreReport.score,
+          scoring_version: expectedScoreReport.scoring_version,
+          scores_by_category: expectedScoreReport.scores_by_category
+        }
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("gibt einen sichtbaren JSON-Fehler zurueck, wenn can_access_practice nicht ausgefuehrt werden kann", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const practiceId = "11111111-1111-4111-8111-111111111111";
+    const userId = "22222222-2222-4222-8222-222222222222";
+    const errors: unknown[] = [];
+    const securityChecksWrites: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: userId, email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: practiceId,
+            owner_id: userId,
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json({ message: "permission denied for function can_access_practice" }, { status: 403 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        securityChecksWrites.push(JSON.parse(String(init?.body ?? "{}")));
+        return new Response(null, { status: 201 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/questionnaire", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId,
+            questionnaire: { mfa: true }
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({
+        error: "practice_access_check_failed",
+        message: "Praxiszugriff konnte nicht geprüft werden."
+      });
+      expect(securityChecksWrites).toEqual([]);
+      expect((errors[0] as unknown[])[0]).toBe("practice_access_rpc_failed");
     } finally {
       globalThis.fetch = originalFetch;
       console.error = originalConsoleError;

@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { apiRequest } from "@/lib/api/client";
 import { QUESTIONNAIRE_SECTIONS, type QuestionnaireAnswerValue, type QuestionnaireQuestion } from "@/lib/security/questionnaire";
 import { useCheckStore } from "@/lib/store/check";
+import { useSessionStore } from "@/lib/store/session";
 
 const ANSWER_OPTIONS: Array<{ value: QuestionnaireAnswerValue; label: string }> = [
   { value: true, label: "Ja" },
@@ -91,10 +93,41 @@ export default function QuestionnaireScreen() {
   const answers = useCheckStore((state) => state.answers);
   const setAnswer = useCheckStore((state) => state.setAnswer);
   const recalculate = useCheckStore((state) => state.recalculate);
+  const practice = useSessionStore((state) => state.practice);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     recalculate();
   }, [answers, recalculate]);
+
+  async function handleCompleteQuestionnaire() {
+    if (saving) return;
+    setSaveError(null);
+
+    if (!practice?.id) {
+      setSaveError("Keine aktuelle Praxis gefunden. Bitte melden Sie sich erneut an.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      recalculate();
+      await apiRequest("/api/check/questionnaire", {
+        method: "POST",
+        body: {
+          practiceId: practice.id,
+          questionnaire: answers
+        }
+      });
+      router.push("/(tabs)/check/wlan-scan");
+    } catch (error) {
+      console.error("questionnaire_save_failed", error);
+      setSaveError(`Fragebogen konnte nicht gespeichert werden: ${errorMessage(error)}`);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Screen>
@@ -132,7 +165,17 @@ export default function QuestionnaireScreen() {
           </GlassCard>
         ))}
       </View>
-      <AnimatedButton label="Weiter zum WLAN-Scan" onPress={() => router.push("/(tabs)/check/wlan-scan")} />
+      {saveError ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{saveError}</Text>
+        </View>
+      ) : null}
+      <AnimatedButton
+        disabled={saving}
+        icon={saving ? <ActivityIndicator color={colors.ink} /> : undefined}
+        label={saving ? "Fragebogen wird gespeichert..." : "Weiter zum WLAN-Scan"}
+        onPress={handleCompleteQuestionnaire}
+      />
     </Screen>
   );
 }
@@ -157,6 +200,11 @@ function explanationForQuestion(question: QuestionnaireQuestion) {
   }
 
   return "Wenn Sie es nicht sicher wissen, wählen Sie einfach \"Weiß ich nicht\". Das ist besser als zu raten.";
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  return "Unbekannter Fehler";
 }
 
 const styles = StyleSheet.create({
@@ -212,6 +260,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     lineHeight: 17
+  },
+  errorBox: {
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.32)",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 14,
+    padding: 12
+  },
+  errorText: {
+    color: colors.critical,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   toggle: {
     flexDirection: "row",

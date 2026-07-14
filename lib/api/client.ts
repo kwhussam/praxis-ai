@@ -19,11 +19,27 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    const message = await errorMessageFromResponse(response);
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
+}
+
+async function errorMessageFromResponse(response: Response) {
+  const fallback = response.statusText || `Request failed with ${response.status}`;
+  const text = await response.text();
+  if (!text) return fallback;
+
+  try {
+    const data = JSON.parse(text) as Record<string, unknown>;
+    if (typeof data.message === "string" && data.message.trim().length > 0) return data.message;
+    if (typeof data.error === "string" && data.error.trim().length > 0) return data.error;
+  } catch {
+    return text;
+  }
+
+  return fallback;
 }
 
 async function getSupabaseAccessToken() {
