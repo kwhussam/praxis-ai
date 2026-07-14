@@ -35,6 +35,29 @@ declare module "expo-secure-store" {
   export function deleteItemAsync(key: string, options?: SecureStoreOptions): Promise<void>;
 }
 
+declare module "react-test-renderer" {
+  import type { ReactElement } from "react";
+
+  export type ReactTestInstance = {
+    type: unknown;
+    props: Record<string, unknown>;
+    children: unknown[];
+    parent: ReactTestInstance | null;
+    find(predicate: (node: ReactTestInstance) => boolean): ReactTestInstance;
+    findAll(predicate: (node: ReactTestInstance) => boolean): ReactTestInstance[];
+  };
+
+  export type ReactTestRenderer = {
+    root: ReactTestInstance;
+  };
+
+  const renderer: {
+    create(element: ReactElement): ReactTestRenderer;
+  };
+  export function act(callback: () => void | Promise<void>): void | Promise<void>;
+  export default renderer;
+}
+
 declare const describe: {
   (name: string, fn: () => void): void;
   skip(name: string, fn: () => void): void;

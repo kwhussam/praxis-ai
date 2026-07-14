@@ -10,7 +10,10 @@ module.exports = {
         babelrc: false,
         configFile: false,
         presets: ["@babel/preset-typescript"],
-        plugins: ["@babel/plugin-transform-modules-commonjs"]
+        plugins: [
+          ["@babel/plugin-transform-react-jsx", { runtime: "automatic" }],
+          "@babel/plugin-transform-modules-commonjs"
+        ]
       }
     ]
   },

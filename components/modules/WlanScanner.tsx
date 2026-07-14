@@ -48,6 +48,8 @@ export function WlanScanner() {
   const [result, setResult] = useState<WlanScanResult | null>(null);
   const [visibleDevices, setVisibleDevices] = useState<DeviceInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncPending, setSyncPending] = useState(false);
   const [auditMode, setAuditMode] = useState(false);
   const [auditAccepted, setAuditAccepted] = useState(false);
   const [ipv6Accepted, setIpv6Accepted] = useState(false);
@@ -74,6 +76,7 @@ export function WlanScanner() {
     setState("scanning");
     setResult(null);
     setError(null);
+    setSyncError(null);
     setVisibleDevices([]);
 
     try {
@@ -145,11 +148,41 @@ export function WlanScanner() {
         wlanFindings: mapWlanVulnerabilitiesToFindings(nextResult.vulnerabilities),
         wlanSecurityFindings: nextResult.securityFindings
       });
-      if (practiceId) void syncWlanScanResultToSupabase(practiceId, nextResult).catch(() => undefined);
       setState("done");
+      void syncScanResult(nextResult);
     } catch (scanError) {
       setError(scanErrorMessage(scanError));
       setState("error");
+    }
+  }
+
+  async function syncScanResult(scanResult = result) {
+    if (!practiceId || !scanResult) return;
+
+    setSyncPending(true);
+    setSyncError(null);
+
+    try {
+      const syncResult = await syncWlanScanResultToSupabase(practiceId, scanResult);
+      if (!syncResult.ok) {
+        console.error("WLAN scan sync failed", {
+          practiceId,
+          reason: syncResult.reason,
+          networkName: scanResult.networkName,
+          scanTimestamp: scanResult.timestamp.toISOString()
+        });
+        setSyncError("Scan konnte nicht gespeichert werden. Bitte erneut versuchen.");
+      }
+    } catch (syncFailure) {
+      console.error("WLAN scan sync threw an unexpected error", {
+        practiceId,
+        networkName: scanResult.networkName,
+        scanTimestamp: scanResult.timestamp.toISOString(),
+        error: syncFailure
+      });
+      setSyncError("Scan konnte nicht gespeichert werden. Bitte erneut versuchen.");
+    } finally {
+      setSyncPending(false);
     }
   }
 
@@ -314,6 +347,28 @@ export function WlanScanner() {
 
       {state === "done" && result ? (
         <View style={styles.results}>
+          {syncError || syncPending ? (
+            <View style={styles.syncErrorBox}>
+              <View style={styles.syncErrorRow}>
+                <Ionicons name={syncPending ? "cloud-upload" : "cloud-offline"} size={18} color={colors.warning} />
+                <Text style={styles.syncErrorText}>
+                  {syncPending ? "Scan wird gespeichert..." : syncError}
+                </Text>
+              </View>
+              {syncError ? (
+                <AnimatedButton
+                  disabled={syncPending}
+                  label={syncPending ? "Speichern..." : "Speichern erneut versuchen"}
+                  onPress={() => {
+                    void syncScanResult();
+                  }}
+                  variant="ghost"
+                  style={styles.retryButton}
+                  icon={<Ionicons name="refresh" size={18} color={colors.ink} />}
+                />
+              ) : null}
+            </View>
+          ) : null}
           <InlineGuidance guidance={guidanceFromNetworkFindings(result.riskScore, result.securityFindings)} />
           <View style={styles.scoreRow}>
             <ScoreRing score={result.riskScore} size={128} stroke={12} label="WLAN-Wert" />
@@ -1133,6 +1188,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     lineHeight: 20
+  },
+  syncErrorBox: {
+    backgroundColor: "rgba(255, 165, 2, 0.12)",
+    borderColor: "rgba(255, 165, 2, 0.32)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 18,
+    padding: 14
+  },
+  syncErrorRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  syncErrorText: {
+    color: colors.ink,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20
+  },
+  retryButton: {
+    marginTop: 0
   },
   errorBox: {
     alignItems: "center",
