@@ -1,10 +1,9 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import type { Session } from "@supabase/supabase-js";
 
 import type { PlanId } from "@/lib/billing/plans";
 import { getDemoPractice } from "@/lib/demo/demo-data";
-import { createStringStorage } from "@/lib/store/storage";
+import { clearLocalTenantCaches } from "@/lib/store/localData";
 import { supabase } from "@/lib/supabase/client";
 
 export type Practice = {
@@ -21,30 +20,32 @@ type SessionState = {
   session: Session | null;
   setPractice: (practice: Practice) => void;
   setSession: (session: Session | null) => void;
+  clearPractice: () => void;
   clear: () => void;
 };
 
-const storage = createStringStorage("praxisshield-session");
-
-export const useSessionStore = create<SessionState>()(
-  persist(
-    (set) => ({
-      practice: null,
-      session: null,
-      setPractice: (practice) => set({ practice }),
-      setSession: (session) => set({ session }),
-      clear: () => set({ practice: null, session: null })
-    }),
-    {
-      name: "session",
-      storage: createJSONStorage(() => ({
-        getItem: (name) => storage.getString(name) ?? null,
-        setItem: (name, value) => storage.set(name, value),
-        removeItem: (name) => storage.delete(name)
-      }))
+export const useSessionStore = create<SessionState>()((set, get) => ({
+  practice: null,
+  session: null,
+  setPractice: (practice) => {
+    const previousPracticeId = get().practice?.id;
+    if (previousPracticeId && previousPracticeId !== practice.id) {
+      clearLocalTenantCaches();
     }
-  )
-);
+    set({ practice });
+  },
+  setSession: (session) => set({ session }),
+  clearPractice: () => {
+    if (get().practice) {
+      clearLocalTenantCaches();
+    }
+    set({ practice: null });
+  },
+  clear: () => {
+    clearLocalTenantCaches();
+    set({ practice: null, session: null });
+  }
+}));
 
 export async function initSession() {
   const {
@@ -67,6 +68,7 @@ export async function initSession() {
   if (error) throw error;
   const normalizedPractice = normalizePractice(practice);
   if (normalizedPractice) useSessionStore.getState().setPractice(normalizedPractice);
+  else useSessionStore.getState().clearPractice();
   return normalizedPractice;
 }
 

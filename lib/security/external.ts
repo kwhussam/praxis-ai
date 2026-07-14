@@ -1,7 +1,7 @@
 import { apiRequest } from "@/lib/api/client";
 import type { SecurityFinding } from "@/lib/security/scoring";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type SSLCheck = {
   valid: boolean;
@@ -156,9 +156,11 @@ export type ExternalCheckResult = {
 };
 
 export async function runExternalCheck(domain: string, email?: string, practiceId?: string) {
-  const endpoint = practiceId && UUID_RE.test(practiceId) ? "/api/check/external" : "/api/external-check";
+  if (!practiceId || !UUID_RE.test(practiceId)) {
+    throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein externer Praxis-Check gestartet werden kann.");
+  }
 
-  return apiRequest<ExternalCheckResult>(endpoint, {
+  return apiRequest<ExternalCheckResult>("/api/check/external", {
     method: "POST",
     body: { domain, email, practiceId, consent: true }
   });

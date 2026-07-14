@@ -2,13 +2,17 @@ declare const jest: {
   mock(moduleName: string, factory: () => unknown): void;
 };
 
+const mockApiRequestCalls: Array<{ path: string; options: unknown }> = [];
+let mockApiRequestResult: unknown;
+
 jest.mock("@/lib/api/client", () => ({
-  apiRequest: async () => {
-    throw new Error("apiRequest is not used by report validation tests");
+  apiRequest: async (path: string, options: unknown) => {
+    mockApiRequestCalls.push({ path, options });
+    return mockApiRequestResult;
   }
 }));
 
-import { validateReport } from "@/lib/ai/report";
+import { generateReport, validateReport } from "@/lib/ai/report";
 
 const validReport = {
   executive_summary:
@@ -111,6 +115,68 @@ describe("validateReport", () => {
     expectValidationError(invalidReport, /not_checked_limitations/);
   });
 });
+
+describe("generateReport", () => {
+  it("rejects missing practiceId before calling the Worker", async () => {
+    mockApiRequestCalls.length = 0;
+
+    await expectAsyncError(generateReport({
+      practiceName: "Praxis",
+      questionnaire: {},
+      score: 80
+    }), /Praxis-ID/);
+
+    expect(mockApiRequestCalls).toEqual([]);
+  });
+
+  it("rejects invalid practiceId before calling the Worker", async () => {
+    mockApiRequestCalls.length = 0;
+
+    await expectAsyncError(generateReport({
+      practiceId: "demo-practice",
+      practiceName: "Praxis",
+      questionnaire: {},
+      score: 80
+    }), /Praxis-ID/);
+
+    expect(mockApiRequestCalls).toEqual([]);
+  });
+
+  it("uses the authenticated report endpoint for valid practiceId", async () => {
+    mockApiRequestCalls.length = 0;
+    mockApiRequestResult = validReport;
+
+    await generateReport({
+      practiceId: "11111111-1111-4111-8111-111111111111",
+      practiceName: "Praxis",
+      questionnaire: {},
+      score: 80
+    });
+
+    expect(mockApiRequestCalls).toHaveLength(1);
+    expect(mockApiRequestCalls[0]).toMatchObject({
+      path: "/api/report/generate",
+      options: {
+        method: "POST",
+        body: {
+          practiceId: "11111111-1111-4111-8111-111111111111",
+          practiceName: "Praxis",
+          questionnaire: {},
+          score: 80
+        }
+      }
+    });
+  });
+});
+
+async function expectAsyncError(promise: Promise<unknown>, pattern: RegExp) {
+  try {
+    await promise;
+    throw new Error("Expected async operation to fail");
+  } catch (error) {
+    expect(error instanceof Error ? error.message : String(error)).toMatch(pattern);
+  }
+}
 
 function expectValidationError(value: unknown, pattern: RegExp) {
   try {

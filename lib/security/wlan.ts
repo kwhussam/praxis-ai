@@ -45,7 +45,6 @@ import type {
 import { serviceForPort } from "@/lib/security/servicePortCatalog";
 import { resolveWifiSecurityDetails } from "@/lib/security/wifiCapabilities";
 import { supabase } from "@/lib/api/supabase";
-import { createStringStorage } from "@/lib/store/storage";
 
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
 export type { NetworkSegmentId } from "@/lib/security/networkProbeTypes";
@@ -346,9 +345,8 @@ export const WLAN_VULNERABILITIES = {
   }
 } as const satisfies Record<string, VulnerabilityDefinition>;
 
-const wlanScanStorage = createStringStorage("praxisshield-wlan-scans", {
-  encryptionKey: "praxisshield-local-wlan-v1"
-});
+let latestWlanScanResult: WlanScanResult | null = null;
+const segmentObservations = new Map<NetworkSegmentId, NetworkSegmentObservation>();
 
 type ScanContext = {
   state: NetInfoState;
@@ -537,50 +535,25 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
 }
 
 export function persistWlanScanResultLocally(result: WlanScanResult) {
-  const payload = JSON.stringify({
-    ...result,
-    timestamp: result.timestamp.toISOString(),
-    connectedDevices: result.connectedDevices.map((device) => ({
-      ...device,
-      lastSeen: device.lastSeen.toISOString()
-    }))
-  });
-
-  wlanScanStorage.set("latest", payload);
-  wlanScanStorage.set(`scan:${result.timestamp.toISOString()}`, payload);
+  latestWlanScanResult = result;
 }
 
 export function getLatestWlanScanResult(): WlanScanResult | null {
-  const payload = wlanScanStorage.getString("latest");
-  if (!payload) return null;
+  return latestWlanScanResult;
+}
 
-  try {
-    return reviveScanResult(JSON.parse(payload) as StoredWlanScanResult);
-  } catch {
-    return null;
-  }
+export function clearWlanScanCache() {
+  latestWlanScanResult = null;
+  segmentObservations.clear();
 }
 
 function getSegmentObservations(): NetworkSegmentObservation[] {
-  const payload = wlanScanStorage.getString("segment_observations");
-  if (!payload) return [];
-
-  try {
-    const parsed = JSON.parse(payload);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isNetworkSegmentObservation);
-  } catch {
-    return [];
-  }
+  return Array.from(segmentObservations.values());
 }
 
 function upsertSegmentObservation(observation: NetworkSegmentObservation) {
-  const bySegment = new Map<NetworkSegmentId, NetworkSegmentObservation>();
-  getSegmentObservations().forEach((item) => bySegment.set(item.segment, item));
-  bySegment.set(observation.segment, observation);
-  const observations = Array.from(bySegment.values());
-  wlanScanStorage.set("segment_observations", JSON.stringify(observations));
-  return observations;
+  segmentObservations.set(observation.segment, observation);
+  return getSegmentObservations();
 }
 
 function isNetworkSegmentObservation(value: unknown): value is NetworkSegmentObservation {
@@ -598,8 +571,10 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
     return { ok: false, reason: "invalid_practice_id" as const };
   }
 
+  const clientSyncId = buildWlanScanClientSyncId(result);
   const { error } = await supabase.from("wlan_scans").insert({
     practice_id: practiceId,
+    client_sync_id: clientSyncId,
     network_info: {
       networkName: result.networkName,
       securityProtocol: result.securityProtocol,
@@ -621,8 +596,56 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
     risk_level: riskLevelFromScore(result.riskScore)
   });
 
-  if (error) return { ok: false, reason: error.message };
+  if (error) {
+    if (error.code === "23505") {
+      const existing = await findSyncedWlanScan(practiceId, clientSyncId);
+      if (existing) return { ok: true as const, replayed: true as const, scanId: existing.id };
+      return { ok: false, reason: "duplicate_sync" as const };
+    }
+    return { ok: false, reason: error.message };
+  }
   return { ok: true as const };
+}
+
+async function findSyncedWlanScan(practiceId: string, clientSyncId: string) {
+  const { data, error } = await supabase
+    .from("wlan_scans")
+    .select("id,created_at")
+    .eq("practice_id", practiceId)
+    .eq("client_sync_id", clientSyncId)
+    .maybeSingle();
+
+  if (error || !data || typeof data !== "object") return null;
+  const row = data as Record<string, unknown>;
+  return typeof row.id === "string" ? { id: row.id, createdAt: typeof row.created_at === "string" ? row.created_at : undefined } : null;
+}
+
+function buildWlanScanClientSyncId(result: WlanScanResult) {
+  const deviceFingerprint = result.connectedDevices
+    .map((device) => `${device.ipAddress}|${device.macAddress ?? ""}|${device.hostname}|${device.deviceType}`)
+    .sort()
+    .join(",");
+  const payload = [
+    result.timestamp.toISOString(),
+    result.networkName,
+    result.ipAddress,
+    result.gatewayIp,
+    result.scanMode,
+    result.scanSegment,
+    result.riskScore,
+    deviceFingerprint
+  ].join("|");
+
+  return `wlan:${fnv1a32(payload)}`;
+}
+
+function fnv1a32(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 export function calculateWlanRiskScore(vulnerabilities: Vulnerability[], securityFindings: NetworkSecurityFinding[] = []) {

@@ -50,7 +50,8 @@ export function ReportFindings({ scoreReport }: ReportFindingsProps) {
       {expanded ? (
         <View style={styles.list}>
           <Text style={styles.explainer}>
-            Diese Rohwerte helfen IT-Partnern bei der Prüfung. Für die Praxis zählt vor allem der Maßnahmenplan oben.
+            Lokale Vorschau aus den App-Eingaben. Für Export, Partnerfreigabe und verbindliche Bewertung zählt der
+            serverseitig erzeugte Bericht oben.
           </Text>
           {scoreReport.rule_results.map((finding) => (
             <FindingItem key={finding.rule_id} finding={finding} />

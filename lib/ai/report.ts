@@ -95,11 +95,14 @@ const priorityValues = ["sofort", "diese_woche", "diesen_monat"] as const;
 const dsgvoValues = ["nicht_konform", "teilweise", "konform"] as const;
 const evidenceValues = ["measured", "inferred", "self_reported", "not_checked", "unavailable"] as const;
 const reliabilityValues = ["high", "medium", "low"] as const;
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function generateReport(data: CheckData): Promise<Report> {
-  const endpoint = data.practiceId && UUID_RE.test(data.practiceId) ? "/api/report/generate" : "/ai/report";
-  const report = await apiRequest<unknown>(endpoint, {
+  if (!data.practiceId || !UUID_RE.test(data.practiceId)) {
+    throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein KI-Bericht erzeugt werden kann.");
+  }
+
+  const report = await apiRequest<unknown>("/api/report/generate", {
     method: "POST",
     body: data
   });

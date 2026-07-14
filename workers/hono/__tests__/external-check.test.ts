@@ -22,6 +22,128 @@ describe("POST /api/check/external", () => {
     expect(res.status).toBe(400);
   });
 
+  it("erzwingt Auth auch fuer deprecated Kompatibilitaets-Endpunkte", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return Response.json({}, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/external-check", {
+          method: "POST",
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect(requestedUrls).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lehnt fehlende Domain im deprecated Kompatibilitäts-Endpunkt ab", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: null,
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/external-check", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "domain is required" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("liefert 500 statt 401, wenn Supabase Auth nicht erreichbar ist", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const requestedUrls: string[] = [];
+    const errors: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ message: "auth unavailable" }, { status: 503 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal_server_error" });
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/practices"))).toBe(false);
+      expect((errors[0] as unknown[])[0]).toBe("supabase_auth_unavailable");
+      expect((errors[1] as unknown[])[0]).toBe("practice_access_auth_failed");
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+
   it("lehnt fehlende Domain im öffentlichen Kompatibilitäts-Endpunkt ab", async () => {
     const res = await worker.fetch(
       new Request("http://localhost/api/external-check", {
@@ -47,6 +169,88 @@ describe("POST /api/check/external", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: "consent_required" });
+  });
+
+  it("lehnt fehlendes JWT vor jedem Service-Role-DB-Zugriff mit 401 ab", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return Response.json({}, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
+      expect(requestedUrls).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lehnt gueltiges JWT mit fremder practiceId mit 403 ab", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "33333333-3333-4333-8333-333333333333",
+            name: "Fremde Praxis",
+            domain: "fremd.de",
+            email: "kontakt@fremd.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+      expect(requestedUrls.some((url) => url.startsWith("https://api.ssllabs.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("nutzt den Service-Role-Key nicht als Fallback, wenn der Supabase Anon Key fehlt", async () => {
@@ -112,6 +316,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json({ message: "internal database detail" }, { status: 500 });
       }
@@ -149,10 +356,264 @@ describe("POST /api/check/external", () => {
     }
   });
 
+  it("gibt bei ueberschrittener External-Check-Quota 429 zurueck", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(false);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(429);
+      expect(await res.json()).toEqual({ error: "daily_limit_reached", limit: 3, plan: "free" });
+      expect(requestedUrls.some((url) => url.startsWith("https://api.ssllabs.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lehnt fremde checkId im Report-Pfad vor Anthropic und Report-Write ab", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/generate", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            checkId: "44444444-4444-4444-8444-444444444444",
+            domain: "praxis.de",
+            score: 80
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+      expect(requestedUrls.some((url) => url.startsWith("https://api.anthropic.com"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/reports"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("gibt bei ueberschrittener AI-Report-Quota 429 vor Anthropic zurueck", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")) {
+        return Response.json(false);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/generate", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            score: 80
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(429);
+      expect(await res.json()).toEqual({ error: "daily_ai_report_limit_reached", limit: 3, plan: "free" });
+      expect(requestedUrls.some((url) => url.startsWith("https://api.anthropic.com"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/reports"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("ueberschreibt manipulierte Client-Scores im Report-Pfad vor Anthropic serverseitig", async () => {
+    const originalFetch = globalThis.fetch;
+    let anthropicPrompt = "";
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://api.anthropic.com/v1/messages")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { messages?: Array<{ content?: string }> };
+        anthropicPrompt = body.messages?.[0]?.content ?? "";
+        return Response.json({
+          content: [{ type: "text", text: JSON.stringify(validAiReport()) }]
+        });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/reports")) {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/generate", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            score: 100,
+            questionnaire: {
+              mfa: false,
+              backups: false,
+              patching: false
+            }
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(anthropicPrompt.includes("Vorberechneter Score: 0")).toBe(true);
+      expect(anthropicPrompt.includes("Vorberechneter Score: 100")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("kennzeichnet fehlende Provider-Keys als nicht geprüft und bewertet Subdomains separat", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
         return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
       }
@@ -182,7 +643,13 @@ describe("POST /api/check/external", () => {
       const res = await worker.fetch(
         new Request("http://localhost/api/external-check", {
           method: "POST",
-          body: JSON.stringify({ domain: "praxis.de", email: "kontakt@praxis.de" })
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            consent: true
+          })
         }),
         baseEnv,
         {} as ExecutionContext
@@ -270,6 +737,77 @@ describe("POST /api/check/external", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("liefert Partner-Responses trotz Audit-RPC-Ausfall aus und loggt den Fehler serverseitig", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const errors: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "33333333-3333-4333-8333-333333333333", email: "partner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+        return Response.json([{ role: "viewer" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/audit_partner_practice_access")) {
+        return Response.json({ message: "internal database detail" }, { status: 500 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")) {
+        return Response.json([]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_events")) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/monitoring/status?practiceId=11111111-1111-4111-8111-111111111111", {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ snapshot: null, activeAlerts: [] });
+      const loggedError = errors[0] as [
+        string,
+        { action: string; resource: string; practice_id: string; user_id: string; role: string; error: Error }
+      ];
+      expect(loggedError[0]).toBe("practice_access_audit_failed");
+      expect(loggedError[1]).toMatchObject({
+        action: "access",
+        resource: "monitoring_status",
+        practice_id: "11111111-1111-4111-8111-111111111111",
+        user_id: "33333333-3333-4333-8333-333333333333",
+        role: "viewer"
+      });
+      expect(loggedError[1].error.message).toBe("Supabase request failed with 500");
+      expect(JSON.stringify(errors).includes("internal database detail")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
 });
 
 function dnsResponse(name: string, type: string) {
@@ -314,4 +852,55 @@ function dnsResponse(name: string, type: string) {
 
 function dnsTypeCode(type: string) {
   return { A: 1, NS: 2, CNAME: 5, MX: 15, TXT: 16, AAAA: 28, CAA: 257 }[type] ?? 16;
+}
+
+function validAiReport() {
+  return {
+    executive_summary: "Servervalidierter Bericht mit geprüfter Score-Basis.",
+    overall_risk: "medium",
+    security_score: 50,
+    ampel: "gelb",
+    top_risks: [
+      {
+        rank: 1,
+        title: "MFA fehlt",
+        plain_language: "Der Bericht basiert auf serverseitig neu bewerteten Angaben.",
+        business_impact: "Unbefugte Anmeldungen werden wahrscheinlicher.",
+        action: "MFA für alle Konten aktivieren.",
+        effort_hours: "1-2 Stunden",
+        cost_estimate: "IT-Dienstleister, 1-2 Stunden",
+        priority: "diese_woche",
+        evidence_source: "self_reported",
+        reliability: "medium"
+      }
+    ],
+    scores_by_category: {
+      access_control: 50,
+      backup: 50,
+      email_security: 50,
+      network: 50,
+      dsgvo: 50,
+      updates: 50
+    },
+    dsgvo_compliance: {
+      status: "teilweise",
+      missing_documents: ["Nachweise"],
+      liability_risk: "Nachweise fehlen."
+    },
+    quick_wins: [
+      {
+        action: "MFA aktivieren",
+        time_minutes: 30,
+        impact: "Reduziert Kontoübernahmen."
+      }
+    ],
+    not_checked_limitations: [
+      {
+        area: "WLAN",
+        reason: "Nicht übergeben.",
+        impact: "Netzwerkrisiken bleiben eingeschränkt bewertbar."
+      }
+    ],
+    monthly_monitoring_recommendation: true
+  };
 }

@@ -7,6 +7,7 @@ type StringStorage = {
 };
 
 const storages = new Map<string, StringStorage>();
+const volatileStorages = new Map<string, StringStorage>();
 
 export function createStringStorage(id: string, options?: { encryptionKey?: string }): StringStorage {
   const existing = storages.get(id);
@@ -14,6 +15,15 @@ export function createStringStorage(id: string, options?: { encryptionKey?: stri
 
   const storage = createNativeStorage(id, options) ?? createMemoryStorage();
   storages.set(id, storage);
+  return storage;
+}
+
+export function createVolatileStringStorage(id: string): StringStorage {
+  const existing = volatileStorages.get(id);
+  if (existing) return existing;
+
+  const storage = createMemoryStorage();
+  volatileStorages.set(id, storage);
   return storage;
 }
 

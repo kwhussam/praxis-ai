@@ -1,79 +1,238 @@
-# PraxisShield Scoring 1.4.0
+# PraxisShield Scoring 2.0.0
 
-Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, technische Evidenz, Finding und Empfehlung.
+Die Scoring-Engine ist regelbasiert, versioniert und auditierbar. Jeder Gesamtscore entsteht aus `SCORING_RULES` in `lib/security/scoring.ts`; jede Regel liefert Punkte, Kategorie, Evidenztyp, Confidence, Finding, Empfehlung und Audit-Hinweise.
 
-## Evidence & Coverage
+Version 2.0.0 trennt den Security Score vom Ampelstatus. Eine Praxis kann einen hohen Security Score erreichen und trotzdem nicht Grün sein, wenn die Nachweise schwach sind, Kernanforderungen fehlen, Mindestwerte unterschritten werden oder technische Befunde widersprechen.
 
-Zusätzlich zum Sicherheitswert berechnet die Engine einen separaten `evidence_coverage_score`. Dieser Wert verändert den Sicherheits-Score nicht, sondern bewertet, wie belastbar die Datengrundlage je Prüfmodul ist.
+## Datenmodell
 
-Jedes `rule_results`-Element enthält `evidence_coverage` mit:
+Zentrale Typen in `lib/security/scoring.ts`:
 
-- `source`: `measured`, `inferred`, `self_reported`, `not_checked` oder `unavailable`.
-- `score`: Coverage-Wert von 0 bis 100 für dieses Prüfmodul.
-- `label`: deutschsprachige Anzeige für die UI.
-- `detail`: kurze Begründung der Einordnung.
+```ts
+type EvidenceSource =
+  | "measured"       // technisch gemessen, z. B. WLAN/DMARC/Portprobe
+  | "inferred"       // aus technischen Befunden abgeleitet
+  | "self_reported"  // Claim/Selbstauskunft, nicht belastbarer Nachweis
+  | "not_checked"
+  | "unavailable";
 
-Die Gewichtung erfolgt anhand der maximalen Regelpunkte:
+type EvidenceKind =
+  | "technical_evidence"
+  | "derived_signal"
+  | "claim"
+  | "missing";
 
-- `measured` = 100: technisch gemessen, z. B. WLAN-Verschlüsselung oder DMARC aus externem Check.
-- `inferred` = 70: heuristisch aus anderen Befunden abgeleitet, z. B. aggregierte aktive Findings.
-- `self_reported` = 45: per Fragebogen/Selbstauskunft erfasst.
-- `not_checked` = 0: nicht geprüft, weil die jeweilige Prüfung nicht ausgeführt oder keine Eingabe erfasst wurde.
-- `unavailable` = 0: technisch nicht verfügbar oder nicht zuverlässig auslesbar.
+type CheckData = {
+  mfa_enabled?: boolean;
+  backup_tested?: boolean;
+  backup_frequency?: "none" | "weekly" | "daily";
+  dmarc_exists?: boolean;
+  updates_current?: boolean;
+  privacy_documents_current?: boolean;
+  staff_training?: boolean;
+  responsibilities_defined?: boolean;
+  encryption?: "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
+  external?: { email_security?: { dmarc?: { policy?: "none" | "quarantine" | "reject" | null } } };
+  externalFindings?: SecurityFinding[];
+  wlanFindings?: SecurityFinding[];
+  wlanSecurityFindings?: NetworkSecurityFinding[];
+  evidence_sources?: Partial<Record<ScoringRuleId, EvidenceSource>>;
+};
+```
 
-Prüfmodule mit `not_checked`- oder `unavailable`-Evidenz erhalten keine Punkte und werden nicht als bestanden markiert. Ausgeführte technische Prüfungen ohne Befund bleiben weiterhin positiv bewertbar, sofern die jeweilige Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
+`ScoreReport` enthält zusätzlich:
 
-Externe Provider wie Shodan, HIBP, VirusTotal, SecurityTrails, SSL Labs und Cloudflare DNS werden mit separatem Providerstatus ausgewiesen. Fehlende API-Keys erzeugen `not_checked`-Hinweise und werden nicht als “keine Risiken gefunden” gewertet.
+- `score`: Security Score von 0 bis 100 nach Evidence-Kappung.
+- `evidence_confidence`: separater gewichteter Confidence-Wert von 0 bis 100.
+- `ampel`: `rot`, `gelb` oder `grün`, entschieden über Score plus Gates.
+- `ampel_reasons`: Audit-Log der Ampelentscheidung mit Code, Schwelle, Ist-Wert, Kategorie und Regel.
+- `scores_by_category`: Kategorie-Scores nach Evidence-Kappung.
+- `category_minimums`: aktuell `backup >= 70`, `access_control >= 70`, `updates >= 70`, `email_security >= 70`.
+- `review_status`: `review_required`, wenn widersprüchliche Evidenz erkannt wird.
 
-## Kategorien
+## Evidence & Confidence
 
-- `access_control`: Zugriffsschutz, insbesondere MFA.
-- `backup`: Backup-Frequenz und dokumentierte Restore-Tests.
-- `email_security`: SPF/DKIM/DMARC, aktuell mit Schwerpunkt DMARC-Policy.
-- `network`: WLAN-Verschlüsselung, aktive externe/WLAN-Findings und lokale technische Netzwerkprüfungen.
-- `dsgvo`: Schulungen, Datenschutzdokumentation und dokumentierte Verantwortlichkeiten.
-- `updates`: Patch- und Update-Stand.
+Evidence Confidence bewertet die Belastbarkeit der Datenbasis und verändert den Security Score nicht direkt.
 
-## Fragebogen-Nachweise
+| Evidence Source | Kind | Confidence | Bewertung |
+| --- | --- | ---: | --- |
+| `measured` | `technical_evidence` | 100 | technisch gemessen, z. B. WLAN, DMARC, lokale Netzwerkprobe |
+| `inferred` | `derived_signal` | 70 | aus technischen Findings abgeleitet |
+| `self_reported` | `claim` | 45 | Selbstauskunft, nur unbestätigte Behauptung |
+| `not_checked` | `missing` | 0 | Prüfung nicht ausgeführt |
+| `unavailable` | `missing` | 0 | technisch nicht verfügbar oder nicht zuverlässig auslesbar |
 
-Der Fragebogen trennt Statusangaben von konkreten Nachweisen. Kritische Selbstauskünfte zählen erst vollständig, wenn der passende Nachweis bestätigt wurde:
+Selbstauskünfte sind Claims. Sie werden pro Regel auf `SELF_REPORTED_POINT_CAP_RATIO = 0.5` begrenzt. Dadurch können rein selbstberichtete technische Kernkontrollen maximal 50 Prozent ihrer Regelpunkte beitragen. `points_before_evidence_cap` und `evidence_weight_cap_applied` machen den Abzug auditierbar.
 
-- MFA zählt als aktiv, wenn MFA aktiviert ist und ein Nachweis wie Richtlinie, Screenshot oder Benutzerliste vorliegt.
-- Der MFA-Fragebogen erfasst konkret E-Mail, Praxissoftware, VPN, Cloud-Dienste, Admin-Konten und Fernwartung.
-- Backups zählen als tägliche Backups, wenn tägliche Sicherung, Backup-Frequenz, Backup-Ziel, Offline-/Immutable-Backup, Verantwortlicher und Backup-Protokoll bestätigt sind.
-- Restore-Tests zählen nur mit dokumentiertem letztem Restore-Testdatum, Ergebnis und Verantwortlichem.
-- Patchmanagement zählt nur mit festem Patchprozess, dokumentiertem Systemumfang, Patch-Frequenz, Verantwortlichem, letztem Patchdatum, Ausnahmen und Update-Protokoll.
-- DSGVO-Dokumentation zählt nur mit AVV, TOMs, Verzeichnis von Verarbeitungstätigkeiten, Löschkonzept, Berechtigungskonzept, dokumentierter Datenschutzschulung und Review/Freigabe in den letzten 12 Monaten.
-- Verantwortlichkeiten zählen über `SECURITY_RESPONSIBILITIES`, wenn verantwortliche Person, Vertretung, Aufgaben und Eskalationswege dokumentiert sind.
-- DHCP-Sicherheit wird zusätzlich als Fragebogenkontrolle erfasst: autorisierter DHCP-Server, erwartete Router-/Gateway-IP, erlaubte DNS-Server und bekannte Ausnahmen oder Reservierungen.
-- Router-Fingerprinting kombiniert weiterhin technische Hinweise mit strukturierten Nachweisen zu Hersteller, Modell, Firmware-Version, Update-Status und zuständigem IT-Dienstleister.
-- Das Default-Passwort-Risiko des Routers wird nicht durch Loginversuche geprüft. Ohne belastbaren Nachweis bleibt der Befund `unknown`/`unavailable`; die Bewertung erfolgt primär über Fragebogenangaben zu geändertem Adminpasswort, sicherer Dokumentation und Zuständigkeit.
-- Router-Sicherheitsfragen erfassen zusätzlich MFA/2FA, Fernzugriff, UPnP und dokumentierte Portfreigaben.
+Fehlende Evidenz (`not_checked`, `unavailable`) erhält keine Punkte und gilt nicht als bestanden. Ausgeführte technische Prüfungen ohne Befund bleiben positiv bewertbar, sofern die Ergebnisquelle explizit vorliegt, z. B. leere Finding-Listen nach abgeschlossenem Scan.
 
-## Ampel
+## Kategoriegewichtung
 
-- `grün`: Score ab 75.
-- `gelb`: Score ab 50.
-- `rot`: Score unter 50.
+E-Mail-Sicherheit wurde stärker gewichtet, weil Phishing ein Hauptangriffsvektor für Arztpraxen ist. DSGVO-Dokumentation wurde reduziert, damit Dokumente technische Kontrollen nicht überkompensieren.
 
-Berichte und gespeicherte Checks müssen `scoring_version` mitführen, damit spätere Audits nachvollziehen können, welche Regelversion verwendet wurde.
+| Kategorie | Regeln | Max. Punkte |
+| --- | --- | ---: |
+| `access_control` | MFA | 15 |
+| `backup` | Backup-Frequenz, Restore-Test | 20 |
+| `email_security` | DMARC Policy | 15 |
+| `updates` | Patchstand | 15 |
+| `network` | WLAN, aktive Findings, lokale Probes | 30 |
+| `dsgvo` | Schulung, Dokumentation, Verantwortlichkeiten | 20 |
+
+## Berechnungslogik
+
+Vereinfachter TypeScript-Pseudocode:
+
+```ts
+rule_results = SCORING_RULES.map(rule => rule.evaluate(checkData));
+
+for (const result of rule_results) {
+  if (result.evidence.source in ["not_checked", "unavailable"]) {
+    result.points_earned = 0;
+    result.passed = false;
+  }
+
+  if (result.evidence.source === "self_reported") {
+    result.points_before_evidence_cap = result.points_earned;
+    result.points_earned = min(result.points_earned, result.points_max * 0.5);
+    result.evidence.kind = "claim";
+    result.evidence_weight_cap_applied = true;
+  }
+}
+
+score = round(sum(points_earned) / sum(points_max) * 100);
+scores_by_category = groupByCategory(rule_results);
+evidence_confidence = weightedAverage(rule.evidence.confidence, rule.points_max);
+review_status = hasEvidenceConflict(checkData, rule_results) ? "review_required" : "ok";
+ampel = decideAmpel(score, evidence_confidence, scores_by_category, rule_results, review_status);
+```
+
+## Ampellogik
+
+Rot:
+
+- `score < 50`.
+
+Grün nur, wenn alle Bedingungen erfüllt sind:
+
+- `score >= 75`.
+- `evidence_confidence >= 70`.
+- Kategorie-Mindestwerte erfüllt: `backup >= 70`, `access_control >= 70`, `updates >= 70`, `email_security >= 70`.
+- Harte Grün-Anforderungen erfüllt:
+  - `BACKUP_TESTED`: Backup und Restore-Test belastbar nachgewiesen.
+  - `MFA_ENABLED`: MFA technisch gemessen oder belastbar abgeleitet bestätigt.
+  - `PATCHING_CURRENT`: Patchstand geprüft, nicht nur behauptet.
+  - `DMARC_POLICY`: DMARC technisch geprüft und mindestens `quarantine`.
+- Keine kritischen Rot-Befunde in Kernbereichen, z. B. WEP/offenes WLAN, kritische aktive Findings, kritische lokale Netzwerkprobes.
+- `review_status === "ok"`.
+
+Gelb:
+
+- `score >= 50`, aber mindestens ein Grün-Gate ist nicht erfüllt.
+- Beispiele: hoher Score mit niedriger Evidence Confidence, Kernkategorie unter Mindestwert, kritische Kategorie nur selbstberichtet, Widerspruch zwischen Selbstauskunft und Messung.
+
+Jede Entscheidung landet in `ampel_reasons`. Beispiele für Codes:
+
+- `score_threshold`
+- `score_below_yellow_threshold`
+- `evidence_confidence_too_low_for_green`
+- `category_minimum_failed`
+- `green_hard_requirement_failed`
+- `core_critical_finding_blocks_green`
+- `review_required_blocks_green`
+- `evidence_conflict_dmarc`
+- `self_reported_claim_capped`
+
+## DSGVO-Wirksamkeitsprüfung
+
+Die DSGVO-Bewertung prüft nicht nur Dokumentenexistenz, sondern Aktualität, Praxisbezug, technische Umsetzung und Nachweisführung.
+
+Bewertungsstufen:
+
+- `0 nicht vorhanden`: keine belastbare Angabe oder Prüfung nicht ausgeführt.
+- `1 dokumentiert`: Dokument/Prozess existiert, Umsetzung nicht nachgewiesen.
+- `2 technisch umgesetzt`: Maßnahme ist im Praxisbetrieb eingerichtet.
+- `3 nachgewiesen und getestet`: aktueller Nachweis liegt vor, Wirksamkeit wurde geprüft.
+
+| Bereich | Prüfkriterien für Stufe 3 |
+| --- | --- |
+| Verzeichnis von Verarbeitungstätigkeiten | Vollständig für Patientendaten, Abrechnung, Labor, Termin, Kommunikation; in den letzten 12 Monaten geprüft; praxisbezogene Systeme und Empfänger benannt |
+| Rechtsgrundlagen/Einwilligungen | Je Verarbeitung dokumentiert; Einwilligungen versioniert; Widerruf praktisch handhabbar; Sonderfälle wie Recall, Newsletter oder Videosprechstunde abgedeckt |
+| Auftragsverarbeitung | AVV für IT-Dienstleister, Cloud, Labor, Abrechnung, Termin-/Kommunikationsdienste; Unterauftragsnehmer und TOM-Anlagen geprüft |
+| TOMs | Nicht nur Dokument vorhanden; Verschlüsselung, MFA, Patchmanagement, Backup, Rechtekonzept und Protokollierung technisch belegt |
+| Zugriffsprotokolle | Patientendatenzugriffe werden protokolliert; Stichprobenprüfung möglich; Aufbewahrung und Zugriff auf Logs geregelt |
+| Lösch-/Aufbewahrungskonzepte | Fristen je Datenart; Löschläufe oder Archivprozesse nachweisbar; Ausnahmen dokumentiert |
+| Backup/Wiederherstellung | Verfügbarkeit und Integrität belegt; Restore-Test mit Datum, Ergebnis, Umfang und Verantwortlichem |
+| Datenschutzverletzungen | Meldeprozess mit 72-Stunden-Frist, Rollen, Eskalationsweg, Vorlagen und Test/Übung |
+| Betroffenenrechte | Auskunft, Berichtigung, Löschung, Einschränkung und Datenübertragbarkeit mit Verantwortlichen, Fristen und Fallnachweisen |
+| Rollen-/Berechtigungskonzept | Need-to-know je Rolle; Adminrechte begründet; regelmäßige Rechteprüfung; Austritte/Wechsel abgedeckt |
+| Fernwartung/externe Zugriffe | MFA, Protokollierung, explizite Freigabe, zeitliche Begrenzung, Dienstleisterzuordnung |
+| Nachweisführung | Screenshots, Config-Exporte, Logs, Verträge, Testprotokolle und Freigaben versioniert und datenschutzarm abgelegt |
+
+DSGVO-Dokumentation kann technische Kontrollen nicht verdrängen. Selbst ein vollständiger DSGVO-Dokumentensatz erzeugt kein Grün, wenn Backup, MFA, Patchstand oder E-Mail-Schutz nicht belastbar nachgewiesen sind.
+
+## Beispielrechnungen
+
+### Beispiel 1: Alter Fall "82 Punkte, überwiegend self_reported"
+
+Alt:
+
+- Positive Fragebogenangaben wurden voll gewertet.
+- Ergebnis: `score = 82`, `ampel = grün`.
+
+Neu:
+
+- `self_reported` wird als `claim` mit Confidence 45 behandelt.
+- Claim-Punkte werden auf 50 Prozent pro Regel begrenzt.
+- Harte Grün-Anforderungen für MFA, Backup und Patchstand sind nicht belastbar erfüllt.
+- Ergebnis im typischen Voll-Fragebogenfall: `score = 70`, `evidence_confidence = 65`, `ampel = gelb`.
+- Audit-Log enthält u. a. `self_reported_claim_capped`, `evidence_confidence_too_low_for_green`, `green_hard_requirement_failed`.
+
+### Beispiel 2: Belastbar geprüfter Bestfall
+
+Eingaben:
+
+- MFA, Backup/Restore, Patchstand, DSGVO-Nachweise technisch gemessen oder belastbar belegt.
+- DMARC technisch geprüft mit `reject`.
+- WLAN WPA3, lokale Netzwerkprobes ohne Befund.
+
+Neu:
+
+- `score = 100`.
+- `evidence_confidence = 99`, weil eine Aggregation aus Findings als `inferred` zählt.
+- Kategorie-Mindestwerte erfüllt.
+- Harte Grün-Anforderungen erfüllt.
+- Ergebnis: `ampel = grün`.
+
+### Beispiel 3: Hoher Score, aber DMARC-Widerspruch
+
+Eingaben:
+
+- Fragebogen sagt `dmarc_exists = true`.
+- Technischer Domain-Check findet keinen DMARC-Record.
+
+Neu:
+
+- DMARC-Regel erhält 0 Punkte aus technischem Befund.
+- `review_status = review_required`.
+- Ergebnis: höchstens `gelb`, selbst wenn der Gesamtscore rechnerisch hoch bleibt.
+- Audit-Log enthält `evidence_conflict_dmarc` und `review_required_blocks_green`.
+
+### Beispiel 4: Kritischer Kernbefund trotz Score >= 75
+
+Eingaben:
+
+- Viele Kontrollen sind gemessen und bestanden.
+- WLAN ist `WEP` oder lokale Probes finden einen kritischen Dienst.
+
+Neu:
+
+- Kritischer Kernbefund setzt `core_critical_finding`.
+- Grün wird blockiert.
+- Audit-Log enthält `core_critical_finding_blocks_green`.
 
 ## Lokale Netzwerkprüfungen
 
 Der WLAN-Scanner erzeugt strukturierte `NetworkSecurityFinding`-Objekte für WLAN-Verschlüsselung, WPA3-Empfehlung, Router-HTTP, Telnet, SMB, SMB-Sicherheitsmetadaten, UPnP/SSDP, RDP, Datenbankports, Drucker-, NAS-, Kamera-/IoT-Hinweise, vorsichtige medizinische Geräte-Metadaten, IPv6, DNS-Resolver, DHCP-Konsistenz, Gastnetz-Heuristik, Segmentierungs-Score, Rogue-AP-/Rogue-Device-Hinweise, Router-Firmware-Hinweise, Default-Passwort-Risiko und Firewall-Basischeck. Kritische Dienste wie Telnet, RDP oder offen erreichbare Datenbankports reduzieren den lokalen WLAN-Risikoscore direkt über `scoreImpact`; das globale Scoring berücksichtigt die aggregierten Befunde zusätzlich über `NETWORK_SECURITY_PROBES`.
 
-Die Prüfungen sind local-first und dürfen keine Patientendaten, Dateien, SMB-/NFS-Freigaben, Druckjobs, Datenbankinhalte oder medizinische Protokollinhalte lesen. Nicht verfügbare native Plattformfunktionen werden als `unknown`/`unavailable` dokumentiert und nicht als offene Ports gewertet. Der WPS-Status wird als `not_supported`/`unavailable` gekennzeichnet, solange er technisch nicht zuverlässig auslesbar ist. JetDirect 9100 wird nur per TCP-Connect geprüft; es werden keine Nutzdaten an RAW-Druckports gesendet. Die SMB-Sicherheitsprüfung darf nur Protokollmetadaten wie SMB-Version, Signing und möglichen Gastzugriff bewerten; sie darf keine Shares auflisten und keine Dateien öffnen.
-
-Der lokale Portscan läuft standardmäßig gegen Gateway und ausgewählte Kandidaten-IP-Adressen. Ein vollständiger IPv4-Subnetzscan ist nur im Audit-Modus mit expliziter zusätzlicher Einwilligung vorgesehen und nutzt gedrosselte TCP-Connect-Probes. Portbefunde enthalten Kontextfragen, ob der Dienst absichtlich erreichbar ist und auf welche Quellgeräte oder Quell-IP-Adressen er beschränkt sein sollte.
-
-Der Firewall-Basischeck trennt interne Sicht aus lokalen Probes von externer Sicht aus dokumentierten Router-/Firewall-Regeln. Interne offene Dienste erzeugen Kontextbedarf, werden aber nicht pauschal als Internet-Exposition bewertet. Externe Portfreigaben werden nur als kontrolliert betrachtet, wenn Zweck, Zielsystem, Verantwortlicher und Review-Datum dokumentiert sind.
-
-Segmentierungsprüfungen können nacheinander aus Praxis-WLAN, Gäste-WLAN, Servernetz, Druckernetz und Medizingerätenetz ausgeführt werden. Jeder Lauf speichert nur Segment, sichtbare Geräteklassen und offene Dienstmetadaten; die Bewertung aggregiert die letzten Beobachtungen pro Segment und markiert auffällige Überschneidungen. Wenn aus früheren Segmentläufen konkrete Ziel-IP-/Port-Kombinationen bekannt sind, prüft ein späterer Lauf gezielt deren TCP-Erreichbarkeit aus dem aktuellen Segment. So werden Client-Isolation und VLAN-Trennung nachvollziehbar bewertet, ohne vollständige Quersegment-Scans zu erzwingen.
-
-DNS-Sicherheitstests verwenden harmlose Malware-/Phishing-Testdomains und werten nur DNS-Antworten aus. Es werden keine Webseiten geöffnet, keine Dateien geladen und keine schädlichen Inhalte abgerufen.
-
-Externe Domain-Checks entdecken Subdomains über SecurityTrails oder begrenzte Cloudflare-DNS-Fallbacks und bewerten jede gefundene Subdomain separat für DNS- und TLS-Signale. Mail-Sicherheitsprüfungen umfassen SPF-/DKIM-/DMARC-Alignment-Bereitschaft, MTA-STS, TLS-RPT und CAA.
-
-Monitoring-Läufe verwenden explizit gepflegte Prüfziele aus Domains, Subdomains und freigegebenen Praxis-E-Mail-Adressen. Leak-Prüfungen für E-Mail-Adressen laufen nur nach separater Einwilligung. Befunde werden historisch als `new`, `recurring`, `resolved` oder `unchanged` markiert; die Einstufung basiert auf reduzierten Vergleichs-Fingerprints für Ports, DNS, DMARC und Zertifikate.
-
-Der DNS-Betrieb wird zusätzlich per Fragebogen dokumentiert: verwendeter Resolver, DNS-Filter, Datenschutzbewertung, zuständiger Dienstleister und dokumentierte Konfiguration. IPv6 wird nur dann als sauber abgedeckt bewertet, wenn die Praxis die bewusste Nutzung sowie Firewall- und DNS-Regeln für IPv6 bestätigt oder technische Befunde dies stützen. Ein optionaler lokaler IPv6-Port-/Erreichbarkeitscheck läuft nur nach expliziter Einwilligung und prüft ausschließlich lokale ULA-/Link-Local-Adressen.
+Die Prüfungen sind local-first und dürfen keine Patientendaten, Dateien, SMB-/NFS-Freigaben, Druckjobs, Datenbankinhalte oder medizinische Protokollinhalte lesen. Nicht verfügbare native Plattformfunktionen werden als `unknown`/`unavailable` dokumentiert und nicht als offene Ports gewertet. WPS wird als `not_supported`/`unavailable` gekennzeichnet, solange der Status technisch nicht zuverlässig auslesbar ist.

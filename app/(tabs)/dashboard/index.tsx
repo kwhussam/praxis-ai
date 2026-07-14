@@ -40,7 +40,10 @@ export default function DashboardScreen() {
       </View>
       <PracticeGuidanceCard guidance={guidance} />
       <View style={styles.scoreWrap}>
-        <ScoreRing score={score} label="Sicherheitswert" />
+        <ScoreRing score={score} label="Vorläufige Einschätzung" />
+        <Text style={styles.previewNotice}>
+          Lokale Vorschau aus Ihren Eingaben. Verbindliche Berichte und Exporte werden serverseitig neu berechnet.
+        </Text>
       </View>
       <EvidenceCoveragePanel report={scoreReport} />
       <View style={styles.planCard}>
@@ -95,6 +98,14 @@ const styles = StyleSheet.create({
   scoreWrap: {
     alignItems: "center",
     marginBottom: 26
+  },
+  previewNotice: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 10,
+    maxWidth: 280,
+    textAlign: "center"
   },
   planCard: {
     backgroundColor: "rgba(255,255,255,0.06)",

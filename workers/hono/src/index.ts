@@ -357,6 +357,7 @@ type PracticeAccess = {
 
 const REPORT_FORMAT_VERSION = "1.0.0";
 const SCORING_VERSION = "1.0.0";
+const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
 
 const DNS_TYPE_CODES: Record<string, number> = {
   A: 1,
@@ -405,9 +406,10 @@ app.get("/api/privacy/export", async (c) => handlePrivacyExport(c));
 app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
 app.post("/api/legal/consent", async (c) => handleConsent(c));
 
-app.post("/api/external-check", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
-app.post("/security/external", async (c) => handleExternalCheck(c, { requirePractice: false, persist: false }));
-app.post("/ai/report", async (c) => handleReportGenerate(c, { requirePractice: false, persist: false }));
+// Deprecated compatibility routes: kept for old clients, but now require practice auth to avoid anonymous cost abuse.
+app.post("/api/external-check", async (c) => handleExternalCheck(c, { requirePractice: true, persist: false }));
+app.post("/security/external", async (c) => handleExternalCheck(c, { requirePractice: true, persist: false }));
+app.post("/ai/report", async (c) => handleReportGenerate(c, { requirePractice: true, persist: false }));
 
 const SYSTEM_PROMPT = `
 Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
@@ -849,8 +851,23 @@ async function handleReportGenerate(
   const access = options.requirePractice || payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "report_generate") : null;
   if (access instanceof Response) return access;
 
+  if (access && payload.checkId) {
+    const checkAccess = await requireSecurityCheckForPractice(c.env, access.practice.id, payload.checkId);
+    if (checkAccess instanceof Response) return checkAccess;
+  }
+
+  if (access) {
+    const allowed = await consumeAiReportQuotaOrErrorResponse(c, access, "report_generate");
+    if (allowed instanceof Response) return allowed;
+    if (!allowed) {
+      await auditPracticeAccess(c, access, "quota_denied", "reports", { plan: access.practice.plan });
+      return c.json({ error: "daily_ai_report_limit_reached", limit: FREE_PLAN_DAILY_AI_REPORT_LIMIT, plan: "free" }, 429);
+    }
+  }
+
   const reportInput: CheckData = {
     ...payload,
+    score: scoreQuestionnaire(payload.questionnaire ?? {}),
     practiceName: payload.practiceName ?? access?.practice.name,
     domain: payload.domain ?? access?.practice.domain
   };
@@ -1100,6 +1117,10 @@ async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<Auth
       }
     });
 
+    if (response.status >= 500) {
+      throw new Error(`Supabase auth request failed with ${response.status}`);
+    }
+
     if (!response.ok) return null;
 
     const data = asRecord(await response.json());
@@ -1110,8 +1131,9 @@ async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<Auth
       id,
       email: typeof data.email === "string" ? data.email : undefined
     };
-  } catch {
-    return null;
+  } catch (error) {
+    console.error("supabase_auth_unavailable", error);
+    throw error;
   }
 }
 
@@ -1176,6 +1198,59 @@ async function consumeExternalQuotaOrErrorResponse(
   }
 }
 
+async function consumeAiReportQuota(env: Env, access: PracticeAccess) {
+  if (access.practice.plan !== "free") return true;
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("worker_misconfigured_ai_report_quota");
+    throw new Error("Supabase service credentials are not configured");
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_ai_report_quota", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      p_user_id: access.user.id,
+      p_practice_id: access.practice.id,
+      p_usage_date: today,
+      p_limit: FREE_PLAN_DAILY_AI_REPORT_LIMIT
+    }
+  });
+
+  return allowed === true;
+}
+
+async function consumeAiReportQuotaOrErrorResponse(
+  c: Context<{ Bindings: Env }>,
+  access: PracticeAccess,
+  action: string
+): Promise<boolean | Response> {
+  try {
+    return await consumeAiReportQuota(c.env, access);
+  } catch (error) {
+    console.error("ai_report_quota_check_failed", { action, error });
+    return c.json({ error: "internal_server_error" }, 500);
+  }
+}
+
+async function requireSecurityCheckForPractice(env: Env, practiceId: string, checkId: string): Promise<true | Response> {
+  if (!isUuid(checkId)) {
+    return Response.json({ error: "checkId is required" }, { status: 400 });
+  }
+
+  const checks = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/security_checks?select=id&id=eq.${encodeURIComponent(checkId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    { method: "GET" }
+  );
+
+  if (!checks[0]) {
+    return Response.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  return true;
+}
+
 async function persistSecurityCheck(
   env: Env,
   practiceId: string,
@@ -1234,6 +1309,26 @@ async function auditPracticeAccess(
   if (!c.env.SUPABASE_URL || !c.env.SUPABASE_SERVICE_ROLE_KEY) return;
 
   try {
+    const sanitizedMetadata = redactAuditMetadata(metadata);
+    const ipHash = await sha256Text(c.req.header("cf-connecting-ip") ?? "unknown");
+    const userAgent = (c.req.header("user-agent") ?? "unknown").slice(0, 180);
+
+    if (access.role !== "owner") {
+      await supabaseRest(c.env, "/rest/v1/rpc/audit_partner_practice_access", {
+        method: "POST",
+        body: {
+          p_user_id: access.user.id,
+          p_practice_id: access.practice.id,
+          p_action: action,
+          p_resource: resource,
+          p_metadata: sanitizedMetadata,
+          p_ip_hash: ipHash,
+          p_user_agent: userAgent
+        }
+      });
+      return;
+    }
+
     await supabaseRest(c.env, "/rest/v1/practice_access_audit", {
       method: "POST",
       body: {
@@ -1241,13 +1336,20 @@ async function auditPracticeAccess(
         user_id: access.user.id,
         action,
         resource,
-        metadata: redactAuditMetadata(metadata),
-        ip_hash: await sha256Text(c.req.header("cf-connecting-ip") ?? "unknown"),
-        user_agent: (c.req.header("user-agent") ?? "unknown").slice(0, 180)
+        metadata: sanitizedMetadata,
+        ip_hash: ipHash,
+        user_agent: userAgent
       }
     });
-  } catch {
-    // Audit failures must not leak sensitive payloads into logs or responses.
+  } catch (error) {
+    console.error("practice_access_audit_failed", {
+      action,
+      resource,
+      practice_id: access.practice.id,
+      user_id: access.user.id,
+      role: access.role,
+      error
+    });
   }
 }
 
@@ -1279,7 +1381,7 @@ function redactedReportSummary(report: Report) {
   };
 }
 
-function scoreQuestionnaire(questionnaire: Record<string, boolean>) {
+function scoreQuestionnaire(questionnaire: Record<string, unknown>) {
   const answers = Object.values(questionnaire);
   if (answers.length === 0) return 50;
 

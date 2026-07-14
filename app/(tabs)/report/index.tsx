@@ -8,13 +8,14 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
-import { buildReportScore } from "@/lib/ai/report-findings";
 import { generateReport } from "@/lib/ai/report";
 import { createFallbackReport } from "@/lib/ai/sample-report";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
 import { useSessionStore } from "@/lib/store/session";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function ReportsScreen() {
   const answers = useCheckStore((state) => state.answers);
@@ -26,13 +27,19 @@ export default function ReportsScreen() {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canGenerate = Boolean(practice?.id && UUID_RE.test(practice.id)) && !generating;
 
   async function handleGenerate() {
+    if (!practice?.id || !UUID_RE.test(practice.id)) {
+      setError("Praxisdaten werden noch geladen. Bitte versuchen Sie es gleich erneut.");
+      return;
+    }
+
     setGenerating(true);
     setError(null);
 
     const source = {
-      practiceId: practice?.id,
+      practiceId: practice.id,
       practiceName: practice?.name,
       domain: practice?.domain,
       questionnaire: answers,
@@ -63,8 +70,7 @@ export default function ReportsScreen() {
       const pdfPath = await exportReportPdf({
         practiceName: latestReport.source.practiceName ?? practice?.name ?? "Arztpraxis",
         domain: latestReport.source.domain ?? practice?.domain,
-        report: latestReport.report,
-        scoreReport: buildReportScore(latestReport.source)
+        report: latestReport.report
       });
       setPdfPath(latestReport.id, pdfPath);
       Alert.alert("PDF erstellt", `Der Bericht wurde gespeichert:\n${pdfPath}`);
@@ -102,6 +108,7 @@ export default function ReportsScreen() {
         label={generating ? "Bericht wird erstellt..." : "KI-Bericht erzeugen"}
         onPress={handleGenerate}
         style={styles.button}
+        disabled={!canGenerate}
         icon={generating ? <ActivityIndicator color={colors.ink} /> : undefined}
       />
 

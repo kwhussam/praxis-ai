@@ -24,6 +24,17 @@ declare module "https://deno.land/std@0.224.0/http/server.ts" {
   export function serve(handler: (req: Request) => Response | Promise<Response>): void;
 }
 
+declare module "expo-secure-store" {
+  export type SecureStoreOptions = {
+    keychainService?: string;
+  };
+
+  export function isAvailableAsync(): Promise<boolean>;
+  export function getItemAsync(key: string, options?: SecureStoreOptions): Promise<string | null>;
+  export function setItemAsync(key: string, value: string, options?: SecureStoreOptions): Promise<void>;
+  export function deleteItemAsync(key: string, options?: SecureStoreOptions): Promise<void>;
+}
+
 declare const describe: {
   (name: string, fn: () => void): void;
   skip(name: string, fn: () => void): void;

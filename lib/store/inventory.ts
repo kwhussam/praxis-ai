@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 import { createAccessPoint, createInventoryItem, createKnownDevice, createPracticeSeedInventory, createRouterFirewallRule } from "@/lib/inventory/inventory";
 import type {
@@ -14,7 +13,6 @@ import type {
   RouterWifiConfiguration
 } from "@/lib/inventory/types";
 import type { Practice } from "@/lib/store/session";
-import { createStringStorage } from "@/lib/store/storage";
 
 type InventoryState = {
   itemsByPractice: Record<string, InventoryItem[]>;
@@ -39,13 +37,10 @@ type InventoryState = {
   addRouterFirewallRule: (practiceId: string, draft: RouterFirewallRuleDraft) => void;
   importRouterFirewallRules: (practiceId: string, drafts: RouterFirewallRuleDraft[]) => void;
   removeRouterFirewallRule: (practiceId: string, ruleId: string) => void;
+  clear: () => void;
 };
 
-const storage = createStringStorage("praxisshield-inventory");
-
-export const useInventoryStore = create<InventoryState>()(
-  persist(
-    (set, get) => ({
+export const useInventoryStore = create<InventoryState>()((set, get) => ({
       itemsByPractice: {},
       knownDevicesByPractice: {},
       accessPointsByPractice: {},
@@ -157,15 +152,13 @@ export const useInventoryStore = create<InventoryState>()(
             ...state.routerFirewallRulesByPractice,
             [practiceId]: (state.routerFirewallRulesByPractice[practiceId] ?? []).filter((rule) => rule.id !== ruleId)
           }
-        }))
-    }),
-    {
-      name: "inventory",
-      storage: createJSONStorage(() => ({
-        getItem: (name) => storage.getString(name) ?? null,
-        setItem: (name, value) => storage.set(name, value),
-        removeItem: (name) => storage.delete(name)
-      }))
-    }
-  )
-);
+        })),
+      clear: () =>
+        set({
+          itemsByPractice: {},
+          knownDevicesByPractice: {},
+          accessPointsByPractice: {},
+          routerWifiConfigByPractice: {},
+          routerFirewallRulesByPractice: {}
+        })
+}));

@@ -27,6 +27,18 @@ const ALL_CHECKS_PASSING: CheckData = {
   wlanSecurityFindings: []
 };
 
+const ALL_CHECKS_PASSING_VERIFIED: CheckData = {
+  ...ALL_CHECKS_PASSING,
+  evidence_sources: {
+    MFA_ENABLED: "measured",
+    BACKUP_TESTED: "measured",
+    PATCHING_CURRENT: "measured",
+    STAFF_TRAINING: "measured",
+    PRIVACY_DOCUMENTATION: "measured",
+    SECURITY_RESPONSIBILITIES: "measured"
+  }
+};
+
 const ALL_CHECKS_FAILING: CheckData = {
   mfa_enabled: false,
   backup_tested: false,
@@ -48,10 +60,24 @@ describe("SecurityScoring", () => {
     expect(result.ampel).toBe("rot");
   });
 
-  it("gibt 100 bei allen Checks bestanden zurück", () => {
-    const result = calculateScore(ALL_CHECKS_PASSING);
+  it("gibt 100 und Grün nur bei belastbar nachgewiesenen Checks zurück", () => {
+    const result = calculateScore(ALL_CHECKS_PASSING_VERIFIED);
     expect(result.score).toBe(100);
     expect(result.ampel).toBe("grün");
+  });
+
+  it("kappt Selbstauskünfte als Claims und verhindert Grün trotz positiver Angaben", () => {
+    const result = calculateScore(ALL_CHECKS_PASSING);
+    const mfa = result.rule_results.find((rule) => rule.rule_id === "MFA_ENABLED");
+
+    expect(result.score).toBeLessThan(75);
+    expect(result.ampel).toBe("gelb");
+    expect(result.evidence_confidence).toBeLessThan(70);
+    expect(mfa?.evidence_coverage.kind).toBe("claim");
+    expect(mfa?.points_before_evidence_cap).toBe(15);
+    expect(mfa?.points_earned).toBe(7.5);
+    expect(mfa?.evidence_weight_cap_applied).toBe(true);
+    expect(result.ampel_reasons.some((reason) => reason.code === "evidence_confidence_too_low_for_green")).toBe(true);
   });
 
   it("berechnet Teilscore korrekt bei gemischtem Ergebnis", () => {
@@ -94,7 +120,7 @@ describe("SecurityScoring", () => {
   });
 
   it("berechnet einen separaten gewichteten Evidence-Coverage-Score", () => {
-    const measuredCoverage = calculateScore({ ...ALL_CHECKS_PASSING, wlanSecurityFindings: [] });
+    const measuredCoverage = calculateScore({ ...ALL_CHECKS_PASSING_VERIFIED, wlanSecurityFindings: [] });
     const unavailableCoverage = calculateScore({} as CheckData);
 
     expect(measuredCoverage.evidence_coverage_score).toBeGreaterThan(unavailableCoverage.evidence_coverage_score);
@@ -102,10 +128,17 @@ describe("SecurityScoring", () => {
   });
 
   it("bewertet tägliches Backup ohne Restore-Test nur teilweise", () => {
-    const result = calculateScore({ ...ALL_CHECKS_PASSING, backup_tested: false });
+    const result = calculateScore({ ...ALL_CHECKS_PASSING_VERIFIED, backup_tested: false });
     const backup = result.rule_results.find((rule) => rule.rule_id === "BACKUP_TESTED");
     expect(backup?.points_earned).toBe(12);
     expect(backup?.passed).toBe(false);
+  });
+
+  it("begrenzt selbsterklärtes tägliches Backup ohne Restore-Test auf 50 Prozent der Backup-Regel", () => {
+    const result = calculateScore({ ...ALL_CHECKS_PASSING, backup_tested: false });
+    const backup = result.rule_results.find((rule) => rule.rule_id === "BACKUP_TESTED");
+    expect(backup?.points_before_evidence_cap).toBe(12);
+    expect(backup?.points_earned).toBe(10);
   });
 
   it("bewertet DMARC quarantine besser als none", () => {
@@ -277,9 +310,21 @@ describe("SecurityScoring", () => {
   });
 
   it("gruppiert Kategorie-Scores", () => {
-    const result = calculateScore(ALL_CHECKS_PASSING);
+    const result = calculateScore(ALL_CHECKS_PASSING_VERIFIED);
     expect(result.scores_by_category.access_control).toBe(100);
     expect(result.scores_by_category.backup).toBe(100);
+  });
+
+  it("fordert Review bei widersprüchlicher Selbstauskunft und technischem Befund", () => {
+    const result = calculateScore({
+      ...ALL_CHECKS_PASSING_VERIFIED,
+      dmarc_exists: true,
+      external: { email_security: { dmarc: { policy: null } } }
+    });
+
+    expect(result.review_status).toBe("review_required");
+    expect(result.ampel).toBe("gelb");
+    expect(result.ampel_reasons.some((reason) => reason.code === "evidence_conflict_dmarc")).toBe(true);
   });
 
   it("zieht aktive Findings nachvollziehbar ab", () => {
