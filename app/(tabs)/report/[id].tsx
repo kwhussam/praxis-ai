@@ -12,11 +12,13 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
+import { AppConfig } from "@/lib/config/environment";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
 
 export default function ReportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const latestReport = useReportStore((state) => state.latest) ?? SAMPLE_STORED_REPORT;
+  const storedReport = useReportStore((state) => state.latest);
+  const latestReport = storedReport ?? (AppConfig.isDemoMode && id === SAMPLE_STORED_REPORT.id ? SAMPLE_STORED_REPORT : null);
   const scoreReport = useMemo(
     () => (latestReport && latestReport.id === id ? buildReportScore(latestReport.source) : null),
     [id, latestReport]

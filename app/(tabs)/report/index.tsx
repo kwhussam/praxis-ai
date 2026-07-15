@@ -9,7 +9,7 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
 import { generateReport } from "@/lib/ai/report";
-import { createFallbackReport } from "@/lib/ai/sample-report";
+import { AppConfig } from "@/lib/config/environment";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
@@ -21,7 +21,9 @@ export default function ReportsScreen() {
   const answers = useCheckStore((state) => state.answers);
   const score = useCheckStore((state) => state.currentScore);
   const practice = useSessionStore((state) => state.practice);
-  const latestReport = useReportStore((state) => state.latest) ?? SAMPLE_STORED_REPORT;
+  const storedReport = useReportStore((state) => state.latest);
+  const demoSampleReport = AppConfig.isDemoMode && practice?.id.startsWith("demo-") ? SAMPLE_STORED_REPORT : null;
+  const latestReport = storedReport ?? demoSampleReport;
   const saveReport = useReportStore((state) => state.saveReport);
   const setPdfPath = useReportStore((state) => state.setPdfPath);
   const [generating, setGenerating] = useState(false);
@@ -53,10 +55,7 @@ export default function ReportsScreen() {
       const storedReport = saveReport(report, source);
       router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
     } catch {
-      const fallbackReport = createFallbackReport(source);
-      const storedReport = saveReport(fallbackReport, source);
-      setError("Der KI-Dienst war gerade nicht erreichbar. Ein lokaler Musterbericht wurde geöffnet, damit Sie den fertigen Bericht testen können.");
-      router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
+      setError("Bericht konnte nicht erstellt werden, bitte erneut versuchen.");
     } finally {
       setGenerating(false);
     }
@@ -101,6 +100,13 @@ export default function ReportsScreen() {
       {error ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
+          <AnimatedButton
+            label={generating ? "Bericht wird erstellt..." : "Erneut versuchen"}
+            onPress={handleGenerate}
+            style={styles.retryButton}
+            disabled={!canGenerate}
+            icon={generating ? <ActivityIndicator color={colors.ink} /> : undefined}
+          />
         </View>
       ) : null}
 
@@ -179,5 +185,9 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 14,
     lineHeight: 20
+  },
+  retryButton: {
+    marginTop: 12,
+    minHeight: 48
   }
 });

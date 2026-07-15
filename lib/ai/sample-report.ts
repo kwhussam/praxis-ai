@@ -88,7 +88,7 @@ export const SAMPLE_REPORT: Report = {
 };
 
 export const SAMPLE_REPORT_SOURCE: CheckData = {
-  practiceId: "sample-report",
+  practiceId: "demo-sample-report",
   practiceName: "Demo-Praxis Dr. Mustermann",
   domain: "demo.praxisshield.de",
   questionnaire: {},
@@ -96,15 +96,3 @@ export const SAMPLE_REPORT_SOURCE: CheckData = {
   external: null,
   score: SAMPLE_REPORT.security_score
 };
-
-export function createFallbackReport(data: CheckData): Report {
-  return {
-    ...SAMPLE_REPORT,
-    executive_summary:
-      "Der KI-Dienst war gerade nicht erreichbar. Deshalb zeigen wir einen lokalen Beispielbericht mit konkreten nächsten Schritten, damit die Ansicht testbar bleibt.",
-    security_score: typeof data.score === "number" ? Math.max(0, Math.min(100, Math.round(data.score))) : SAMPLE_REPORT.security_score,
-    scores_by_category: SAMPLE_REPORT.scores_by_category,
-    top_risks: SAMPLE_REPORT.top_risks,
-    quick_wins: SAMPLE_REPORT.quick_wins
-  };
-}
