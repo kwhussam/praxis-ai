@@ -874,6 +874,217 @@ describe("POST /api/check/external", () => {
   });
 });
 
+describe("GET /api/dashboard", () => {
+  it("liefert einen Keine-Daten-Zustand ohne Security-, WLAN- oder Monitoring-Rows", async () => {
+    const originalFetch = globalThis.fetch;
+    const practiceId = "11111111-1111-4111-8111-111111111111";
+    const userId = "22222222-2222-4222-8222-222222222222";
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requestedUrls.push(url);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: userId, email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: practiceId,
+            owner_id: userId,
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({
+          p_user_id: userId,
+          p_practice_id: practiceId,
+          p_required_role: "viewer"
+        });
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (
+        url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||
+        url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") ||
+        url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")
+      ) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/dashboard?practiceId=${practiceId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as {
+        hasData: boolean;
+        latest: Record<string, unknown>;
+        history: unknown[];
+      };
+      expect(result.hasData).toBe(false);
+      expect(result.latest).toEqual({
+        questionnaire: null,
+        external: null,
+        wlanScan: null,
+        monitoringSnapshot: null
+      });
+      expect(result.history).toEqual([]);
+      expect(requestedUrls.some((url) => url.includes("/rest/v1/security_checks"))).toBe(true);
+      expect(requestedUrls.some((url) => url.includes("/rest/v1/wlan_scans"))).toBe(true);
+      expect(requestedUrls.some((url) => url.includes("/rest/v1/monitoring_snapshots"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("liefert nach einem Fragebogen-Abschluss den echten Score und eine chronologische echte History", async () => {
+    const originalFetch = globalThis.fetch;
+    const practiceId = "11111111-1111-4111-8111-111111111111";
+    const userId = "22222222-2222-4222-8222-222222222222";
+    const questionnaire: Record<string, QuestionnaireAnswerValue> = {
+      mfa: true,
+      mfaEvidence: true,
+      mfaEmail: true,
+      mfaAdminAccounts: true,
+      mfaRemoteMaintenance: true,
+      backups: true,
+      backupFrequencyDocumented: true,
+      backupTargetDocumented: true,
+      backupOfflineOrImmutable: true,
+      backupOwnerDocumented: true,
+      backupDocumented: true,
+      restoreTested: false,
+      lastRestoreTestDocumented: null,
+      restoreTestEvidence: null,
+      patching: true,
+      patchScopeDocumented: true,
+      patchFrequencyDefined: true,
+      patchOwnerDocumented: true,
+      lastPatchDateDocumented: true,
+      patchExceptionsDocumented: true,
+      patchingEvidence: true,
+      privacyDocuments: true,
+      avvAvailable: true,
+      tomsAvailable: true,
+      processingDirectoryAvailable: true,
+      deletionConceptAvailable: true,
+      accessConceptAvailable: true,
+      privacyTrainingDocumented: true,
+      privacyReviewEvidence: true,
+      securityOwnerAssigned: true,
+      responsibilityDocumented: true,
+      staffTraining: true,
+      dmarc: false
+    };
+    const scoreReport = calculateScore(questionnaireAnswersToCheckData(questionnaire));
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: userId, email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: practiceId,
+            owner_id: userId,
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks") && url.includes("type=eq.questionnaire")) {
+        return Response.json([
+          {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            type: "questionnaire",
+            score: scoreReport.score,
+            completed_at: "2026-07-14T08:15:00.000Z",
+            results: {
+              questionnaire,
+              scoreReport
+            }
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks") && url.includes("type=eq.external")) {
+        return Response.json([]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return Response.json([
+          {
+            id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            type: "external",
+            score: 71,
+            completed_at: "2026-07-13T08:15:00.000Z"
+          },
+          {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            type: "questionnaire",
+            score: scoreReport.score,
+            completed_at: "2026-07-14T08:15:00.000Z"
+          }
+        ]);
+      }
+      if (
+        url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") ||
+        url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")
+      ) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/dashboard?practiceId=${practiceId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as {
+        hasData: boolean;
+        latest: { questionnaire: { score: number; scoreReport: { score: number } } | null };
+        history: Array<{ type: string; score: number; checkedAt: string }>;
+      };
+      expect(result.hasData).toBe(true);
+      expect(result.latest.questionnaire?.score).toBe(scoreReport.score);
+      expect(result.latest.questionnaire?.scoreReport.score).toBe(scoreReport.score);
+      expect(result.history.map((item) => item.type)).toEqual(["external", "questionnaire"]);
+      expect(result.history.map((item) => item.score)).toEqual([71, scoreReport.score]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("POST /api/check/questionnaire", () => {
   it("speichert beim Fragebogen-Abschluss eine security_checks-Zeile mit Praxis-ID und Score", async () => {
     const originalFetch = globalThis.fetch;

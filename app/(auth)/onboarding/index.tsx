@@ -46,41 +46,14 @@ export default function OnboardingScreen() {
 
       if (!user) throw new Error("Nicht eingeloggt. Bitte melden Sie sich erneut an.");
 
-      const { data: practice, error: insertError } = await supabase
-        .from("practices")
-        .insert({
-          owner_id: user.id,
-          name: practiceNameFromDomain(normalizedDomain),
-          domain: normalizedDomain,
-          email: extractEmail(domainOrEmail),
-          plan: "free"
-        })
-        .select("id,name,domain,email,plan,white_label_partner_id")
-        .single();
+      const practice = await findOrCreatePractice(normalizedDomain, extractEmail(domainOrEmail));
+      setPractice(practice);
 
-      if (insertError) throw insertError;
-
-      setPractice({
-        id: practice.id,
-        name: practice.name,
-        domain: practice.domain ?? undefined,
-        email: practice.email ?? undefined,
-        plan: "free",
-        whiteLabelPartnerId: practice.white_label_partner_id ?? undefined
-      });
-
-      await apiRequest("/api/legal/avv/accept", {
-        method: "POST",
-        body: {
-          practiceId: practice.id,
-          version: "1.0",
-          consentTypes: ["avv", "privacy_policy"]
-        }
-      });
+      await acceptLegalAgreement(practice.id);
 
       router.replace("/(tabs)/dashboard");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Onboarding konnte nicht abgeschlossen werden.");
+      setError(errorMessage(nextError));
     } finally {
       setLoading(false);
     }
@@ -275,6 +248,66 @@ function extractEmail(value: string) {
 function practiceNameFromDomain(domain: string) {
   const name = domain.split(".")[0]?.replace(/-/g, " ") ?? "Praxis";
   return `Praxis ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+type PracticeRow = {
+  id: string;
+  name: string;
+  domain: string | null;
+  email: string | null;
+  plan: "free" | "audit" | "monitoring" | "compliance" | null;
+  white_label_partner_id: string | null;
+};
+
+async function findOrCreatePractice(domain: string, email?: string) {
+  const { data: practice, error } = await supabase
+    .rpc("create_or_get_own_practice", {
+      p_domain: domain,
+      p_email: email ?? null
+    })
+    .single<PracticeRow>();
+
+  if (error) throw error;
+  return practiceFromRow(practice);
+}
+
+async function acceptLegalAgreement(practiceId: string) {
+  try {
+    await apiRequest("/api/legal/avv/accept", {
+      method: "POST",
+      body: {
+        practiceId,
+        version: "1.0",
+        consentTypes: ["avv", "privacy_policy"]
+      }
+    });
+  } catch (legalError) {
+    console.warn("Legal acceptance could not be synced during onboarding.", legalError);
+  }
+}
+
+function practiceFromRow(row: PracticeRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    domain: row.domain ?? undefined,
+    email: row.email ?? undefined,
+    plan: row.plan ?? "free",
+    whiteLabelPartnerId: row.white_label_partner_id ?? undefined
+  };
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const record = error as Record<string, unknown>;
+    const message = typeof record.message === "string" ? record.message : null;
+    const details = typeof record.details === "string" ? record.details : null;
+    const hint = typeof record.hint === "string" ? record.hint : null;
+    return [message, details, hint].filter(Boolean).join(" ") || "Onboarding konnte nicht abgeschlossen werden.";
+  }
+
+  return "Onboarding konnte nicht abgeschlossen werden.";
 }
 
 const styles = StyleSheet.create({

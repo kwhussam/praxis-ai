@@ -18,10 +18,15 @@ export default function LoginScreen() {
   const [mode, setMode] = useState<"login" | "register">(() => (requestedMode === "register" ? "register" : "login"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const canSubmit = email.trim().length > 3 && password.length >= 8 && !loading;
+  const normalizedEmail = email.trim();
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+  const passwordLongEnough = password.length >= 8;
+  const canSubmit = emailLooksValid && passwordLongEnough && !loading;
 
   useEffect(() => {
     if (requestedMode === "register") setMode("register");
@@ -107,14 +112,19 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
+          onBlur={() => setEmailTouched(true)}
           onChangeText={setEmail}
           placeholder="team@praxis.de"
           placeholderTextColor={colors.muted}
           style={styles.input}
           value={email}
         />
+        {emailTouched && normalizedEmail.length > 0 && !emailLooksValid ? (
+          <Text style={styles.validation}>Bitte eine gültige E-Mail-Adresse eingeben.</Text>
+        ) : null}
         <Text style={styles.label}>Passwort</Text>
         <TextInput
+          onBlur={() => setPasswordTouched(true)}
           onChangeText={setPassword}
           placeholder="Mindestens 8 Zeichen"
           placeholderTextColor={colors.muted}
@@ -122,6 +132,9 @@ export default function LoginScreen() {
           style={styles.input}
           value={password}
         />
+        {(passwordTouched || password.length > 0) && !passwordLongEnough ? (
+          <Text style={styles.validation}>Das Passwort braucht noch {8 - password.length} Zeichen.</Text>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         <AnimatedButton
@@ -241,6 +254,14 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     lineHeight: 19,
     marginBottom: 12
+  },
+  validation: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 18,
+    marginBottom: 10,
+    marginTop: -8
   },
   notice: {
     color: colors.safe,

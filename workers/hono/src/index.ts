@@ -76,6 +76,14 @@ type PrivacyDeleteRequest = {
   practiceId?: string;
 };
 
+type DashboardHistoryPoint = {
+  id: string;
+  source: "security_check" | "monitoring_snapshot";
+  type: string;
+  score: number;
+  checkedAt: string;
+};
+
 type ConsentRequest = {
   practiceId?: string;
   type?: "avv" | "privacy_policy" | "wlan_scan" | "ai_processing";
@@ -397,6 +405,7 @@ app.get("/health", (c) =>
 
 app.post("/api/check/external", async (c) => handleExternalCheck(c, { requirePractice: true, persist: true }));
 app.post("/api/check/questionnaire", async (c) => handleQuestionnaireCheck(c));
+app.get("/api/dashboard", async (c) => handleDashboard(c));
 app.post("/api/report/generate", async (c) => handleReportGenerate(c, { requirePractice: true, persist: true }));
 app.post("/api/report/pdf", async (c) => handleReportPdf(c));
 app.get("/api/monitoring/status", async (c) => handleMonitoringStatus(c));
@@ -845,6 +854,179 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
     findings,
     checkedAt: new Date().toISOString()
   });
+}
+
+async function handleDashboard(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "dashboard_read", "viewer");
+  if (access instanceof Response) return access;
+
+  const encodedPracticeId = encodeURIComponent(access.practice.id);
+
+  try {
+    const [questionnaireRows, externalRows, wlanRows, monitoringRows, securityHistoryRows, monitoringHistoryRows] =
+      await Promise.all([
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/security_checks?select=id,type,score,results,completed_at&practice_id=eq.${encodedPracticeId}&type=eq.questionnaire&order=completed_at.desc&limit=1`,
+          { method: "GET" }
+        ),
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/security_checks?select=id,type,score,results,completed_at&practice_id=eq.${encodedPracticeId}&type=eq.external&order=completed_at.desc&limit=1`,
+          { method: "GET" }
+        ),
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/wlan_scans?select=id,network_info,vulnerabilities,devices_found,risk_level,created_at&practice_id=eq.${encodedPracticeId}&order=created_at.desc&limit=1`,
+          { method: "GET" }
+        ),
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/monitoring_snapshots?select=id,score,category_scores,source,checked_at&practice_id=eq.${encodedPracticeId}&order=checked_at.desc&limit=1`,
+          { method: "GET" }
+        ),
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/security_checks?select=id,type,score,completed_at&practice_id=eq.${encodedPracticeId}&order=completed_at.desc&limit=30`,
+          { method: "GET" }
+        ),
+        supabaseRest<unknown[]>(
+          c.env,
+          `/rest/v1/monitoring_snapshots?select=id,score,checked_at&practice_id=eq.${encodedPracticeId}&order=checked_at.desc&limit=30`,
+          { method: "GET" }
+        )
+      ]);
+
+    const latest = {
+      questionnaire: normalizeDashboardSecurityCheck(questionnaireRows[0]),
+      external: normalizeDashboardSecurityCheck(externalRows[0]),
+      wlanScan: normalizeDashboardWlanScan(wlanRows[0]),
+      monitoringSnapshot: normalizeDashboardMonitoringSnapshot(monitoringRows[0])
+    };
+    const history = buildDashboardHistory(securityHistoryRows, monitoringHistoryRows, 30);
+    const hasData = Boolean(latest.questionnaire || latest.external || latest.wlanScan || latest.monitoringSnapshot);
+
+    await auditPracticeAccess(c, access, "read", "dashboard");
+
+    return c.json({
+      practiceId: access.practice.id,
+      hasData,
+      latest,
+      history
+    });
+  } catch (error) {
+    console.error("dashboard_load_failed", { practice_id: access.practice.id, error });
+    return c.json({ error: "dashboard_load_failed", message: "Dashboard-Daten konnten nicht geladen werden." }, 500);
+  }
+}
+
+function normalizeDashboardSecurityCheck(value: unknown) {
+  const row = asRecordOrNull(value);
+  if (!row) return null;
+
+  const id = typeof row.id === "string" ? row.id : "";
+  const type = typeof row.type === "string" ? row.type : "";
+  const checkedAt = typeof row.completed_at === "string" ? row.completed_at : "";
+  const score = typeof row.score === "number" && Number.isFinite(row.score) ? clampScore(row.score) : null;
+  if (!id || !type || !checkedAt || score === null) return null;
+
+  const results = asRecordOrNull(row.results);
+  const scoreReport = asRecordOrNull(results?.scoreReport) ?? null;
+
+  return {
+    id,
+    type,
+    score,
+    checkedAt,
+    scoreReport,
+    summary: summarizeDashboardCheck(results)
+  };
+}
+
+function normalizeDashboardWlanScan(value: unknown) {
+  const row = asRecordOrNull(value);
+  if (!row) return null;
+
+  const id = typeof row.id === "string" ? row.id : "";
+  const createdAt = typeof row.created_at === "string" ? row.created_at : "";
+  if (!id || !createdAt) return null;
+
+  const networkInfo = asRecordOrNull(row.network_info);
+  const riskScore = readOptionalScore(networkInfo?.riskScore);
+
+  return {
+    id,
+    checkedAt: createdAt,
+    riskScore,
+    riskLevel: typeof row.risk_level === "string" ? row.risk_level : null,
+    devicesFound: typeof row.devices_found === "number" && Number.isFinite(row.devices_found) ? row.devices_found : 0,
+    networkName: typeof networkInfo?.networkName === "string" ? networkInfo.networkName : null,
+    securityProtocol: typeof networkInfo?.securityProtocol === "string" ? networkInfo.securityProtocol : null
+  };
+}
+
+function normalizeDashboardMonitoringSnapshot(value: unknown) {
+  const row = asRecordOrNull(value);
+  if (!row) return null;
+
+  const id = typeof row.id === "string" ? row.id : "";
+  const checkedAt = typeof row.checked_at === "string" ? row.checked_at : "";
+  const score = typeof row.score === "number" && Number.isFinite(row.score) ? clampScore(row.score) : null;
+  if (!id || !checkedAt || score === null) return null;
+
+  return {
+    id,
+    score,
+    checkedAt,
+    source: typeof row.source === "string" ? row.source : "unknown",
+    categoryScores: asRecordOrNull(row.category_scores) ?? {}
+  };
+}
+
+function summarizeDashboardCheck(results: Record<string, unknown> | null) {
+  const summary = asRecordOrNull(results?.summary);
+  if (summary) return summary;
+
+  const findings = Array.isArray(results?.findings) ? results.findings.length : null;
+  if (findings !== null) return { findings };
+
+  return {};
+}
+
+function buildDashboardHistory(securityRows: unknown[], monitoringRows: unknown[], limit: number): DashboardHistoryPoint[] {
+  const securityPoints = securityRows.flatMap((row) => {
+    const item = asRecordOrNull(row);
+    if (!item) return [];
+
+    const id = typeof item.id === "string" ? item.id : "";
+    const type = typeof item.type === "string" ? item.type : "security_check";
+    const checkedAt = typeof item.completed_at === "string" ? item.completed_at : "";
+    const score = readOptionalScore(item.score);
+    if (!id || !checkedAt || score === null) return [];
+
+    return [{ id, source: "security_check" as const, type, score, checkedAt }];
+  });
+  const monitoringPoints = monitoringRows.flatMap((row) => {
+    const item = asRecordOrNull(row);
+    if (!item) return [];
+
+    const id = typeof item.id === "string" ? item.id : "";
+    const checkedAt = typeof item.checked_at === "string" ? item.checked_at : "";
+    const score = readOptionalScore(item.score);
+    if (!id || !checkedAt || score === null) return [];
+
+    return [{ id, source: "monitoring_snapshot" as const, type: "monitoring", score, checkedAt }];
+  });
+
+  return [...securityPoints, ...monitoringPoints]
+    .sort((left, right) => new Date(left.checkedAt).getTime() - new Date(right.checkedAt).getTime())
+    .slice(-limit);
+}
+
+function readOptionalScore(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return clampScore(value);
 }
 
 async function handleReportGenerate(

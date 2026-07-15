@@ -63,13 +63,18 @@ declare const describe: {
   skip(name: string, fn: () => void): void;
 };
 
-declare const it: (name: string, fn: () => void | Promise<void>) => void;
+type JestTestFn = (name: string, fn: () => void | Promise<void>) => void;
+
+declare const it: JestTestFn & {
+  each<T>(cases: readonly T[]): (name: string, fn: (item: T) => void | Promise<void>) => void;
+};
 
 declare function expect(value: unknown): {
   toBe(expected: unknown): void;
   toEqual(expected: unknown): void;
   toBeNull(): void;
   toBeDefined(): void;
+  toContainEqual(expected: unknown): void;
   toHaveLength(length: number): void;
   toMatch(pattern: RegExp): void;
   toMatchObject(expected: Record<string, unknown>): void;
