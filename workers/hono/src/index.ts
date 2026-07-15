@@ -1294,7 +1294,13 @@ async function requirePracticeAccess(
     try {
       allowed = await canAccessPractice(c.env, user.id, practice.id, requiredRole);
     } catch (error) {
-      console.error("practice_access_rpc_failed", { practice_id: practice.id, user_id: user.id, required_role: requiredRole, action, error });
+      console.error("practice_access_rpc_failed", {
+        practice_id: practice.id,
+        user_id: user.id,
+        role: requiredRole,
+        action,
+        failure: safeErrorLog(error)
+      });
       return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
     }
     if (!allowed) {
@@ -1372,6 +1378,16 @@ async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<Auth
 function getBearerToken(value?: string) {
   const match = value?.match(/^Bearer\s+(.+)$/i);
   return match?.[1]?.trim() ?? "";
+}
+
+function safeErrorLog(error: unknown) {
+  const record = asRecordOrNull(error);
+  const status = record?.status;
+  return {
+    name: error instanceof Error ? error.name : typeof record?.name === "string" ? record.name : "Error",
+    message: error instanceof Error ? error.message : typeof record?.message === "string" ? record.message : "Unknown error",
+    status: typeof status === "number" || typeof status === "string" ? status : undefined
+  };
 }
 
 function normalizePractice(value: unknown): PracticeRecord | null {

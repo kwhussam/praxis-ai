@@ -556,16 +556,6 @@ function upsertSegmentObservation(observation: NetworkSegmentObservation) {
   return getSegmentObservations();
 }
 
-function isNetworkSegmentObservation(value: unknown): value is NetworkSegmentObservation {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<NetworkSegmentObservation>;
-  return isKnownNetworkSegment(candidate.segment) && typeof candidate.visibleDeviceCount === "number" && Array.isArray(candidate.deviceClasses) && Array.isArray(candidate.exposedServices) && typeof candidate.observedAt === "string";
-}
-
-function isKnownNetworkSegment(value: unknown): value is NetworkSegmentId {
-  return value === "practice_wifi" || value === "guest_wifi" || value === "server_network" || value === "printer_network" || value === "medical_device_network";
-}
-
 export async function syncWlanScanResultToSupabase(practiceId: string, result: WlanScanResult) {
   if (!isUuid(practiceId)) {
     return { ok: false, reason: "invalid_practice_id" as const };
@@ -1431,18 +1421,6 @@ function serializeFindings(findings: WlanScanResult["findings"]) {
   );
 }
 
-function reviveFindings(findings: StoredWlanScanResult["findings"]): WlanScanResult["findings"] {
-  return Object.fromEntries(
-    Object.entries(findings).map(([key, finding]) => [
-      key,
-      {
-        ...finding,
-        measured_at: new Date(finding.measured_at)
-      }
-    ])
-  ) as WlanScanResult["findings"];
-}
-
 function getPlatformLimitations() {
   if (Platform.OS === "ios") return [...PLATFORM_LIMITATIONS.ios, ...PLATFORM_LIMITATIONS.default];
   if (Platform.OS === "android") return [...PLATFORM_LIMITATIONS.android, ...PLATFORM_LIMITATIONS.default];
@@ -1472,71 +1450,4 @@ function isUuid(value: string) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-type StoredWlanScanResult = Omit<WlanScanResult, "timestamp" | "connectedDevices" | "securityFindings" | "wifiSecurity" | "findings"> & {
-  timestamp: string;
-  connectedDevices: Array<Omit<DeviceInfo, "lastSeen"> & { lastSeen: string }>;
-  securityFindings?: NetworkSecurityFinding[];
-  wifiSecurity?: WifiSecurityDetails;
-  findings: Partial<{
-    [Key in keyof WlanScanResult["findings"]]: Omit<WlanScanResult["findings"][Key], "measured_at"> & {
-      measured_at: string;
-    };
-  }>;
-};
-
-function reviveScanResult(result: StoredWlanScanResult): WlanScanResult {
-  const findings = reviveFindings(result.findings);
-  const securityFindings = result.securityFindings ?? [];
-  findings.securityChecks =
-    findings.securityChecks ??
-    makeFinding("security_checks", securityFindings, "unavailable", "Legacy scan without structured security checks", "low", new Date());
-  findings.deviceClassifications =
-    findings.deviceClassifications ??
-    makeFinding("device_classifications", [], "unavailable", "Legacy scan without device classification metadata", "low", new Date());
-  findings.ipv6Status =
-    findings.ipv6Status ??
-    makeFinding("ipv6_status", null, "unavailable", "Legacy scan without IPv6 metadata", "low", new Date());
-  findings.dnsResolverAssessments =
-    findings.dnsResolverAssessments ??
-    makeFinding("dns_resolver_assessments", [], "unavailable", "Legacy scan without DNS resolver classification", "low", new Date());
-  findings.dhcpConsistency =
-    findings.dhcpConsistency ??
-    makeFinding("dhcp_consistency", null, "unavailable", "Legacy scan without DHCP consistency assessment", "low", new Date());
-
-  return {
-    ...result,
-    wifiSecurity: result.wifiSecurity ?? defaultWifiSecurity(result.securityProtocol),
-    securityFindings,
-    scanMode: result.scanMode ?? "standard",
-    scanSegment: result.scanSegment ?? "practice_wifi",
-    subnetScan: result.subnetScan ?? {
-      mode: "standard",
-      candidateHosts: 0,
-      scannedHosts: 0,
-      scannedEntireRecognizedSubnet: false,
-      limitation: "Legacy scan without subnet scan metadata."
-    },
-    timestamp: new Date(result.timestamp),
-    findings,
-    connectedDevices: result.connectedDevices.map((device) => ({
-      ...device,
-      lastSeen: new Date(device.lastSeen)
-    }))
-  };
-}
-
-function defaultWifiSecurity(protocol: SecurityProtocol): WifiSecurityDetails {
-  return {
-    protocol,
-    authMode: "unknown",
-    isEnterprise: false,
-    isPersonal: protocol === "WPA" || protocol === "WPA2" || protocol === "WPA3",
-    isMixedMode: false,
-    supportsWpa3: protocol === "WPA3",
-    source: "inferred",
-    confidence: "low",
-    platformLimitations: ["Legacy scan result without detailed WPA mode metadata."]
-  };
 }

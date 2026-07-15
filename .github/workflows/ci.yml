@@ -32,6 +32,9 @@ jobs:
           SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          TEST_PRACTICE_A_EMAIL: ${{ secrets.TEST_PRACTICE_A_EMAIL }}
+          TEST_PRACTICE_A_PASSWORD: ${{ secrets.TEST_PRACTICE_A_PASSWORD }}
+          TEST_PRACTICE_B_ID: ${{ secrets.TEST_PRACTICE_B_ID }}
 
   rls-pgtap:
     runs-on: ubuntu-latest

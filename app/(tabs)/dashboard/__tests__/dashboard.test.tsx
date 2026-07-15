@@ -2,6 +2,7 @@ import React from "react";
 import renderer, { act, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 
 import type { DashboardData } from "@/lib/dashboard/types";
+import type { ScoreReport } from "@/lib/security/scoring";
 
 type MockFunction = {
   (...args: unknown[]): unknown;
@@ -162,22 +163,8 @@ function questionnaireDashboard(score: number): DashboardData {
         type: "questionnaire",
         score,
         checkedAt: "2026-07-14T08:15:00.000Z",
-        scoreReport: {
-          score,
-          ampel: "gelb",
-          scoring_version: "test",
-          calculated_at: "2026-07-14T08:15:00.000Z",
-          ampel_reasons: [],
-          evidence_confidence: 50,
-          evidence_coverage_score: 50,
-          scores_by_category: {},
-          rule_results: [],
-          category_minimums: {},
-          review_status: "ready",
-          total_points: 0,
-          max_points: 0
-        } as any,
-        summary: {}
+          scoreReport: scoreReportFixture(score),
+          summary: {}
       },
       external: null,
       wlanScan: null,
@@ -192,6 +179,31 @@ function questionnaireDashboard(score: number): DashboardData {
         checkedAt: "2026-07-14T08:15:00.000Z"
       }
     ]
+  };
+}
+
+function scoreReportFixture(score: number): ScoreReport {
+  return {
+    score,
+    ampel: "gelb",
+    scoring_version: "test",
+    calculated_at: "2026-07-14T08:15:00.000Z",
+    ampel_reasons: [],
+    evidence_confidence: 50,
+    evidence_coverage_score: 50,
+    scores_by_category: {
+      access_control: score,
+      backup: score,
+      email_security: score,
+      network: score,
+      dsgvo: score,
+      updates: score
+    },
+    rule_results: [],
+    category_minimums: {},
+    review_status: "ok",
+    total_points: score,
+    max_points: 100
   };
 }
 

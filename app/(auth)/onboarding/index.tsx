@@ -245,11 +245,6 @@ function extractEmail(value: string) {
   return trimmed.includes("@") ? trimmed : undefined;
 }
 
-function practiceNameFromDomain(domain: string) {
-  const name = domain.split(".")[0]?.replace(/-/g, " ") ?? "Praxis";
-  return `Praxis ${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-}
-
 type PracticeRow = {
   id: string;
   name: string;
