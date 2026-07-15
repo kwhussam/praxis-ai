@@ -771,7 +771,9 @@ async function handleExternalCheck(
     return c.json({ error: "consent_required", message: "Vor externen Checks ist eine Einwilligung erforderlich." }, 400);
   }
 
-  const access = options.requirePractice || payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "external_check") : null;
+  const access = options.requirePractice || payload.practiceId
+    ? await requirePracticeAccess(c, payload.practiceId, "external_check", "manager")
+    : null;
   if (access instanceof Response) return access;
 
   const domain = normalizeDomain(payload.domain || access?.practice.domain);
@@ -857,7 +859,9 @@ async function handleReportGenerate(
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = options.requirePractice || payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "report_generate") : null;
+  const access = options.requirePractice || payload.practiceId
+    ? await requirePracticeAccess(c, payload.practiceId, "report_generate", "manager")
+    : null;
   if (access instanceof Response) return access;
 
   if (access && payload.checkId) {
@@ -1608,7 +1612,7 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = payload.practiceId ? await requirePracticeAccess(c, payload.practiceId, "monitoring_run") : null;
+  const access = await requirePracticeAccess(c, payload.practiceId, "monitoring_run", "manager");
   if (access instanceof Response) return access;
 
   const domain = normalizeDomain(payload.domain || access?.practice.domain);
@@ -1626,7 +1630,7 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
     }
   }
 
-  const practiceId = access?.practice.id ?? payload.practiceId ?? "";
+  const practiceId = access.practice.id;
   const targetDomains = monitoringTargetDomains(payload, domain);
   const approvedEmails = payload.leakConsentAccepted === true
     ? uniqueEmails([payload.email, access?.practice.email, ...(payload.emails ?? [])].filter((item): item is string => Boolean(item)))
@@ -1642,13 +1646,9 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
     (event) => ({ ...event, practice_id: practiceId })
   );
 
-  if (practiceId && isUuid(practiceId)) {
-    await persistMonitoringResult(c.env, snapshot, events);
-  }
+  await persistMonitoringResult(c.env, snapshot, events);
 
-  if (access) {
-    await auditPracticeAccess(c, access, "create", "monitoring_snapshots", { snapshot_id: snapshot.id, source: "manual" });
-  }
+  await auditPracticeAccess(c, access, "create", "monitoring_snapshots", { snapshot_id: snapshot.id, source: "manual" });
 
   return c.json({ snapshot, events, result });
 }
@@ -1704,7 +1704,7 @@ async function handleAlertAcknowledge(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "alert_acknowledge");
+  const access = await requirePracticeAccess(c, payload.practiceId, "alert_acknowledge", "manager");
   if (access instanceof Response) return access;
   if (!payload.alertId || !isUuid(payload.alertId)) return c.json({ error: "alertId is required" }, 400);
 
@@ -1726,7 +1726,7 @@ async function handlePrivacyDelete(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "privacy_delete");
+  const access = await requirePracticeAccess(c, payload.practiceId, "privacy_delete", "owner");
   if (access instanceof Response) return access;
 
   const now = new Date();
@@ -1809,7 +1809,7 @@ async function handlePrivacyDelete(c: Context<{ Bindings: Env }>) {
 
 async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
   const practiceId = c.req.query("practiceId");
-  const access = await requirePracticeAccess(c, practiceId, "privacy_export");
+  const access = await requirePracticeAccess(c, practiceId, "privacy_export", "manager");
   if (access instanceof Response) return access;
 
   const exportData = {
@@ -1896,7 +1896,7 @@ async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "avv_accept");
+  const access = await requirePracticeAccess(c, payload.practiceId, "avv_accept", "owner");
   if (access instanceof Response) return access;
 
   await supabaseRest(c.env, "/rest/v1/data_processing_agreements?on_conflict=practice_id,version", {
@@ -1930,7 +1930,7 @@ async function handleConsent(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "consent_log");
+  const access = await requirePracticeAccess(c, payload.practiceId, "consent_log", "manager");
   if (access instanceof Response) return access;
   const consentType = payload.type;
 

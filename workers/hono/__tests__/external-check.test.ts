@@ -75,6 +75,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
       }
@@ -318,6 +321,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
       }
@@ -380,6 +386,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
       }
@@ -433,6 +442,9 @@ describe("POST /api/check/external", () => {
             plan: "free"
           }
         ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
@@ -490,6 +502,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
       }
@@ -543,6 +558,9 @@ describe("POST /api/check/external", () => {
             plan: "free"
           }
         ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")) {
         return Response.json(true);
@@ -609,6 +627,9 @@ describe("POST /api/check/external", () => {
             plan: "free"
           }
         ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
@@ -682,10 +703,44 @@ describe("POST /api/check/external", () => {
 
   it("nutzt Monitoring-Ziele und sendet E-Mail-Leak-Abfragen nur mit Einwilligung", async () => {
     const originalFetch = globalThis.fetch;
+    const practiceId = "11111111-1111-4111-8111-111111111111";
+    const userId = "22222222-2222-4222-8222-222222222222";
     const requestedUrls: string[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    let canAccessRequest: Record<string, unknown> | null = null;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: userId, email: "manager@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: practiceId,
+            owner_id: "33333333-3333-4333-8333-333333333333",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "monitoring"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+        return Response.json([{ role: "manager" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        canAccessRequest = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/audit_partner_practice_access")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")) {
+        return init?.method === "GET" ? Response.json([]) : new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_events")) {
+        return new Response(null, { status: 204 });
+      }
       if (url.startsWith("https://praxis.de") || url.startsWith("https://portal.praxis.de") || url.startsWith("https://www.praxis.de")) {
         return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
       }
@@ -715,7 +770,9 @@ describe("POST /api/check/external", () => {
       const res = await worker.fetch(
         new Request("http://localhost/api/monitoring/run", {
           method: "POST",
+          headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
+            practiceId,
             domain: "praxis.de",
             subdomains: ["portal.praxis.de"],
             emails: ["kontakt@praxis.de"],
@@ -734,6 +791,11 @@ describe("POST /api/check/external", () => {
       expect(result.snapshot.checks.monitoring_targets).toEqual(["portal.praxis.de", "praxis.de"]);
       expect(result.snapshot.checks.approved_email_count).toBe(0);
       expect(result.events.some((event) => event.details.risk_state === "new" || event.details.risk_state === "unchanged")).toBe(true);
+      expect(canAccessRequest).toEqual({
+        p_user_id: userId,
+        p_practice_id: practiceId,
+        p_required_role: "manager"
+      });
       expect(requestedUrls.some((url) => url.includes("haveibeenpwned.com/api/v3/breachedaccount"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -996,6 +1058,271 @@ describe("POST /api/check/questionnaire", () => {
     }
   });
 });
+
+type PracticeRole = "owner" | "manager" | "viewer";
+
+type RoleGateCase = {
+  name: string;
+  method: "GET" | "POST";
+  path: string;
+  body?: Record<string, unknown>;
+  requiredRole: PracticeRole;
+  deniedRole: PracticeRole;
+  allowedRole: PracticeRole;
+};
+
+const roleGatePracticeId = "11111111-1111-4111-8111-111111111111";
+const roleGateAlertId = "44444444-4444-4444-8444-444444444444";
+const roleGateCases: RoleGateCase[] = [
+  {
+    name: "privacy/delete",
+    method: "POST",
+    path: "/api/privacy/delete",
+    body: { practiceId: roleGatePracticeId },
+    requiredRole: "owner",
+    deniedRole: "manager",
+    allowedRole: "owner"
+  },
+  {
+    name: "privacy/export",
+    method: "GET",
+    path: `/api/privacy/export?practiceId=${roleGatePracticeId}`,
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "report/generate",
+    method: "POST",
+    path: "/api/report/generate",
+    body: { practiceId: roleGatePracticeId, domain: "praxis.de", score: 80 },
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "check/external",
+    method: "POST",
+    path: "/api/check/external",
+    body: { practiceId: roleGatePracticeId, domain: "praxis.de", consent: true },
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "monitoring/run",
+    method: "POST",
+    path: "/api/monitoring/run",
+    body: { practiceId: roleGatePracticeId, domain: "praxis.de" },
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "alert/acknowledge",
+    method: "POST",
+    path: "/api/alert/acknowledge",
+    body: { practiceId: roleGatePracticeId, alertId: roleGateAlertId },
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "legal/consent",
+    method: "POST",
+    path: "/api/legal/consent",
+    body: { practiceId: roleGatePracticeId, type: "privacy_policy", accepted: true },
+    requiredRole: "manager",
+    deniedRole: "viewer",
+    allowedRole: "manager"
+  },
+  {
+    name: "legal/avv/accept",
+    method: "POST",
+    path: "/api/legal/avv/accept",
+    body: { practiceId: roleGatePracticeId, version: "2026-06-24" },
+    requiredRole: "owner",
+    deniedRole: "manager",
+    allowedRole: "owner"
+  }
+];
+
+describe("sensitive practice endpoint role gates", () => {
+  it.each(roleGateCases)("lehnt $name fuer $deniedRole mit 403 ab", async (endpoint) => {
+    const originalFetch = globalThis.fetch;
+    const roleGate = installRoleGateFetch(endpoint.deniedRole, false);
+
+    try {
+      const res = await worker.fetch(buildRoleGateRequest(endpoint), baseEnv, {} as ExecutionContext);
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+      expect(roleGate.canAccessRequests).toContainEqual({
+        p_user_id: roleGateUserId(endpoint.deniedRole),
+        p_practice_id: roleGatePracticeId,
+        p_required_role: endpoint.requiredRole
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it.each(roleGateCases)("laesst $name fuer $allowedRole durch", async (endpoint) => {
+    const originalFetch = globalThis.fetch;
+    const roleGate = installRoleGateFetch(endpoint.allowedRole, true);
+
+    try {
+      const res = await worker.fetch(buildRoleGateRequest(endpoint), baseEnv, {} as ExecutionContext);
+
+      expect(res.status).toBe(200);
+      expect(roleGate.canAccessRequests).toContainEqual({
+        p_user_id: roleGateUserId(endpoint.allowedRole),
+        p_practice_id: roleGatePracticeId,
+        p_required_role: endpoint.requiredRole
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("erzwingt practiceId und Bearer-Auth fuer monitoring/run vor Provider-Aufrufen", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrls.push(String(input));
+      return Response.json({}, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const missingPracticeRes = await worker.fetch(
+        new Request("http://localhost/api/monitoring/run", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ domain: "praxis.de" })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      expect(missingPracticeRes.status).toBe(400);
+      expect(await missingPracticeRes.json()).toEqual({ error: "practiceId is required" });
+      expect(requestedUrls).toEqual([]);
+
+      const missingAuthRes = await worker.fetch(
+        new Request("http://localhost/api/monitoring/run", {
+          method: "POST",
+          body: JSON.stringify({ practiceId: roleGatePracticeId, domain: "praxis.de" })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      expect(missingAuthRes.status).toBe(401);
+      expect(await missingAuthRes.json()).toEqual({ error: "unauthorized" });
+      expect(requestedUrls).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+function buildRoleGateRequest(endpoint: RoleGateCase) {
+  return new Request(`http://localhost${endpoint.path}`, {
+    method: endpoint.method,
+    headers: { authorization: "Bearer user-token" },
+    body: endpoint.body ? JSON.stringify(endpoint.body) : undefined
+  });
+}
+
+function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
+  const canAccessRequests: Record<string, unknown>[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+
+    if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+      return Response.json({ id: roleGateUserId(role), email: `${role}@praxis.de` });
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practices") && method === "GET") {
+      return Response.json([
+        {
+          id: roleGatePracticeId,
+          owner_id: role === "owner" ? roleGateUserId(role) : "22222222-2222-4222-8222-222222222222",
+          name: "Praxis",
+          domain: "praxis.de",
+          email: "kontakt@praxis.de",
+          plan: "monitoring"
+        }
+      ]);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+      return Response.json(role === "owner" ? [] : [{ role }]);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+      canAccessRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+      return Response.json(canAccess);
+    }
+    if (!canAccess) {
+      return Response.json({}, { status: 500 });
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+      return new Response(null, { status: 204 });
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/rpc/audit_partner_practice_access")) {
+      return new Response(null, { status: 204 });
+    }
+    if (url.startsWith("https://api.anthropic.com/v1/messages")) {
+      return Response.json({ content: [{ type: "text", text: JSON.stringify(validAiReport()) }] });
+    }
+    if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
+      return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+    }
+    if (url.startsWith("https://api.ssllabs.com")) {
+      return Response.json({
+        endpoints: [
+          {
+            grade: "A",
+            details: {
+              protocols: [{ name: "TLS", version: "1.3" }],
+              cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+            }
+          }
+        ]
+      });
+    }
+    if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+      const requestUrl = new URL(url);
+      return Response.json(dnsResponse(requestUrl.searchParams.get("name") ?? "", requestUrl.searchParams.get("type") ?? ""));
+    }
+    if (
+      url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||
+      url.startsWith("https://example.supabase.co/rest/v1/reports") ||
+      url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") ||
+      url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") ||
+      url.startsWith("https://example.supabase.co/rest/v1/consent_log")
+    ) {
+      return method === "GET" ? Response.json([]) : new Response(null, { status: 204 });
+    }
+    if (
+      url.startsWith("https://example.supabase.co/rest/v1/deletion_requests") ||
+      url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") ||
+      url.startsWith("https://example.supabase.co/rest/v1/data_processing_agreements") ||
+      url.startsWith("https://example.supabase.co/rest/v1/email_outbox") ||
+      (url.startsWith("https://example.supabase.co/rest/v1/practices") && method === "PATCH")
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({}, { status: 404 });
+  }) as typeof fetch;
+
+  return { canAccessRequests };
+}
+
+function roleGateUserId(role: PracticeRole) {
+  if (role === "owner") return "11111111-2222-4222-8222-222222222222";
+  if (role === "manager") return "33333333-3333-4333-8333-333333333333";
+  return "55555555-5555-4555-8555-555555555555";
+}
 
 function dnsResponse(name: string, type: string) {
   const records: Record<string, Record<string, string[]>> = {
