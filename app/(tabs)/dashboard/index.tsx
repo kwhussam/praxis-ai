@@ -1,5 +1,5 @@
-import { BellRing } from "lucide-react-native";
 import { router } from "expo-router";
+import { Settings } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -67,9 +67,9 @@ export default function DashboardScreen() {
           <Text style={styles.kicker}>Praxis-Sicherheitsüberblick</Text>
           <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
         </View>
-        <View style={styles.alertIcon}>
-          <BellRing color={colors.warning} size={22} />
-        </View>
+        <Pressable accessibilityLabel="Profil und Einstellungen öffnen" style={styles.settingsButton} onPress={() => router.push("/(tabs)/settings")}>
+          <Settings color={colors.electricMuted} size={22} />
+        </Pressable>
       </View>
       {loading ? (
         <View style={styles.stateCard}>
@@ -272,13 +272,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginTop: 6
   },
-  alertIcon: {
+  settingsButton: {
     height: 48,
     width: 48,
-    borderRadius: 17,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,165,2,0.13)",
+    backgroundColor: colors.glassStrong,
     borderColor: colors.border,
     borderWidth: 1
   },

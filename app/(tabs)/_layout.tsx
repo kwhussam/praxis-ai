@@ -28,6 +28,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="inventory" options={{ title: "Inventar", tabBarIcon: ({ color }) => <Package color={color} size={22} /> }} />
       <Tabs.Screen name="report" options={{ title: "Berichte", tabBarIcon: ({ color }) => <FileText color={color} size={22} /> }} />
       <Tabs.Screen name="monitoring" options={{ title: "Live", tabBarIcon: ({ color }) => <Activity color={color} size={22} /> }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }
