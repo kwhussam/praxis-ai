@@ -5,12 +5,19 @@ import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { AppConfig } from "@/lib/config/environment";
 
 export default function CheckStartScreen() {
+  const externalCheckEnabled = AppConfig.features.externalCheckEnabled;
+
   return (
     <Screen>
       <Text style={styles.title}>Praxis-Check</Text>
-      <Text style={styles.copy}>Ein kombinierter Check aus kurzen Fragen, WLAN-Prüfung und Online-Sicht auf Ihre Praxisadresse.</Text>
+      <Text style={styles.copy}>
+        {externalCheckEnabled
+          ? "Ein kombinierter Check aus kurzen Fragen, WLAN-Prüfung und Online-Sicht auf Ihre Praxisadresse."
+          : "Ein kombinierter Check aus kurzen Fragen und WLAN-Prüfung."}
+      </Text>
       <View style={styles.cards}>
         <GlassCard delay={60}>
           <Text style={styles.cardTitle}>1. Schnellfragebogen</Text>
@@ -21,8 +28,13 @@ export default function CheckStartScreen() {
           <Text style={styles.cardCopy}>Mobile Prüfung ohne Installation auf Praxis-PCs.</Text>
         </GlassCard>
         <GlassCard delay={220}>
+          {!externalCheckEnabled ? <Text style={styles.preparationStatus}>IN VORBEREITUNG</Text> : null}
           <Text style={styles.cardTitle}>3. Externer Check</Text>
-          <Text style={styles.cardCopy}>Praxisadresse, E-Mail-Schutz, Verschlüsselung und bekannte Datenleck-Hinweise.</Text>
+          <Text style={styles.cardCopy}>
+            {externalCheckEnabled
+              ? "Praxisadresse, E-Mail-Schutz, Verschlüsselung und bekannte Datenleck-Hinweise."
+              : "Diese Prüfung wird derzeit vorbereitet und ist noch nicht Bestandteil des Praxis-Checks."}
+          </Text>
         </GlassCard>
       </View>
       <AnimatedButton label="Check starten" onPress={() => router.push("/(tabs)/check/questionnaire")} />
@@ -56,5 +68,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     marginTop: 8
+  },
+  preparationStatus: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 8
   }
 });

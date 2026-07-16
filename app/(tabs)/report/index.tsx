@@ -46,6 +46,8 @@ export default function ReportsScreen() {
       domain: practice?.domain,
       questionnaire: answers,
       wlan: getLatestWlanScanResult(),
+      // TODO(external-check): runExternalCheck hier einbinden, sobald das Feature-Flag aktiv ist und
+      // Provider-Timeouts (Phase G / F-025) stehen. Ergebnis in source.external einspeisen.
       external: null,
       score
     };

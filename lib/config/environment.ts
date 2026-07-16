@@ -10,6 +10,9 @@ export const AppConfig = {
   appEnv: readEnvironment(),
   isDemoMode: readEnvironment() === "demo",
   isProduction: readEnvironment() === "production",
+  features: {
+    externalCheckEnabled: process.env.EXPO_PUBLIC_EXTERNAL_CHECK_ENABLED === "true"
+  },
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "",
   apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8787"
