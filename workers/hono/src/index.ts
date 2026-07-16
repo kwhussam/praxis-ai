@@ -1853,7 +1853,7 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
 
 async function handleMonitoringStatus(c: Context<{ Bindings: Env }>) {
   const practiceId = c.req.query("practiceId");
-  const access = await requirePracticeAccess(c, practiceId, "monitoring_status");
+  const access = await requirePracticeAccess(c, practiceId, "monitoring_status", "viewer");
   if (access instanceof Response) return access;
 
   const snapshots = await supabaseRest<unknown[]>(
@@ -1877,7 +1877,7 @@ async function handleMonitoringStatus(c: Context<{ Bindings: Env }>) {
 
 async function handleMonitoringHistory(c: Context<{ Bindings: Env }>) {
   const practiceId = c.req.query("practiceId");
-  const access = await requirePracticeAccess(c, practiceId, "monitoring_history");
+  const access = await requirePracticeAccess(c, practiceId, "monitoring_history", "viewer");
   if (access instanceof Response) return access;
 
   const history = await supabaseRest<unknown[]>(

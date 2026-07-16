@@ -806,8 +806,9 @@ describe("POST /api/check/external", () => {
     const originalFetch = globalThis.fetch;
     const originalConsoleError = console.error;
     const errors: unknown[] = [];
+    const canAccessRequests: Record<string, unknown>[] = [];
 
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
         return Response.json({ id: "33333333-3333-4333-8333-333333333333", email: "partner@praxis.de" });
@@ -826,6 +827,10 @@ describe("POST /api/check/external", () => {
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
         return Response.json([{ role: "viewer" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        canAccessRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+        return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/audit_partner_practice_access")) {
         return Response.json({ message: "internal database detail" }, { status: 500 });
@@ -851,8 +856,14 @@ describe("POST /api/check/external", () => {
         {} as ExecutionContext
       );
 
+      const body = await res.json();
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ snapshot: null, activeAlerts: [] });
+      expect(body).toEqual({ snapshot: null, activeAlerts: [] });
+      expect(canAccessRequests).toContainEqual({
+        p_user_id: "33333333-3333-4333-8333-333333333333",
+        p_practice_id: "11111111-1111-4111-8111-111111111111",
+        p_required_role: "viewer"
+      });
       const loggedError = errors[0] as [
         string,
         { action: string; resource: string; practice_id: string; user_id: string; role: string; error: Error }
@@ -1282,6 +1293,13 @@ type RoleGateCase = {
   allowedRole: PracticeRole;
 };
 
+type ReadRoleGateCase = {
+  name: string;
+  method: "GET";
+  path: string;
+  requiredRole: "viewer";
+};
+
 const roleGatePracticeId = "11111111-1111-4111-8111-111111111111";
 const roleGateAlertId = "44444444-4444-4444-8444-444444444444";
 const roleGateCases: RoleGateCase[] = [
@@ -1358,6 +1376,21 @@ const roleGateCases: RoleGateCase[] = [
   }
 ];
 
+const readRoleGateCases: ReadRoleGateCase[] = [
+  {
+    name: "monitoring/status",
+    method: "GET",
+    path: `/api/monitoring/status?practiceId=${roleGatePracticeId}`,
+    requiredRole: "viewer"
+  },
+  {
+    name: "monitoring/history",
+    method: "GET",
+    path: `/api/monitoring/history?practiceId=${roleGatePracticeId}`,
+    requiredRole: "viewer"
+  }
+];
+
 describe("sensitive practice endpoint role gates", () => {
   it.each(roleGateCases)("lehnt $name fuer $deniedRole mit 403 ab", async (endpoint) => {
     const originalFetch = globalThis.fetch;
@@ -1391,6 +1424,38 @@ describe("sensitive practice endpoint role gates", () => {
         p_practice_id: roleGatePracticeId,
         p_required_role: endpoint.requiredRole
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it.each(readRoleGateCases)("laesst $name fuer viewer durch", async (endpoint) => {
+    const originalFetch = globalThis.fetch;
+    const roleGate = installRoleGateFetch("viewer", true);
+
+    try {
+      const res = await worker.fetch(buildRoleGateRequest(endpoint), baseEnv, {} as ExecutionContext);
+
+      expect(res.status).toBe(200);
+      expect(roleGate.canAccessRequests).toContainEqual({
+        p_user_id: roleGateUserId("viewer"),
+        p_practice_id: roleGatePracticeId,
+        p_required_role: endpoint.requiredRole
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it.each(readRoleGateCases)("lehnt $name fuer praxisfremden Nutzer mit 403 ab", async (endpoint) => {
+    const originalFetch = globalThis.fetch;
+    installForeignPracticeFetch();
+
+    try {
+      const res = await worker.fetch(buildRoleGateRequest(endpoint), baseEnv, {} as ExecutionContext);
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1527,6 +1592,33 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
   }) as typeof fetch;
 
   return { canAccessRequests };
+}
+
+function installForeignPracticeFetch() {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+
+    if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+      return Response.json({ id: "99999999-9999-4999-8999-999999999999", email: "fremd@praxis.de" });
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practices") && method === "GET") {
+      return Response.json([
+        {
+          id: roleGatePracticeId,
+          owner_id: "22222222-2222-4222-8222-222222222222",
+          name: "Praxis",
+          domain: "praxis.de",
+          email: "kontakt@praxis.de",
+          plan: "monitoring"
+        }
+      ]);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+      return Response.json([]);
+    }
+    return Response.json({}, { status: 500 });
+  }) as typeof fetch;
 }
 
 function roleGateUserId(role: PracticeRole) {
