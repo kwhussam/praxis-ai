@@ -12,7 +12,16 @@ export default function WlanScanScreen() {
       <Text style={styles.title}>WLAN-Scan</Text>
       <Text style={styles.copy}>Erster mobiler Netz-Check für die Praxisumgebung.</Text>
       <WlanScanner />
-      <AnimatedButton label="Bericht erzeugen" onPress={() => router.push("/(tabs)/report")} style={styles.button} />
+      <AnimatedButton
+        label="Bericht erzeugen"
+        onPress={() =>
+          router.push({
+            pathname: "/(tabs)/report",
+            params: { from: "check" }
+          })
+        }
+        style={styles.button}
+      />
     </Screen>
   );
 }
