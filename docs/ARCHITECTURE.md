@@ -15,16 +15,16 @@ The app supports two commercial audiences from the same codebase: direct medical
 
 Mobile app:
 
-- Owns user interaction, offline state, haptics, push registration and local scan orchestration.
-- Uses MMKV for persisted session/check state.
+- Owns user interaction, in-memory feature state, haptics, push registration and local scan orchestration.
+- Persists Supabase authentication through Expo SecureStore; MMKV is limited to non-sensitive optimistic caches.
 - Calls Supabase for authenticated practice data and realtime monitoring.
 - Calls the Hono Worker for external security APIs and AI report generation.
 
 Supabase:
 
 - Owns authentication, relational practice data, reports, checks, monitoring events and WLAN scans.
-- RLS policies keep practice data scoped to the authenticated owner.
-- Edge Functions can run close to the database for report generation and persisted scans.
+- RLS policies keep practice data scoped to authorized practice owners and partner roles.
+- Does not host application Edge Functions; report generation and external checks run through the Hono Worker.
 
 Cloudflare Worker:
 
@@ -37,7 +37,7 @@ Cloudflare Worker:
 1. A practice signs in and creates/loads a `practice`.
 2. The questionnaire updates local Zustand state and recalculates a provisional score.
 3. WLAN scanning uses Expo Network today, with `react-native-wifi-reborn` and a custom native module as the next deeper device-discovery layer.
-4. External domain checks run through `/api/external-check` on the Hono Worker (`/security/external` remains as a compatibility alias).
+4. External domain checks use `/api/check/external` on the Hono Worker. The app integration remains disabled behind `AppConfig.features.externalCheckEnabled` until provider timeouts are implemented.
 5. Findings are stored in `security_checks`; reports link to the check through `reports.check_id`.
 6. Monitoring writes events into `monitoring_events`; Supabase Realtime can stream them into the Monitoring tab.
 

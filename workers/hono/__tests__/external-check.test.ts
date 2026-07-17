@@ -1,4 +1,4 @@
-import worker from "../src/index";
+import worker, { fetchWithTimeout, mapInBatches, OutboundRequestTimeoutError } from "../src/index";
 import { calculateScore } from "@/lib/security/scoring";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
@@ -9,6 +9,59 @@ const baseEnv = {
   SUPABASE_ANON_KEY: "anon",
   SUPABASE_SERVICE_ROLE_KEY: "service"
 };
+
+describe("fetchWithTimeout", () => {
+  it("bricht einen verzögerten Request nach dem konfigurierten Timeout ab", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const observedSignals: AbortSignal[] = [];
+    const errors: unknown[][] = [];
+
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal) observedSignals.push(init.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      let thrown: unknown;
+      try {
+        await fetchWithTimeout("https://example.test/slow", {}, { service: "test-provider", timeoutMs: 10 });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown instanceof OutboundRequestTimeoutError).toBe(true);
+      expect(observedSignals[0]?.aborted).toBe(true);
+      expect(errors[0]?.[0]).toBe("outbound_timeout");
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
+    }
+  });
+});
+
+describe("mapInBatches", () => {
+  it("begrenzt parallele Domain-Aufgaben auf die konfigurierte Batch-Groesse", async () => {
+    let active = 0;
+    let maxActive = 0;
+
+    const results = await mapInBatches([1, 2, 3, 4, 5, 6, 7], 3, async (value) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active -= 1;
+      return value * 2;
+    });
+
+    expect(maxActive).toBe(3);
+    expect(results).toEqual([2, 4, 6, 8, 10, 12, 14]);
+  });
+});
 
 describe("POST /api/check/external", () => {
   it("lehnt fehlende Authentifizierung im Praxis-Endpunkt ab", async () => {
@@ -24,38 +77,7 @@ describe("POST /api/check/external", () => {
     expect(res.status).toBe(400);
   });
 
-  it("erzwingt Auth auch fuer deprecated Kompatibilitaets-Endpunkte", async () => {
-    const originalFetch = globalThis.fetch;
-    const requestedUrls: string[] = [];
-
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      requestedUrls.push(String(input));
-      return Response.json({}, { status: 500 });
-    }) as typeof fetch;
-
-    try {
-      const res = await worker.fetch(
-        new Request("http://localhost/api/external-check", {
-          method: "POST",
-          body: JSON.stringify({
-            practiceId: "11111111-1111-4111-8111-111111111111",
-            domain: "praxis.de",
-            consent: true
-          })
-        }),
-        baseEnv,
-        {} as ExecutionContext
-      );
-
-      expect(res.status).toBe(401);
-      expect(await res.json()).toEqual({ error: "unauthorized" });
-      expect(requestedUrls).toEqual([]);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it("lehnt fehlende Domain im deprecated Kompatibilitäts-Endpunkt ab", async () => {
+  it("lehnt fehlende Domain im authentifizierten Praxis-Endpunkt ab", async () => {
     const originalFetch = globalThis.fetch;
 
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -86,7 +108,7 @@ describe("POST /api/check/external", () => {
 
     try {
       const res = await worker.fetch(
-        new Request("http://localhost/api/external-check", {
+        new Request("http://localhost/api/check/external", {
           method: "POST",
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
@@ -147,19 +169,6 @@ describe("POST /api/check/external", () => {
       globalThis.fetch = originalFetch;
       console.error = originalConsoleError;
     }
-  });
-
-  it("lehnt fehlende Domain im öffentlichen Kompatibilitäts-Endpunkt ab", async () => {
-    const res = await worker.fetch(
-      new Request("http://localhost/api/external-check", {
-        method: "POST",
-        body: JSON.stringify({})
-      }),
-      baseEnv,
-      {} as ExecutionContext
-    );
-
-    expect(res.status).toBe(400);
   });
 
   it("fordert Consent vor dem Praxis-Check", async () => {
@@ -353,10 +362,10 @@ describe("POST /api/check/external", () => {
 
       expect(res.status).toBe(500);
       expect(await res.json()).toEqual({ error: "internal_server_error" });
-      const loggedError = errors[0] as [string, { action: string; error: Error }];
+      const loggedError = errors[0] as [string, { action: string; failure: { message: string } }];
       expect(loggedError[0]).toBe("external_quota_check_failed");
       expect(loggedError[1].action).toBe("external_check");
-      expect(loggedError[1].error.message).toBe("Supabase request failed with 500");
+      expect(loggedError[1].failure.message).toBe("Supabase request failed with 500");
       expect(JSON.stringify(errors).includes("internal database detail")).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -637,6 +646,9 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
       if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
         return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
       }
@@ -664,7 +676,7 @@ describe("POST /api/check/external", () => {
 
     try {
       const res = await worker.fetch(
-        new Request("http://localhost/api/external-check", {
+        new Request("http://localhost/api/check/external", {
           method: "POST",
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
@@ -698,6 +710,129 @@ describe("POST /api/check/external", () => {
       expect(result.checks.email_security.caa.exists).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("behaelt Teilresultate und markiert nur einen timeoutenden Provider als nicht verfuegbar", async () => {
+    const originalFetch = globalThis.fetch;
+    const originalConsoleError = console.error;
+    const errors: unknown[][] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://api.shodan.io")) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+        });
+      }
+      if (url.startsWith("https://www.virustotal.com")) {
+        return Response.json({
+          data: {
+            attributes: {
+              last_analysis_stats: { malicious: 1, suspicious: 0 },
+              last_analysis_results: {
+                ExampleEngine: { category: "malicious", result: "malware" }
+              }
+            }
+          }
+        });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        return Response.json(
+          dnsResponse(
+            requestUrl.searchParams.get("name") ?? "",
+            requestUrl.searchParams.get("type") ?? ""
+          )
+        );
+      }
+      if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
+        return new Response(null, {
+          status: 200,
+          headers: { "strict-transport-security": "max-age=31536000" }
+        });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        {
+          ...baseEnv,
+          SECURITY_PROVIDER_TIMEOUT_MS: "10",
+          SHODAN_API_KEY: "shodan-key",
+          VIRUSTOTAL_API_KEY: "virustotal-key"
+        },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = await res.json() as {
+        provider_statuses: Record<string, string>;
+        findings: Array<{ id: string }>;
+        checks: { reputation: { blacklisted: boolean; blacklists: string[] } };
+      };
+      expect(result.provider_statuses.shodan).toBe("unavailable");
+      expect(result.provider_statuses.virusTotal).toBe("active");
+      expect(result.findings.some((finding) => finding.id === "unavailable-shodan")).toBe(true);
+      expect(result.checks.reputation.blacklisted).toBe(true);
+      expect(result.checks.reputation.blacklists).toContain("ExampleEngine: malware");
+      expect(errors.some((entry) => entry[0] === "outbound_timeout")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.error = originalConsoleError;
     }
   });
 
@@ -866,7 +1001,14 @@ describe("POST /api/check/external", () => {
       });
       const loggedError = errors[0] as [
         string,
-        { action: string; resource: string; practice_id: string; user_id: string; role: string; error: Error }
+        {
+          action: string;
+          resource: string;
+          practice_id: string;
+          user_id: string;
+          role: string;
+          failure: { message: string };
+        }
       ];
       expect(loggedError[0]).toBe("practice_access_audit_failed");
       expect(loggedError[1]).toMatchObject({
@@ -876,7 +1018,7 @@ describe("POST /api/check/external", () => {
         user_id: "33333333-3333-4333-8333-333333333333",
         role: "viewer"
       });
-      expect(loggedError[1].error.message).toBe("Supabase request failed with 500");
+      expect(loggedError[1].failure.message).toBe("Supabase request failed with 500");
       expect(JSON.stringify(errors).includes("internal database detail")).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;

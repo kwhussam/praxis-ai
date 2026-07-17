@@ -21,11 +21,17 @@ type Env = {
   VIRUSTOTAL_API_KEY?: string;
   RESEND_API_KEY?: string;
   DELETION_FROM_EMAIL?: string;
+  SECURITY_PROVIDER_TIMEOUT_MS?: string;
+  MONITORING_CONCURRENCY_LIMIT?: string;
 };
 
 type FindingSeverity = "critical" | "warning" | "info";
 type ProviderName = "shodan" | "hibp" | "virusTotal" | "securityTrails" | "sslLabs" | "cloudflareDns";
 type ProviderStatus = "active" | "not_configured" | "unavailable";
+type ProviderExecutionContext = {
+  statuses: Partial<Record<ProviderName, ProviderStatus>>;
+  timeoutMs: number;
+};
 
 type SecurityFinding = {
   id: string;
@@ -368,6 +374,70 @@ type PracticeAccess = {
 const REPORT_FORMAT_VERSION = "1.0.0";
 const SCORING_VERSION = SECURITY_SCORING_VERSION;
 const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
+const DEFAULT_MONITORING_CONCURRENCY_LIMIT = 5;
+
+export const OUTBOUND_TIMEOUT_MS = {
+  anthropic: 15_000,
+  securityProvider: 5_000,
+  supabase: 8_000,
+  resend: 8_000
+} as const;
+
+export class OutboundRequestTimeoutError extends Error {
+  readonly service: string;
+  readonly status = 504;
+  readonly timeoutMs: number;
+
+  constructor(service: string, timeoutMs: number) {
+    super(`${service} request timed out`);
+    this.name = "OutboundRequestTimeoutError";
+    this.service = service;
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+export async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: { service?: string; timeoutMs?: number } = {}
+) {
+  const service = options.service ?? "upstream";
+  const timeoutMs = options.timeoutMs ?? OUTBOUND_TIMEOUT_MS.supabase;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: timeoutSignal });
+  } catch (error) {
+    if (timeoutSignal.aborted) {
+      const timeoutError = new OutboundRequestTimeoutError(service, timeoutMs);
+      console.error("outbound_timeout", {
+        service,
+        failure: safeErrorLog(timeoutError)
+      });
+      throw timeoutError;
+    }
+    throw error;
+  }
+}
+
+export async function mapInBatches<T, R>(
+  items: readonly T[],
+  batchSize: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const safeBatchSize = Math.max(1, Math.floor(batchSize));
+  const results: R[] = [];
+
+  for (let offset = 0; offset < items.length; offset += safeBatchSize) {
+    const batch = items.slice(offset, offset + safeBatchSize);
+    const batchResults = await Promise.all(
+      batch.map((item, index) => mapper(item, offset + index))
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
+}
 
 const DNS_TYPE_CODES: Record<string, number> = {
   A: 1,
@@ -380,6 +450,15 @@ const DNS_TYPE_CODES: Record<string, number> = {
 };
 
 const app = new Hono<{ Bindings: Env }>();
+
+app.onError((error, c) => {
+  if (error instanceof OutboundRequestTimeoutError) {
+    return c.json({ error: "upstream_timeout", service: error.service }, 504);
+  }
+
+  console.error("unhandled_worker_error", { failure: safeErrorLog(error) });
+  return c.json({ error: "internal_server_error" }, 500);
+});
 
 const MONITORING_SCHEDULE: Record<MonitoringModule, string> = {
   ssl_check: "0 */6 * * *",
@@ -418,11 +497,6 @@ app.post("/api/privacy/delete", async (c) => handlePrivacyDelete(c));
 app.get("/api/privacy/export", async (c) => handlePrivacyExport(c));
 app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
 app.post("/api/legal/consent", async (c) => handleConsent(c));
-
-// Deprecated compatibility routes: kept for old clients, but now require practice auth to avoid anonymous cost abuse.
-app.post("/api/external-check", async (c) => handleExternalCheck(c, { requirePractice: true, persist: false }));
-app.post("/security/external", async (c) => handleExternalCheck(c, { requirePractice: true, persist: false }));
-app.post("/ai/report", async (c) => handleReportGenerate(c, { requirePractice: true, persist: false }));
 
 const SYSTEM_PROMPT = `
 Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
@@ -843,7 +917,11 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
       encryptedPayload: { ...results, findings }
     });
   } catch (error) {
-    console.error("questionnaire_check_persist_failed", { practice_id: access.practice.id, error });
+    rethrowOutboundTimeout(error);
+    console.error("questionnaire_check_persist_failed", {
+      practice_id: access.practice.id,
+      failure: safeErrorLog(error)
+    });
     return c.json({ error: "questionnaire_save_failed", message: "Fragebogen konnte nicht gespeichert werden." }, 500);
   }
 
@@ -918,7 +996,11 @@ async function handleDashboard(c: Context<{ Bindings: Env }>) {
       history
     });
   } catch (error) {
-    console.error("dashboard_load_failed", { practice_id: access.practice.id, error });
+    rethrowOutboundTimeout(error);
+    console.error("dashboard_load_failed", {
+      practice_id: access.practice.id,
+      failure: safeErrorLog(error)
+    });
     return c.json({ error: "dashboard_load_failed", message: "Dashboard-Daten konnten nicht geladen werden." }, 500);
   }
 }
@@ -1046,6 +1128,7 @@ async function handleReportsList(c: Context<{ Bindings: Env }>) {
     await auditPracticeAccess(c, access, "read", "reports", { format: "list" });
     return c.json({ reports });
   } catch (error) {
+    rethrowOutboundTimeout(error);
     console.error("reports_list_failed", {
       practice_id: access.practice.id,
       failure: safeErrorLog(error)
@@ -1082,6 +1165,7 @@ async function handleReportDetail(c: Context<{ Bindings: Env }>) {
       }
     });
   } catch (error) {
+    rethrowOutboundTimeout(error);
     console.error("report_detail_failed", {
       practice_id: access.practice.id,
       report_id: reportId,
@@ -1282,28 +1366,40 @@ async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise
     return Response.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
   }
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify({
-      model: env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
-      max_tokens: 4000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildReportPrompt(payload) }]
-    })
-  });
-
-  const data = (await response.json()) as unknown;
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(
+      "https://api.anthropic.com/v1/messages",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: env.ANTHROPIC_MODEL ?? "claude-sonnet-4-6",
+          max_tokens: 4000,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: "user", content: buildReportPrompt(payload) }]
+        })
+      },
+      { service: "anthropic", timeoutMs: OUTBOUND_TIMEOUT_MS.anthropic }
+    );
+  } catch (error) {
+    if (error instanceof OutboundRequestTimeoutError) {
+      return Response.json({ error: "anthropic_timeout" }, { status: 504 });
+    }
+    console.error("ai_upstream_failed", { failure: safeErrorLog(error) });
+    return Response.json({ error: "anthropic_request_failed" }, { status: 502 });
+  }
 
   if (!response.ok) {
     return Response.json({ error: "anthropic_request_failed" }, { status: 502 });
   }
 
   try {
+    const data = (await response.json()) as unknown;
     return validateReport(parseAnthropicJson(data));
   } catch (error) {
     return Response.json(
@@ -1346,7 +1442,12 @@ async function requirePracticeAccess(
       { method: "GET" }
     );
   } catch (error) {
-    console.error("practice_access_practice_lookup_failed", { practice_id: practiceId, action, error });
+    rethrowOutboundTimeout(error);
+    console.error("practice_access_practice_lookup_failed", {
+      practice_id: practiceId,
+      action,
+      failure: safeErrorLog(error)
+    });
     return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
   }
   const practice = normalizePractice(practices[0]);
@@ -1359,7 +1460,13 @@ async function requirePracticeAccess(
   try {
     role = practice.owner_id === user.id ? "owner" : await getPartnerRole(c.env, user.id, practice.id);
   } catch (error) {
-    console.error("practice_access_role_lookup_failed", { practice_id: practice.id, user_id: user.id, action, error });
+    rethrowOutboundTimeout(error);
+    console.error("practice_access_role_lookup_failed", {
+      practice_id: practice.id,
+      user_id: user.id,
+      action,
+      failure: safeErrorLog(error)
+    });
     return c.json({ error: "practice_access_check_failed", message: "Praxiszugriff konnte nicht geprüft werden." }, 500);
   }
 
@@ -1372,6 +1479,7 @@ async function requirePracticeAccess(
     try {
       allowed = await canAccessPractice(c.env, user.id, practice.id, requiredRole);
     } catch (error) {
+      rethrowOutboundTimeout(error);
       console.error("practice_access_rpc_failed", {
         practice_id: practice.id,
         user_id: user.id,
@@ -1468,6 +1576,10 @@ function safeErrorLog(error: unknown) {
   };
 }
 
+function rethrowOutboundTimeout(error: unknown): void {
+  if (error instanceof OutboundRequestTimeoutError) throw error;
+}
+
 function normalizePractice(value: unknown): PracticeRecord | null {
   const item = asRecordOrNull(value);
   if (!item) return null;
@@ -1519,7 +1631,8 @@ async function consumeExternalQuotaOrErrorResponse(
   try {
     return await consumeExternalQuota(c.env, access);
   } catch (error) {
-    console.error("external_quota_check_failed", { action, error });
+    rethrowOutboundTimeout(error);
+    console.error("external_quota_check_failed", { action, failure: safeErrorLog(error) });
     return c.json({ error: "internal_server_error" }, 500);
   }
 }
@@ -1554,7 +1667,8 @@ async function consumeAiReportQuotaOrErrorResponse(
   try {
     return await consumeAiReportQuota(c.env, access);
   } catch (error) {
-    console.error("ai_report_quota_check_failed", { action, error });
+    rethrowOutboundTimeout(error);
+    console.error("ai_report_quota_check_failed", { action, failure: safeErrorLog(error) });
     return c.json({ error: "internal_server_error" }, 500);
   }
 }
@@ -1674,7 +1788,7 @@ async function auditPracticeAccess(
       practice_id: access.practice.id,
       user_id: access.user.id,
       role: access.role,
-      error
+      failure: safeErrorLog(error)
     });
   }
 }
@@ -1859,17 +1973,20 @@ function pdfUtf16Hex(value: string) {
 
 async function performExternalCheck(domain: string, email: string | string[] | null, env: Env): Promise<ExternalCheckResult> {
   const timestamp = new Date().toISOString();
+  const providerContext = createProviderExecutionContext(env);
   const [dns, ssl, emailSecurity, ports, reputation, leaks, subdomains] = await Promise.all([
-    checkDns(domain),
-    checkSsl(domain),
-    checkEmailSecurity(domain),
-    checkPorts(domain, env.SHODAN_API_KEY),
-    checkReputation(domain, env),
-    checkLeaks(domain, email, env.HIBP_API_KEY),
-    checkSubdomains(domain, env)
+    checkDns(domain, providerContext),
+    checkSsl(domain, providerContext),
+    checkEmailSecurity(domain, providerContext),
+    checkPorts(domain, env.SHODAN_API_KEY, providerContext),
+    checkReputation(domain, env, providerContext),
+    checkLeaks(domain, email, env.HIBP_API_KEY, providerContext),
+    checkSubdomains(domain, env, providerContext)
   ]);
   const checks = { ssl, dns, email_security: emailSecurity, ports, reputation, leaks, subdomains };
-  const provider_statuses = buildProviderStatuses(env, { sslLabs: ssl.issuer !== "unknown" || ssl.protocol !== "unknown" });
+  const provider_statuses = buildProviderStatuses(env, providerContext.statuses, {
+    sslLabs: ssl.issuer !== "unknown" || ssl.protocol !== "unknown"
+  });
   const findings = buildFindings(checks, provider_statuses);
   const critical_count = findings.filter((finding) => finding.severity === "critical").length;
   const warning_count = findings.filter((finding) => finding.severity === "warning").length;
@@ -1931,8 +2048,10 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
   const approvedEmails = payload.leakConsentAccepted === true
     ? uniqueEmails([payload.email, access?.practice.email, ...(payload.emails ?? [])].filter((item): item is string => Boolean(item)))
     : [];
-  const results = await Promise.all(
-    targetDomains.map((targetDomain, index) => performExternalCheck(targetDomain, index === 0 ? approvedEmails : null, c.env))
+  const results = await mapInBatches(
+    targetDomains,
+    monitoringConcurrencyLimit(c.env),
+    (targetDomain, index) => performExternalCheck(targetDomain, index === 0 ? approvedEmails : null, c.env)
   );
   const result = aggregateMonitoringResult(results);
   const previousSummary = practiceId ? await fetchPreviousMonitoringSummary(c.env, practiceId) : null;
@@ -2159,24 +2278,28 @@ async function sendDeletionConfirmation(env: Env, email: string | undefined, rep
 
   if (!env.RESEND_API_KEY) return;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json"
+  const response = await fetchWithTimeout(
+    "https://api.resend.com/emails",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        from: env.DELETION_FROM_EMAIL ?? "PraxisShield <privacy@praxisshield.de>",
+        to: email,
+        subject: "Bestaetigung Ihrer Datenschutz-Loeschanfrage",
+        text: [
+          "Ihre Loeschanfrage wurde verarbeitet.",
+          `Vorgangs-ID: ${report.deletion_id}`,
+          `Praxis-ID: ${report.practice_id}`,
+          `Aufbewahrungspflichtige Audit-Nachweise werden bis ${report.retention_until} gehalten.`
+        ].join("\n")
+      })
     },
-    body: JSON.stringify({
-      from: env.DELETION_FROM_EMAIL ?? "PraxisShield <privacy@praxisshield.de>",
-      to: email,
-      subject: "Bestaetigung Ihrer Datenschutz-Loeschanfrage",
-      text: [
-        "Ihre Loeschanfrage wurde verarbeitet.",
-        `Vorgangs-ID: ${report.deletion_id}`,
-        `Praxis-ID: ${report.practice_id}`,
-        `Aufbewahrungspflichtige Audit-Nachweise werden bis ${report.retention_until} gehalten.`
-      ].join("\n")
-    })
-  });
+    { service: "resend", timeoutMs: OUTBOUND_TIMEOUT_MS.resend }
+  );
 
   if (!response.ok) {
     throw new Error("deletion_confirmation_email_failed");
@@ -2271,8 +2394,10 @@ async function runScheduledMonitoring(cron: string, env: Env) {
   const modules = CRON_MODULES.get(cron) ?? ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"];
   const targets = await fetchMonitoringTargets(env);
 
-  await Promise.all(
-    targets.map(async (target) => {
+  await mapInBatches(
+    targets,
+    monitoringConcurrencyLimit(env),
+    async (target) => {
       const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env);
       const previousSummary = await fetchPreviousMonitoringSummary(env, target.id);
       const comparison = buildMonitoringComparison([result], previousSummary);
@@ -2280,8 +2405,16 @@ async function runScheduledMonitoring(cron: string, env: Env) {
       const events = buildMonitoringEvents(result, modules, comparison);
 
       await persistMonitoringResult(env, snapshot, events);
-    })
+    }
   );
+}
+
+function monitoringConcurrencyLimit(env: Env) {
+  const configuredLimit = Number.parseInt(env.MONITORING_CONCURRENCY_LIMIT ?? "", 10);
+  if (!Number.isFinite(configuredLimit) || configuredLimit <= 0) {
+    return DEFAULT_MONITORING_CONCURRENCY_LIMIT;
+  }
+  return Math.min(25, configuredLimit);
 }
 
 function buildMonitoringSnapshot(
@@ -2708,7 +2841,8 @@ async function fetchPreviousMonitoringSummary(env: Env, practiceId: string): Pro
     const current = asRecordOrNull(comparison?.current);
     if (!current) return null;
     return readMonitoringComparisonSummary(current);
-  } catch {
+  } catch (error) {
+    rethrowOutboundTimeout(error);
     return null;
   }
 }
@@ -2722,16 +2856,20 @@ async function supabaseRest<T>(
     throw new Error("Supabase service credentials are not configured");
   }
 
-  const response = await fetch(`${env.SUPABASE_URL}${path}`, {
-    method: options.method,
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      "content-type": "application/json",
-      prefer: options.prefer ?? "return=minimal"
+  const response = await fetchWithTimeout(
+    `${env.SUPABASE_URL}${path}`,
+    {
+      method: options.method,
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "content-type": "application/json",
+        prefer: options.prefer ?? "return=minimal"
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
+    { service: "supabase", timeoutMs: OUTBOUND_TIMEOUT_MS.supabase }
+  );
 
   if (!response.ok) {
     throw new Error(`Supabase request failed with ${response.status}`);
@@ -2793,7 +2931,7 @@ function scoreLeaks(leaks: LeakCheck) {
   return clampScore(100 - (leaks.email_found ? 55 : 0) - (leaks.domain_found ? 20 : 0) - leaks.paste_count * 5);
 }
 
-async function checkSsl(domain: string): Promise<SSLCheck> {
+async function checkSsl(domain: string, context: ProviderExecutionContext): Promise<SSLCheck> {
   const https = await checkHttpsSignal(domain);
   const fallback: SSLCheck = {
     valid: https.reachable,
@@ -2807,8 +2945,10 @@ async function checkSsl(domain: string): Promise<SSLCheck> {
   };
 
   try {
-    const response = await fetch(
-      `https://api.ssllabs.com/api/v3/analyze?host=${encodeURIComponent(domain)}&publish=off&all=done&fromCache=on&maxAge=24`
+    const response = await fetchWithTimeout(
+      `https://api.ssllabs.com/api/v3/analyze?host=${encodeURIComponent(domain)}&publish=off&all=done&fromCache=on&maxAge=24`,
+      {},
+      { service: "ssl-labs", timeoutMs: context.timeoutMs }
     );
 
     if (!response.ok) return fallback;
@@ -2857,7 +2997,8 @@ async function checkSsl(domain: string): Promise<SSLCheck> {
       hsts_enabled: https.hsts,
       vulnerabilities
     };
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "sslLabs", error);
     return fallback;
   }
 }
@@ -2881,14 +3022,14 @@ async function checkHttpsSignal(domain: string) {
   }
 }
 
-async function checkDns(domain: string): Promise<DNSCheck> {
+async function checkDns(domain: string, context: ProviderExecutionContext): Promise<DNSCheck> {
   const [a, aaaa, cname, ns, txt, caa] = await Promise.all([
-    queryDns(domain, "A"),
-    queryDns(domain, "AAAA"),
-    queryDns(domain, "CNAME"),
-    queryDns(domain, "NS"),
-    queryDns(domain, "TXT"),
-    queryDns(domain, "CAA")
+    queryDns(domain, "A", context),
+    queryDns(domain, "AAAA", context),
+    queryDns(domain, "CNAME", context),
+    queryDns(domain, "NS", context),
+    queryDns(domain, "TXT", context),
+    queryDns(domain, "CAA", context)
   ]);
 
   return {
@@ -2901,15 +3042,15 @@ async function checkDns(domain: string): Promise<DNSCheck> {
   };
 }
 
-async function checkEmailSecurity(domain: string): Promise<EmailSecurityCheck> {
+async function checkEmailSecurity(domain: string, context: ProviderExecutionContext): Promise<EmailSecurityCheck> {
   const [txtRecords, mxRecords, dmarcRecords, mtaStsRecords, tlsRptRecords, caaRecords, dkim] = await Promise.all([
-    queryDns(domain, "TXT"),
-    queryDns(domain, "MX"),
-    queryDns(`_dmarc.${domain}`, "TXT"),
-    queryDns(`_mta-sts.${domain}`, "TXT"),
-    queryDns(`_smtp._tls.${domain}`, "TXT"),
-    queryDns(domain, "CAA"),
-    findDkim(domain)
+    queryDns(domain, "TXT", context),
+    queryDns(domain, "MX", context),
+    queryDns(`_dmarc.${domain}`, "TXT", context),
+    queryDns(`_mta-sts.${domain}`, "TXT", context),
+    queryDns(`_smtp._tls.${domain}`, "TXT", context),
+    queryDns(domain, "CAA", context),
+    findDkim(domain, context)
   ]);
   const spfRecords = txtRecords.filter((record) => record.toLowerCase().startsWith("v=spf1"));
   const spfIssues = getSpfIssues(spfRecords);
@@ -2969,16 +3110,18 @@ async function checkEmailSecurity(domain: string): Promise<EmailSecurityCheck> {
   };
 }
 
-async function checkPorts(domain: string, apiKey?: string): Promise<PortCheck> {
+async function checkPorts(domain: string, apiKey: string | undefined, context: ProviderExecutionContext): Promise<PortCheck> {
   if (!apiKey) {
     return { open_ports: [], known_vulnerabilities: [] };
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://api.shodan.io/shodan/host/search?key=${encodeURIComponent(apiKey)}&query=${encodeURIComponent(
         `hostname:${domain}`
-      )}`
+      )}`,
+      {},
+      { service: "shodan", timeoutMs: context.timeoutMs }
     );
 
     if (!response.ok) {
@@ -3025,12 +3168,18 @@ async function checkPorts(domain: string, apiKey?: string): Promise<PortCheck> {
       open_ports: [...ports.values()].sort((left, right) => left.port - right.port),
       known_vulnerabilities: [...vulnerabilities.values()].sort((left, right) => (right.cvss ?? 0) - (left.cvss ?? 0))
     };
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "shodan", error);
     return { open_ports: [], known_vulnerabilities: [] };
   }
 }
 
-async function checkLeaks(domain: string, email: string | string[] | null, apiKey?: string): Promise<LeakCheck> {
+async function checkLeaks(
+  domain: string,
+  email: string | string[] | null,
+  apiKey: string | undefined,
+  context: ProviderExecutionContext
+): Promise<LeakCheck> {
   const empty: LeakCheck = {
     email_found: false,
     breach_count: 0,
@@ -3047,12 +3196,16 @@ async function checkLeaks(domain: string, email: string | string[] | null, apiKe
     const accountResults = await Promise.all(
       emails.map(async (mail) => {
         const [breachesResponse, pastesResponse] = await Promise.all([
-          fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(mail)}?truncateResponse=false`, {
-            headers: hibpHeaders(apiKey)
-          }),
-          fetch(`https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(mail)}`, {
-            headers: hibpHeaders(apiKey)
-          })
+          fetchWithTimeout(
+            `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(mail)}?truncateResponse=false`,
+            { headers: hibpHeaders(apiKey) },
+            { service: "hibp", timeoutMs: context.timeoutMs }
+          ),
+          fetchWithTimeout(
+            `https://haveibeenpwned.com/api/v3/pasteaccount/${encodeURIComponent(mail)}`,
+            { headers: hibpHeaders(apiKey) },
+            { service: "hibp", timeoutMs: context.timeoutMs }
+          )
         ]);
         const breaches =
           breachesResponse.status === 404 || !breachesResponse.ok
@@ -3062,9 +3215,11 @@ async function checkLeaks(domain: string, email: string | string[] | null, apiKe
         return { breaches, pasteCount: pastes.length };
       })
     );
-    const domainBreachesResponse = await fetch(`https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`, {
-      headers: hibpHeaders(apiKey)
-    });
+    const domainBreachesResponse = await fetchWithTimeout(
+      `https://haveibeenpwned.com/api/v3/breaches?domain=${encodeURIComponent(domain)}`,
+      { headers: hibpHeaders(apiKey) },
+      { service: "hibp", timeoutMs: context.timeoutMs }
+    );
     const breaches = accountResults.flatMap((result) => result.breaches);
     const pasteCount = accountResults.reduce((sum, result) => sum + result.pasteCount, 0);
     const domainBreaches =
@@ -3083,15 +3238,16 @@ async function checkLeaks(domain: string, email: string | string[] | null, apiKe
       domain_found: domainBreaches.length > 0,
       paste_count: pasteCount
     };
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "hibp", error);
     return empty;
   }
 }
 
-async function checkReputation(domain: string, env: Env): Promise<ReputationCheck> {
+async function checkReputation(domain: string, env: Env, context: ProviderExecutionContext): Promise<ReputationCheck> {
   const [virusTotal, securityTrails] = await Promise.all([
-    checkVirusTotal(domain, env.VIRUSTOTAL_API_KEY),
-    checkSecurityTrailsHistory(domain, env.SECURITYTRAILS_API_KEY)
+    checkVirusTotal(domain, env.VIRUSTOTAL_API_KEY, context),
+    checkSecurityTrailsHistory(domain, env.SECURITYTRAILS_API_KEY, context)
   ]);
 
   return {
@@ -3103,15 +3259,17 @@ async function checkReputation(domain: string, env: Env): Promise<ReputationChec
   };
 }
 
-async function checkVirusTotal(domain: string, apiKey?: string) {
+async function checkVirusTotal(domain: string, apiKey: string | undefined, context: ProviderExecutionContext) {
   if (!apiKey) {
     return { blacklists: [] as string[], malicious: 0, phishing: 0 };
   }
 
   try {
-    const response = await fetch(`https://www.virustotal.com/api/v3/domains/${encodeURIComponent(domain)}`, {
-      headers: { "x-apikey": apiKey }
-    });
+    const response = await fetchWithTimeout(
+      `https://www.virustotal.com/api/v3/domains/${encodeURIComponent(domain)}`,
+      { headers: { "x-apikey": apiKey } },
+      { service: "virus-total", timeoutMs: context.timeoutMs }
+    );
 
     if (!response.ok) {
       return { blacklists: [], malicious: 0, phishing: 0 };
@@ -3144,18 +3302,25 @@ async function checkVirusTotal(domain: string, apiKey?: string) {
       malicious: attributes?.last_analysis_stats?.malicious ?? 0,
       phishing
     };
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "virusTotal", error);
     return { blacklists: [], malicious: 0, phishing: 0 };
   }
 }
 
-async function checkSecurityTrailsHistory(domain: string, apiKey?: string): Promise<DNSHistoryEntry[]> {
+async function checkSecurityTrailsHistory(
+  domain: string,
+  apiKey: string | undefined,
+  context: ProviderExecutionContext
+): Promise<DNSHistoryEntry[]> {
   if (!apiKey) return [];
 
   try {
-    const response = await fetch(`https://api.securitytrails.com/v1/history/${encodeURIComponent(domain)}/dns/a`, {
-      headers: { APIKEY: apiKey }
-    });
+    const response = await fetchWithTimeout(
+      `https://api.securitytrails.com/v1/history/${encodeURIComponent(domain)}/dns/a`,
+      { headers: { APIKEY: apiKey } },
+      { service: "security-trails", timeoutMs: context.timeoutMs }
+    );
 
     if (!response.ok) return [];
 
@@ -3175,17 +3340,20 @@ async function checkSecurityTrailsHistory(domain: string, apiKey?: string): Prom
         last_seen: record.last_seen
       }))
     );
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "securityTrails", error);
     return [];
   }
 }
 
-async function checkSubdomains(domain: string, env: Env): Promise<SubdomainDiscoveryCheck> {
-  const securityTrails = await discoverSecurityTrailsSubdomains(domain, env.SECURITYTRAILS_API_KEY);
-  const discovered = securityTrails.length > 0 ? securityTrails : await discoverCommonDnsSubdomains(domain);
+async function checkSubdomains(domain: string, env: Env, context: ProviderExecutionContext): Promise<SubdomainDiscoveryCheck> {
+  const securityTrails = await discoverSecurityTrailsSubdomains(domain, env.SECURITYTRAILS_API_KEY, context);
+  const discovered = securityTrails.length > 0 ? securityTrails : await discoverCommonDnsSubdomains(domain, context);
   const source = securityTrails.length > 0 ? "securitytrails" : discovered.length > 0 ? "cloudflare_dns_common" : "none";
   const evaluated = await Promise.all(
-    discovered.slice(0, 12).map(async (subdomain) => evaluateSubdomain(subdomain, source === "securitytrails" ? "securitytrails" : "cloudflare_dns_common"))
+    discovered.slice(0, 12).map(async (subdomain) =>
+      evaluateSubdomain(subdomain, source === "securitytrails" ? "securitytrails" : "cloudflare_dns_common", context)
+    )
   );
 
   return {
@@ -3197,34 +3365,49 @@ async function checkSubdomains(domain: string, env: Env): Promise<SubdomainDisco
   };
 }
 
-async function discoverSecurityTrailsSubdomains(domain: string, apiKey?: string) {
+async function discoverSecurityTrailsSubdomains(
+  domain: string,
+  apiKey: string | undefined,
+  context: ProviderExecutionContext
+) {
   if (!apiKey) return [];
 
   try {
-    const response = await fetch(`https://api.securitytrails.com/v1/domain/${encodeURIComponent(domain)}/subdomains`, {
-      headers: { APIKEY: apiKey }
-    });
+    const response = await fetchWithTimeout(
+      `https://api.securitytrails.com/v1/domain/${encodeURIComponent(domain)}/subdomains`,
+      { headers: { APIKEY: apiKey } },
+      { service: "security-trails", timeoutMs: context.timeoutMs }
+    );
     if (!response.ok) return [];
     const data = (await response.json()) as { subdomains?: string[] };
     return uniqueDomains((data.subdomains ?? []).map((item) => `${item}.${domain}`));
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "securityTrails", error);
     return [];
   }
 }
 
-async function discoverCommonDnsSubdomains(domain: string) {
+async function discoverCommonDnsSubdomains(domain: string, context: ProviderExecutionContext) {
   const candidates = ["www", "mail", "webmail", "vpn", "remote", "portal", "app", "cloud", "owa", "autodiscover"].map((item) => `${item}.${domain}`);
   const results = await Promise.all(
     candidates.map(async (candidate) => {
-      const [a, aaaa, cname] = await Promise.all([queryDns(candidate, "A"), queryDns(candidate, "AAAA"), queryDns(candidate, "CNAME")]);
+      const [a, aaaa, cname] = await Promise.all([
+        queryDns(candidate, "A", context),
+        queryDns(candidate, "AAAA", context),
+        queryDns(candidate, "CNAME", context)
+      ]);
       return a.length > 0 || aaaa.length > 0 || cname.length > 0 ? candidate : null;
     })
   );
   return uniqueDomains(results.filter((item): item is string => Boolean(item)));
 }
 
-async function evaluateSubdomain(domain: string, source: SubdomainSecurityCheck["source"]): Promise<SubdomainSecurityCheck> {
-  const [dns, ssl] = await Promise.all([checkDns(domain), checkSsl(domain)]);
+async function evaluateSubdomain(
+  domain: string,
+  source: SubdomainSecurityCheck["source"],
+  context: ProviderExecutionContext
+): Promise<SubdomainSecurityCheck> {
+  const [dns, ssl] = await Promise.all([checkDns(domain, context), checkSsl(domain, context)]);
   const findings: SecurityFinding[] = [];
   if (dns.a_records.length === 0 && dns.aaaa_records.length === 0 && dns.cname_records.length === 0) {
     findings.push({ id: `subdomain-dns-${domain}`, severity: "warning", title: `${domain}: no DNS target found` });
@@ -3248,11 +3431,12 @@ async function evaluateSubdomain(domain: string, source: SubdomainSecurityCheck[
   };
 }
 
-async function queryDns(name: string, type: string): Promise<string[]> {
+async function queryDns(name: string, type: string, context: ProviderExecutionContext): Promise<string[]> {
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`,
-      { headers: { accept: "application/dns-json" } }
+      { headers: { accept: "application/dns-json" } },
+      { service: "cloudflare-dns", timeoutMs: context.timeoutMs }
     );
 
     if (!response.ok) return [];
@@ -3267,17 +3451,18 @@ async function queryDns(name: string, type: string): Promise<string[]> {
           .filter(Boolean)
       )
     ];
-  } catch {
+  } catch (error) {
+    markProviderUnavailable(context, "cloudflareDns", error);
     return [];
   }
 }
 
-async function findDkim(domain: string) {
+async function findDkim(domain: string, context: ProviderExecutionContext) {
   const selectors = ["selector1", "selector2", "google", "default", "dkim", "k1", "s1", "s2", "mail", "mandrill", "zoho"];
   const results = await Promise.all(
     selectors.map(async (selector) => ({
       selector,
-      records: await queryDns(`${selector}._domainkey.${domain}`, "TXT")
+      records: await queryDns(`${selector}._domainkey.${domain}`, "TXT", context)
     }))
   );
   const found = results.find((result) =>
@@ -3291,17 +3476,43 @@ async function findDkim(domain: string) {
   };
 }
 
+function createProviderExecutionContext(env: Env): ProviderExecutionContext {
+  const configuredTimeout = Number.parseInt(env.SECURITY_PROVIDER_TIMEOUT_MS ?? "", 10);
+  return {
+    statuses: {},
+    timeoutMs:
+      Number.isFinite(configuredTimeout) && configuredTimeout > 0
+        ? configuredTimeout
+        : OUTBOUND_TIMEOUT_MS.securityProvider
+  };
+}
+
+function markProviderUnavailable(
+  context: ProviderExecutionContext,
+  provider: ProviderName,
+  error: unknown
+) {
+  context.statuses[provider] = "unavailable";
+  if (!(error instanceof OutboundRequestTimeoutError)) {
+    console.warn("provider_call_failed", {
+      provider,
+      failure: safeErrorLog(error)
+    });
+  }
+}
+
 function buildProviderStatuses(
   env: Env,
+  runtimeStatuses: Partial<Record<ProviderName, ProviderStatus>>,
   runtime: { sslLabs: boolean }
 ): Record<ProviderName, ProviderStatus> {
   return {
-    shodan: env.SHODAN_API_KEY ? "active" : "not_configured",
-    hibp: env.HIBP_API_KEY ? "active" : "not_configured",
-    virusTotal: env.VIRUSTOTAL_API_KEY ? "active" : "not_configured",
-    securityTrails: env.SECURITYTRAILS_API_KEY ? "active" : "not_configured",
-    sslLabs: runtime.sslLabs ? "active" : "unavailable",
-    cloudflareDns: "active"
+    shodan: runtimeStatuses.shodan ?? (env.SHODAN_API_KEY ? "active" : "not_configured"),
+    hibp: runtimeStatuses.hibp ?? (env.HIBP_API_KEY ? "active" : "not_configured"),
+    virusTotal: runtimeStatuses.virusTotal ?? (env.VIRUSTOTAL_API_KEY ? "active" : "not_configured"),
+    securityTrails: runtimeStatuses.securityTrails ?? (env.SECURITYTRAILS_API_KEY ? "active" : "not_configured"),
+    sslLabs: runtimeStatuses.sslLabs ?? (runtime.sslLabs ? "active" : "unavailable"),
+    cloudflareDns: runtimeStatuses.cloudflareDns ?? "active"
   };
 }
 

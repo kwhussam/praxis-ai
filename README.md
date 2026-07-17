@@ -231,6 +231,8 @@ Der Worker nutzt `workers/hono/wrangler.toml` und stellt unter anderem diese End
 - `POST /api/check/questionnaire`
 - `POST /api/report/generate`
 - `POST /api/report/pdf`
+- `GET /api/reports`
+- `GET /api/reports/:id`
 - `GET /api/monitoring/status`
 - `POST /api/monitoring/run`
 - `GET /api/monitoring/history`
@@ -239,9 +241,6 @@ Der Worker nutzt `workers/hono/wrangler.toml` und stellt unter anderem diese End
 - `GET /api/privacy/export`
 - `POST /api/legal/avv/accept`
 - `POST /api/legal/consent`
-- `POST /api/external-check`
-- `POST /security/external`
-- `POST /ai/report`
 
 ### Supabase lokal verwenden
 

@@ -137,8 +137,8 @@ Lint-Fehler beheben (F-069), fehlgeschlagenen Test reparieren (F-070), RLS-Test 
 **Schritt 4 — Vor Release (Kernfunktionen vervollständigen)**
 Logout/Profil/Einstellungen ergänzen (F-055), Passwort-vergessen-Flow ergänzen (F-054), externen Check tatsächlich in den Check-Flow einbauen oder aus der Bewerbung entfernen (F-008/F-057), Report-Persistenz fertigstellen (`GET /api/reports(/:id)`, F-010/F-027).
 
-**Schritt 5 — Vor Release (Aufräumen redundanter/gefährlicher Altlasten)**
-Supabase Edge Functions und Legacy-Worker-Routen entweder entfernen oder eindeutig als deaktiviert markieren (F-003, F-004, F-012, F-030, F-074) — besonders der Fake-DMARC-Stub in `external-check` ist ein Risiko, falls versehentlich reaktiviert.
+**Schritt 5 — Erledigt (redundante/gefährliche Altlasten)**
+Die ungenutzten Supabase Edge Functions, Legacy-Worker-Routen und der Fake-DMARC-Stub wurden entfernt (F-003, F-004, F-012, F-030, F-074). Der echte externe Check bleibt bis zu Provider-Timeouts zentral deaktiviert.
 
 **Schritt 6 — Kurzfristig nach Release-Vorbereitung**
 Inventar-/Monitoring-Ziele-Datenmodell in der DB nachziehen (F-011/F-014/F-026), Timeout/AbortController für externe Fetches einführen (F-025/F-045), fehlende Indizes ergänzen (F-032/F-046), Consent-Werte zwischen Frontend und DB synchronisieren (F-024).
