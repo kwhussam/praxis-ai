@@ -209,7 +209,15 @@ export function WlanScanner() {
             Ergebnisse werden lokal verschlüsselt gespeichert und enthalten keine Patientendaten.
           </Text>
         </View>
-        <Pressable style={styles.consentRow} onPress={() => setAccepted((current) => !current)}>
+        <Pressable
+          accessibilityHint="Erforderlich, bevor der WLAN-Scan vorbereitet werden kann."
+          accessibilityLabel="Einwilligung zum lokalen WLAN-Scan"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: accepted }}
+          style={styles.consentRow}
+          testID="wlan-consent"
+          onPress={() => setAccepted((current) => !current)}
+        >
           <View style={[styles.checkbox, accepted ? styles.checkboxActive : null]}>
             {accepted ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
           </View>
@@ -222,6 +230,7 @@ export function WlanScanner() {
             if (accepted) setState("idle");
           }}
           style={[styles.button, !accepted ? styles.buttonDisabled : null]}
+          testID="wlan-consent-continue"
           icon={<Ionicons name="wifi" size={18} color={colors.ink} />}
         />
         {!accepted ? <Text style={styles.helper}>Bitte Einverständnis bestätigen, bevor der Scan startet.</Text> : null}
@@ -251,9 +260,13 @@ export function WlanScanner() {
         <View style={styles.segmentOptions}>
           {NETWORK_SEGMENTS.map((segment) => (
             <Pressable
+              accessibilityLabel={`Zu prüfendes Netz: ${segment.label}`}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: scanSegment === segment.id }}
               key={segment.id}
               style={[styles.segmentOption, scanSegment === segment.id ? styles.segmentOptionActive : null]}
               onPress={() => setScanSegment(segment.id)}
+              testID={`wlan-segment-${segment.id}`}
             >
               <Text style={[styles.segmentOptionText, scanSegment === segment.id ? styles.segmentOptionTextActive : null]}>
                 {segment.label}
@@ -265,7 +278,12 @@ export function WlanScanner() {
 
       <View style={styles.auditBox}>
         <Pressable
+          accessibilityHint="Aktiviert den erweiterten lokalen TCP-Connect-Scan."
+          accessibilityLabel="Audit-Modus"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: auditMode }}
           style={styles.consentRow}
+          testID="wlan-audit-mode"
           onPress={() => {
             setAuditMode((current) => {
               if (current) setAuditAccepted(false);
@@ -282,14 +300,28 @@ export function WlanScanner() {
           </View>
         </Pressable>
         {auditMode ? (
-          <Pressable style={styles.consentRow} onPress={() => setAuditAccepted((current) => !current)}>
+          <Pressable
+            accessibilityLabel="Berechtigung für vollständigen lokalen Audit-Scan"
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: auditAccepted }}
+            style={styles.consentRow}
+            testID="wlan-audit-consent"
+            onPress={() => setAuditAccepted((current) => !current)}
+          >
             <View style={[styles.checkbox, auditAccepted ? styles.checkboxActive : null]}>
               {auditAccepted ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
             </View>
             <Text style={styles.consentText}>Ich habe die Berechtigung für einen vollständigen lokalen Audit-Scan.</Text>
           </Pressable>
         ) : null}
-        <Pressable style={styles.consentRow} onPress={() => setIpv6Accepted((current) => !current)}>
+        <Pressable
+          accessibilityLabel="IPv6-Erreichbarkeit prüfen"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: ipv6Accepted }}
+          style={styles.consentRow}
+          testID="wlan-ipv6-consent"
+          onPress={() => setIpv6Accepted((current) => !current)}
+        >
           <View style={[styles.checkbox, ipv6Accepted ? styles.checkboxActive : null]}>
             {ipv6Accepted ? <Ionicons name="checkmark" size={16} color={colors.ink} /> : null}
           </View>
@@ -306,7 +338,11 @@ export function WlanScanner() {
           scanning={state === "scanning"}
           progress={state === "done" ? 1 : progress?.progress ?? 0}
         />
-        <View style={styles.phasePanel}>
+        <View
+          accessibilityLiveRegion="polite"
+          style={styles.phasePanel}
+          testID={state === "done" ? "wlan-complete" : "wlan-progress"}
+        >
           <Text style={styles.phaseEyebrow}>
             Phase {state === "scanning" && progress ? progress.phaseIndex + 1 : result ? SCAN_PHASES.length : 1}/
             {SCAN_PHASES.length}
@@ -327,6 +363,7 @@ export function WlanScanner() {
             if (!scanDisabled) void scan();
           }}
           style={[styles.button, scanDisabled ? styles.buttonDisabled : null]}
+          testID="wlan-start"
           icon={<Ionicons name="scan" size={18} color={colors.ink} />}
         />
       ) : null}
@@ -346,9 +383,14 @@ export function WlanScanner() {
       ) : null}
 
       {state === "done" && result ? (
-        <View style={styles.results}>
+        <View style={styles.results} testID="wlan-results">
           {syncError || syncPending ? (
-            <View style={styles.syncErrorBox}>
+            <View
+              accessibilityLiveRegion={syncPending ? "polite" : "assertive"}
+              accessibilityRole={syncPending ? undefined : "alert"}
+              style={styles.syncErrorBox}
+              testID={syncPending ? "wlan-sync-pending" : "wlan-sync-error"}
+            >
               <View style={styles.syncErrorRow}>
                 <Ionicons name={syncPending ? "cloud-upload" : "cloud-offline"} size={18} color={colors.warning} />
                 <Text style={styles.syncErrorText}>
@@ -364,6 +406,7 @@ export function WlanScanner() {
                   }}
                   variant="ghost"
                   style={styles.retryButton}
+                  testID="wlan-sync-retry"
                   icon={<Ionicons name="refresh" size={18} color={colors.ink} />}
                 />
               ) : null}
@@ -391,7 +434,12 @@ export function WlanScanner() {
       ) : null}
 
       {state === "error" ? (
-        <View style={styles.errorBox}>
+        <View
+          accessibilityLiveRegion="assertive"
+          accessibilityRole="alert"
+          style={styles.errorBox}
+          testID="wlan-scan-error"
+        >
           <Ionicons name="warning" size={18} color={colors.warning} />
           <Text style={styles.errorText}>{error}</Text>
         </View>

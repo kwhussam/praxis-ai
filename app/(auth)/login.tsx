@@ -137,6 +137,8 @@ export default function LoginScreen() {
         ) : null}
         <Text style={styles.label}>E-Mail</Text>
         <TextInput
+          accessibilityHint="Geben Sie die E-Mail-Adresse Ihres Kontos ein."
+          accessibilityLabel="E-Mail-Adresse"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
@@ -145,6 +147,7 @@ export default function LoginScreen() {
           placeholder="team@praxis.de"
           placeholderTextColor={colors.muted}
           style={styles.input}
+          testID="auth-email"
           value={email}
         />
         {emailTouched && normalizedEmail.length > 0 && !emailLooksValid ? (
@@ -152,12 +155,15 @@ export default function LoginScreen() {
         ) : null}
         <Text style={styles.label}>Passwort</Text>
         <TextInput
+          accessibilityHint="Geben Sie Ihr Passwort mit mindestens acht Zeichen ein."
+          accessibilityLabel="Passwort"
           onBlur={() => setPasswordTouched(true)}
           onChangeText={setPassword}
           placeholder="Mindestens 8 Zeichen"
           placeholderTextColor={colors.muted}
           secureTextEntry
           style={styles.input}
+          testID="auth-password"
           value={password}
         />
         {(passwordTouched || password.length > 0) && !passwordLongEnough ? (
@@ -181,13 +187,27 @@ export default function LoginScreen() {
             </Text>
           </Pressable>
         ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        {error ? (
+          <Text
+            accessibilityLiveRegion="assertive"
+            accessibilityRole="alert"
+            style={styles.error}
+            testID="auth-error"
+          >
+            {error}
+          </Text>
+        ) : null}
+        {notice ? (
+          <Text accessibilityLiveRegion="polite" style={styles.notice} testID="auth-notice">
+            {notice}
+          </Text>
+        ) : null}
         <AnimatedButton
           disabled={!canSubmit}
           label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : "Praxis kostenlos anlegen"}
           onPress={handleSubmit}
           style={styles.button}
+          testID="auth-submit"
         />
         <AnimatedButton
           disabled={loading}
@@ -199,6 +219,7 @@ export default function LoginScreen() {
           }}
           variant="ghost"
           style={styles.secondaryButton}
+          testID="auth-switch-mode"
         />
       </GlassCard>
     </Screen>

@@ -61,10 +61,18 @@ export default function OnboardingScreen() {
 
   return (
     <Screen scroll={false}>
-      <View style={styles.shell}>
+      <View style={styles.shell} testID="onboarding-screen">
         <View style={styles.progressRow}>
           {[0, 1, 2].map((index) => (
-            <Pressable key={index} onPress={() => setStep(index)} style={styles.dotPressable}>
+            <Pressable
+              accessibilityLabel={`Onboarding-Schritt ${index + 1} von 3`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: step === index }}
+              key={index}
+              onPress={() => setStep(index)}
+              style={styles.dotPressable}
+              testID={`onboarding-step-${index + 1}`}
+            >
               <MotiView
                 animate={{
                   opacity: step === index ? 1 : 0.34,
@@ -84,7 +92,16 @@ export default function OnboardingScreen() {
         ) : null}
 
         <View style={styles.actions}>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            <Text
+              accessibilityLiveRegion="assertive"
+              accessibilityRole="alert"
+              style={styles.error}
+              testID="onboarding-error"
+            >
+              {error}
+            </Text>
+          ) : null}
           {step > 0 ? (
             <AnimatedButton
               disabled={loading}
@@ -92,6 +109,7 @@ export default function OnboardingScreen() {
               variant="ghost"
               onPress={() => setStep((current) => current - 1)}
               style={styles.secondaryAction}
+              testID="onboarding-back"
             />
           ) : null}
           <AnimatedButton
@@ -100,6 +118,7 @@ export default function OnboardingScreen() {
             onPress={next}
             style={[styles.primaryAction, step === 2 && !canStart ? styles.disabled : null]}
             icon={<Ionicons name={step === 2 ? "scan" : "arrow-forward"} size={18} color={colors.ink} />}
+            testID={step === 2 ? "onboarding-submit" : "onboarding-next"}
           />
         </View>
       </View>
@@ -168,6 +187,8 @@ function StartScreen({
         <Text style={styles.formCopy}>Praxisdomain oder E-Mail eingeben und direkt den kostenlosen ersten Check starten.</Text>
         <Text style={styles.label}>Domain oder E-Mail</Text>
         <TextInput
+          accessibilityHint="Diese Angabe wird für den Praxis-Sicherheitscheck verwendet."
+          accessibilityLabel="Praxisdomain oder E-Mail-Adresse"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
@@ -175,6 +196,7 @@ function StartScreen({
           placeholder="team@praxis.de"
           placeholderTextColor={colors.muted}
           style={[styles.input, domainOrEmail.length > 0 && !canStart ? styles.inputWarning : null]}
+          testID="onboarding-domain"
           value={domainOrEmail}
         />
         {domainOrEmail.length > 0 && !canStart ? (

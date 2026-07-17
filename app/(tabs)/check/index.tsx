@@ -12,7 +12,7 @@ export default function CheckStartScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Praxis-Check</Text>
+      <Text style={styles.title} testID="check-start-screen">Praxis-Check</Text>
       <Text style={styles.copy}>
         {externalCheckEnabled
           ? "Ein kombinierter Check aus kurzen Fragen, WLAN-Prüfung und Online-Sicht auf Ihre Praxisadresse."
@@ -37,7 +37,11 @@ export default function CheckStartScreen() {
           </Text>
         </GlassCard>
       </View>
-      <AnimatedButton label="Check starten" onPress={() => router.push("/(tabs)/check/questionnaire")} />
+      <AnimatedButton
+        label="Check starten"
+        onPress={() => router.push("/(tabs)/check/questionnaire")}
+        testID="check-start"
+      />
     </Screen>
   );
 }

@@ -12,9 +12,22 @@ type AnimatedButtonProps = {
   variant?: "primary" | "danger" | "ghost";
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
+  testID?: string;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 };
 
-export function AnimatedButton({ label, onPress, icon, variant = "primary", style, disabled = false }: AnimatedButtonProps) {
+export function AnimatedButton({
+  label,
+  onPress,
+  icon,
+  variant = "primary",
+  style,
+  disabled = false,
+  testID,
+  accessibilityLabel,
+  accessibilityHint
+}: AnimatedButtonProps) {
   const isDanger = variant === "danger";
   const isGhost = variant === "ghost";
 
@@ -27,7 +40,15 @@ export function AnimatedButton({ label, onPress, icon, variant = "primary", styl
   }
 
   return (
-    <Pressable accessibilityState={{ disabled }} disabled={disabled} onPress={handlePress}>
+    <Pressable
+      accessibilityHint={accessibilityHint}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={handlePress}
+      testID={testID}
+    >
       {({ pressed }) => (
         <MotiView
           animate={{ scale: pressed ? 0.97 : 1, opacity: pressed ? 0.86 : 1 }}

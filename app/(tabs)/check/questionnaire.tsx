@@ -145,14 +145,24 @@ export default function QuestionnaireScreen() {
                 <View key={question.key} style={styles.questionBlock}>
                   <Text style={styles.question}>{question.label}</Text>
                   <InfoHint question={question} />
-                  <View style={styles.toggle}>
+                  <View
+                    accessibilityLabel={question.label}
+                    accessibilityRole="radiogroup"
+                    style={styles.toggle}
+                  >
                     {ANSWER_OPTIONS.map(({ value, label }) => {
                       const active = answers[question.key] === value;
                       return (
                         <Pressable
+                          accessibilityLabel={label}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: active }}
                           key={String(value)}
                           onPress={() => setAnswer(question.key, value)}
                           style={[styles.option, active ? styles.optionActive : null]}
+                          testID={`questionnaire-answer-${question.key}-${
+                            value === true ? "yes" : value === false ? "no" : "unknown"
+                          }`}
                         >
                           <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>{label}</Text>
                         </Pressable>
@@ -166,7 +176,12 @@ export default function QuestionnaireScreen() {
         ))}
       </View>
       {saveError ? (
-        <View style={styles.errorBox}>
+        <View
+          accessibilityLiveRegion="assertive"
+          accessibilityRole="alert"
+          style={styles.errorBox}
+          testID="questionnaire-error"
+        >
           <Text style={styles.errorText}>{saveError}</Text>
         </View>
       ) : null}
@@ -175,6 +190,7 @@ export default function QuestionnaireScreen() {
         icon={saving ? <ActivityIndicator color={colors.ink} /> : undefined}
         label={saving ? "Fragebogen wird gespeichert..." : "Weiter zum WLAN-Scan"}
         onPress={handleCompleteQuestionnaire}
+        testID="questionnaire-submit"
       />
     </Screen>
   );

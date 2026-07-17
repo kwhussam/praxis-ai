@@ -9,7 +9,7 @@ import { colors } from "@/constants/colors";
 export default function WlanScanScreen() {
   return (
     <Screen>
-      <Text style={styles.title}>WLAN-Scan</Text>
+      <Text style={styles.title} testID="wlan-screen">WLAN-Scan</Text>
       <Text style={styles.copy}>Erster mobiler Netz-Check für die Praxisumgebung.</Text>
       <WlanScanner />
       <AnimatedButton
@@ -21,6 +21,7 @@ export default function WlanScanScreen() {
           })
         }
         style={styles.button}
+        testID="wlan-report"
       />
     </Screen>
   );

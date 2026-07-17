@@ -86,14 +86,21 @@ export default function ReportsScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>KI-Bericht</Text>
+      <Text style={styles.title} testID="report-screen">KI-Bericht</Text>
       <Text style={styles.copy}>Management-tauglich für Praxisinhaber, präzise genug für IT-Partner.</Text>
 
       {latestReport ? (
-        <AiReport report={latestReport.report} />
+        <View testID="report-content">
+          <AiReport report={latestReport.report} />
+        </View>
       ) : error ? null : generating ? (
         <GlassCard>
-          <View style={styles.generatingRow}>
+          <View
+            accessibilityLabel="Bericht wird erstellt"
+            accessibilityLiveRegion="polite"
+            style={styles.generatingRow}
+            testID="report-generating"
+          >
             <ActivityIndicator color={colors.electric} />
             <Text style={styles.generatingText}>Bericht wird erstellt...</Text>
           </View>
@@ -117,18 +124,25 @@ export default function ReportsScreen() {
             }
             disabled={enteredFromCheckFlow ? !canGenerate : false}
             style={styles.emptyAction}
+            testID={enteredFromCheckFlow ? "report-generate" : "report-start-check"}
           />
         </GlassCard>
       )}
 
       {error ? (
-        <View style={styles.errorBox}>
+        <View
+          accessibilityLiveRegion="assertive"
+          accessibilityRole="alert"
+          style={styles.errorBox}
+          testID="report-error"
+        >
           <Text style={styles.errorText}>{error}</Text>
           <AnimatedButton
             label={generating ? "Bericht wird erstellt..." : "Erneut versuchen"}
             onPress={handleGenerate}
             style={styles.retryButton}
             disabled={!canGenerate}
+            testID="report-retry"
             icon={generating ? <ActivityIndicator color={colors.ink} /> : undefined}
           />
         </View>
