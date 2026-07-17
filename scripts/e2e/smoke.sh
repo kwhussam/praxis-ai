@@ -8,6 +8,8 @@ METRO_PID_FILE="$ROOT_DIR/.e2e/metro.pid"
 METRO_LOG="$ROOT_DIR/.e2e/metro.log"
 RESULT_FILE="$ROOT_DIR/.maestro/artifacts/results.xml"
 
+export MAESTRO_DRIVER_STARTUP_TIMEOUT="${MAESTRO_DRIVER_STARTUP_TIMEOUT:-180000}"
+
 if [[ "$PLATFORM" != "ios" && "$PLATFORM" != "android" ]]; then
   echo "Usage: smoke.sh <ios|android>" >&2
   exit 1
@@ -63,8 +65,8 @@ curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packag
 mkdir -p "$(dirname "$RESULT_FILE")"
 rm -f "$RESULT_FILE"
 
-bash scripts/e2e/maestro.sh test \
-  --config=.maestro/config.yaml \
+cd "$ROOT_DIR/.maestro"
+bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
   --format=JUNIT \
   --output="$RESULT_FILE" \
   --platform="$PLATFORM" \
@@ -73,4 +75,4 @@ bash scripts/e2e/maestro.sh test \
   -e "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
   -e "WORKER_URL=http://127.0.0.1:8787" \
   -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
-  .maestro
+  .

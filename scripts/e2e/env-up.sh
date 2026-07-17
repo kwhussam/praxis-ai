@@ -7,6 +7,8 @@ STATUS_ENV="$STATE_DIR/supabase-status.env"
 RUNTIME_ENV="$STATE_DIR/runtime.env"
 WORKER_PID_FILE="$STATE_DIR/worker.pid"
 WORKER_LOG="$STATE_DIR/worker.log"
+EXPECTED_MIGRATIONS="$STATE_DIR/expected-migrations.txt"
+APPLIED_MIGRATIONS="$STATE_DIR/applied-migrations.txt"
 
 mkdir -p "$STATE_DIR"
 umask 077
@@ -23,8 +25,95 @@ command -v supabase >/dev/null || {
 docker info >/dev/null
 
 cd "$ROOT_DIR"
-supabase start
-supabase db reset
+PROJECT_ID="$(sed -n 's/^project_id = "\(.*\)"/\1/p' supabase/config.toml)"
+find supabase/migrations -maxdepth 1 -name '*.sql' -print |
+  sed 's#.*/##; s/_.*$//' |
+  sort > "$EXPECTED_MIGRATIONS"
+
+container_id() {
+  docker ps -q \
+    --filter "label=com.supabase.cli.project=$PROJECT_ID" \
+    --filter "name=$1" |
+    head -n 1
+}
+
+wait_for_healthy_container() {
+  local container="$1"
+
+  for _ in $(seq 1 180); do
+    if [[ "$(docker inspect --format '{{.State.Health.Status}}' "$container")" == "healthy" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  return 1
+}
+
+migrations_match_repository() {
+  local container="$1"
+
+  docker exec "$container" \
+    psql -U postgres -d postgres -Atc \
+    'select version from supabase_migrations.schema_migrations order by version' \
+    > "$APPLIED_MIGRATIONS" 2>/dev/null &&
+    cmp -s "$EXPECTED_MIGRATIONS" "$APPLIED_MIGRATIONS"
+}
+
+if ! supabase start; then
+  echo "Supabase start reported an unhealthy container; the reset will verify the local stack." >&2
+fi
+
+RESET_COMPLETE=false
+for ATTEMPT in 1 2; do
+  if supabase db reset; then
+    RESET_COMPLETE=true
+    break
+  fi
+
+  echo "Supabase reset attempt $ATTEMPT reported an unhealthy container; verifying its progress." >&2
+  DB_CONTAINER="$(container_id supabase_db_)"
+  if [[ -n "$DB_CONTAINER" ]] &&
+     wait_for_healthy_container "$DB_CONTAINER" &&
+     migrations_match_repository "$DB_CONTAINER"; then
+    RESET_COMPLETE=true
+    break
+  fi
+
+  if [[ "$ATTEMPT" -lt 2 ]]; then
+    echo "Project migrations are incomplete; retrying the database reset once." >&2
+  fi
+done
+
+if [[ "$RESET_COMPLETE" != "true" ]]; then
+  echo "Supabase database reset did not complete after two attempts." >&2
+  exit 1
+fi
+
+DB_CONTAINER="$(container_id supabase_db_)"
+STORAGE_CONTAINER="$(container_id supabase_storage_)"
+
+if [[ -z "$DB_CONTAINER" || -z "$STORAGE_CONTAINER" ]]; then
+  echo "Supabase reset did not leave the database and storage containers running." >&2
+  exit 1
+fi
+
+if ! wait_for_healthy_container "$DB_CONTAINER" ||
+   ! wait_for_healthy_container "$STORAGE_CONTAINER"; then
+  echo "Supabase containers did not become healthy after the reset." >&2
+  exit 1
+fi
+
+docker exec "$DB_CONTAINER" \
+  psql -U postgres -d postgres -Atc \
+  'select version from supabase_migrations.schema_migrations order by version' \
+  > "$APPLIED_MIGRATIONS"
+
+if ! diff -u "$EXPECTED_MIGRATIONS" "$APPLIED_MIGRATIONS"; then
+  echo "The applied Supabase migrations do not match the repository." >&2
+  exit 1
+fi
+
 supabase status -o env > "$STATUS_ENV"
 
 set -a
