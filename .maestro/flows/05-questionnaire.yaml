@@ -1,0 +1,103 @@
+appId: ai.praxisshield.app
+name: 05-questionnaire
+tags:
+  - ui-e2e
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- runFlow: ../subflows/open-questionnaire.yaml
+- tapOn:
+    id: questionnaire-answer-mfa-yes
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-backups-no
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-backups-no
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-patching-unknown
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-patching-unknown
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-privacyDocuments-yes
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-privacyDocuments-yes
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-securityOwnerAssigned-yes
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-securityOwnerAssigned-yes
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-networkStructureDocumented-no
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-networkStructureDocumented-no
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-dnsFilterEnabled-unknown
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-dnsFilterEnabled-unknown
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-dhcpAuthorizedServerDocumented-yes
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-dhcpAuthorizedServerDocumented-yes
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-routerFirmwareCurrent-no
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-routerFirmwareCurrent-no
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-ipv6UsedIntentionally-unknown
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-ipv6UsedIntentionally-unknown
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-staffTraining-yes
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-answer-staffTraining-yes
+- runFlow: ../subflows/submit-questionnaire.yaml
+- runScript:
+    file: ../scripts/verify-questionnaire.js
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+      PRACTICE_ID: 20000000-0000-4000-8000-0000000000a1
+- assertTrue:
+    condition: ${output.questionnaire.persisted === true}
+    label: Questionnaire result is persisted in the real backend

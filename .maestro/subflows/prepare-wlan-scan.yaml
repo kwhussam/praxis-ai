@@ -1,0 +1,16 @@
+appId: ai.praxisshield.app
+---
+- scrollUntilVisible:
+    element:
+      id: wlan-consent
+    direction: DOWN
+    timeout: 20000
+    visibilityPercentage: 50
+- tapOn:
+    id: wlan-consent
+- tapOn:
+    id: wlan-consent-continue
+- extendedWaitUntil:
+    visible:
+      id: wlan-start
+    timeout: 15000

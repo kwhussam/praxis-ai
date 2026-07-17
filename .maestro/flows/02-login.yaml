@@ -1,0 +1,13 @@
+appId: ai.praxisshield.app
+name: 02-login
+tags:
+  - ui-e2e
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- assertVisible: "E2E Praxis A"
+- assertVisible:
+    id: tab-dashboard

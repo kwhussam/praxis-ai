@@ -1,0 +1,39 @@
+appId: ai.praxisshield.app
+name: 07-wlan-sync-error
+tags:
+  - ui-e2e
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-b@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- runFlow: ../subflows/open-questionnaire.yaml
+- runFlow: ../subflows/submit-questionnaire.yaml
+- runFlow: ../subflows/prepare-wlan-scan.yaml
+- runScript:
+    file: ../scripts/set-practice-owner.js
+    env:
+      PRACTICE_ID: 20000000-0000-4000-8000-0000000000b1
+      OWNER_ID: 00000000-0000-4000-8000-0000000000a1
+- assertTrue:
+    condition: ${output.ownerChange.status === 204}
+    label: Practice B owner is temporarily changed
+- tapOn:
+    id: wlan-start
+- extendedWaitUntil:
+    visible:
+      id: wlan-sync-error
+    timeout: 120000
+- runScript:
+    file: ../scripts/set-practice-owner.js
+    env:
+      PRACTICE_ID: 20000000-0000-4000-8000-0000000000b1
+      OWNER_ID: 00000000-0000-4000-8000-0000000000b1
+- assertTrue:
+    condition: ${output.ownerChange.status === 204}
+    label: Practice B owner is restored
+- assertVisible:
+    id: wlan-sync-error
+- assertVisible:
+    id: wlan-sync-retry

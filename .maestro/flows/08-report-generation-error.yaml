@@ -1,0 +1,37 @@
+appId: ai.praxisshield.app
+name: 08-report-generation-error
+tags:
+  - ui-e2e
+---
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- runFlow: ../subflows/open-questionnaire.yaml
+- runFlow: ../subflows/submit-questionnaire.yaml
+- scrollUntilVisible:
+    element:
+      id: wlan-report
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+- tapOn:
+    id: wlan-report
+- extendedWaitUntil:
+    visible:
+      id: report-generate
+    timeout: 20000
+- tapOn:
+    id: report-generate
+- extendedWaitUntil:
+    visible:
+      id: report-error
+    timeout: 40000
+- assertVisible: "Bericht konnte nicht erstellt werden, bitte erneut versuchen."
+- assertVisible:
+    id: report-retry
+- assertNotVisible:
+    id: report-content
+- assertNotVisible: "Dieser Musterbericht zeigt, wie ein fertiger PraxisShield-Bericht aussieht.*"
+- assertNotVisible: "Demo-Praxis Dr. Mustermann"

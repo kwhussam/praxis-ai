@@ -17,7 +17,17 @@
     "test:worker": "jest workers/hono/__tests__",
     "test:rls": "jest supabase/__tests__ --runInBand",
     "workers:dev": "wrangler dev --config workers/hono/wrangler.toml",
-    "supabase:types": "supabase gen types typescript --local > lib/api/database.types.ts"
+    "supabase:types": "supabase gen types typescript --local > lib/api/database.types.ts",
+    "e2e:env:up": "bash scripts/e2e/env-up.sh",
+    "e2e:env:down": "bash scripts/e2e/env-down.sh",
+    "e2e:app:ios": "bash scripts/e2e/app-start.sh ios run",
+    "e2e:app:android": "bash scripts/e2e/app-start.sh android run",
+    "e2e:metro:ios": "bash scripts/e2e/app-start.sh ios start",
+    "e2e:metro:android": "bash scripts/e2e/app-start.sh android start",
+    "e2e:rls": "bash scripts/e2e/run-rls.sh",
+    "e2e:maestro:check": "bash scripts/e2e/maestro.sh --version",
+    "e2e:smoke": "bash scripts/e2e/smoke.sh ios",
+    "e2e:smoke:android": "bash scripts/e2e/smoke.sh android"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
@@ -31,6 +41,7 @@
     "expo-blur": "~13.0.3",
     "expo-build-properties": "~0.12.5",
     "expo-constants": "~16.0.2",
+    "expo-dev-client": "~4.0.29",
     "expo-device": "~6.0.2",
     "expo-haptics": "~13.0.1",
     "expo-linear-gradient": "~13.0.2",

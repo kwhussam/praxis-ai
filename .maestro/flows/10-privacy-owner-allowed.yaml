@@ -1,0 +1,15 @@
+appId: ai.praxisshield.app
+name: 10-privacy-owner-allowed
+tags:
+  - api-integration
+---
+- runScript: ../scripts/privacy-owner-disposable.js
+- assertTrue:
+    condition: ${output.privacy.status === 200}
+    label: Disposable owner may request deletion
+- assertTrue:
+    condition: ${output.privacy.ok === true && output.privacy.state === "completed"}
+    label: Worker completes deletion for the disposable practice
+- assertTrue:
+    condition: ${output.privacy.practiceId !== "20000000-0000-4000-8000-0000000000b1"}
+    label: Seeded Practice B was not used

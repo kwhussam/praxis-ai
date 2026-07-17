@@ -1,0 +1,14 @@
+appId: ai.praxisshield.app
+---
+- tapOn:
+    id: tab-check
+- extendedWaitUntil:
+    visible:
+      id: check-start
+    timeout: 15000
+- tapOn:
+    id: check-start
+- extendedWaitUntil:
+    visible:
+      id: questionnaire-answer-mfa-yes
+    timeout: 15000

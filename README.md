@@ -244,6 +244,9 @@ Der Worker nutzt `workers/hono/wrangler.toml` und stellt unter anderem diese End
 
 ### Supabase lokal verwenden
 
+Für die lokale, geseedete Supabase-/Worker-Umgebung und das vorbereitete Maestro-
+Setup siehe [docs/E2E_LOCAL_SETUP.md](docs/E2E_LOCAL_SETUP.md).
+
 Datenbank zuruecksetzen und Migrationen anwenden:
 
 ```bash

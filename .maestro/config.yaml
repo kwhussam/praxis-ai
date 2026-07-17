@@ -1,0 +1,18 @@
+appId: ai.praxisshield.app
+flows:
+  - "flows/*.yaml"
+testOutputDir: artifacts
+executionOrder:
+  continueOnFailure: true
+  flowsOrder:
+    - 01-registration
+    - 02-login
+    - 03-login-invalid
+    - 04-onboarding
+    - 05-questionnaire
+    - 06-wlan-scan
+    - 07-wlan-sync-error
+    - 08-report-generation-error
+    - 09-privacy-viewer-forbidden
+    - 10-privacy-owner-allowed
+    - 11-password-reset

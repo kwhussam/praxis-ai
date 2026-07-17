@@ -1,0 +1,15 @@
+appId: ai.praxisshield.app
+---
+- scrollUntilVisible:
+    element:
+      id: questionnaire-submit
+    direction: DOWN
+    speed: 70
+    timeout: 60000
+    visibilityPercentage: 50
+- tapOn:
+    id: questionnaire-submit
+- extendedWaitUntil:
+    visible:
+      id: wlan-screen
+    timeout: 30000

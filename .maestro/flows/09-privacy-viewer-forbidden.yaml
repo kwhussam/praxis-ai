@@ -1,0 +1,17 @@
+appId: ai.praxisshield.app
+name: 09-privacy-viewer-forbidden
+tags:
+  - api-integration
+---
+- runScript:
+    file: ../scripts/privacy-viewer-forbidden.js
+    env:
+      EMAIL: partner@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+      PRACTICE_ID: 20000000-0000-4000-8000-0000000000a1
+- assertTrue:
+    condition: ${output.privacy.status === 403}
+    label: Viewer receives HTTP 403 from privacy delete
+- assertTrue:
+    condition: ${output.privacy.error === "forbidden"}
+    label: Worker returns the forbidden authorization result
