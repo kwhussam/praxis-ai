@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
@@ -8,7 +8,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
-import { generateReport } from "@/lib/ai/report";
+import { generateReportWithId } from "@/lib/ai/report";
 import { AppConfig } from "@/lib/config/environment";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
@@ -18,6 +18,7 @@ import { useSessionStore } from "@/lib/store/session";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function ReportsScreen() {
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const answers = useCheckStore((state) => state.answers);
   const score = useCheckStore((state) => state.currentScore);
   const practice = useSessionStore((state) => state.practice);
@@ -30,6 +31,7 @@ export default function ReportsScreen() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canGenerate = Boolean(practice?.id && UUID_RE.test(practice.id)) && !generating;
+  const enteredFromCheckFlow = from === "check";
 
   async function handleGenerate() {
     if (!practice?.id || !UUID_RE.test(practice.id)) {
@@ -53,8 +55,8 @@ export default function ReportsScreen() {
     };
 
     try {
-      const report = await generateReport(source);
-      const storedReport = saveReport(report, source);
+      const { report, reportId } = await generateReportWithId(source);
+      const storedReport = saveReport(report, source, reportId);
       router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
     } catch {
       setError("Bericht konnte nicht erstellt werden, bitte erneut versuchen.");
@@ -69,8 +71,8 @@ export default function ReportsScreen() {
 
     try {
       const pdfPath = await exportReportPdf({
-        practiceName: latestReport.source.practiceName ?? practice?.name ?? "Arztpraxis",
-        domain: latestReport.source.domain ?? practice?.domain,
+        practiceName: latestReport.source?.practiceName ?? practice?.name ?? "Arztpraxis",
+        domain: latestReport.source?.domain ?? practice?.domain,
         report: latestReport.report
       });
       setPdfPath(latestReport.id, pdfPath);
@@ -89,13 +91,33 @@ export default function ReportsScreen() {
 
       {latestReport ? (
         <AiReport report={latestReport.report} />
+      ) : error ? null : generating ? (
+        <GlassCard>
+          <View style={styles.generatingRow}>
+            <ActivityIndicator color={colors.electric} />
+            <Text style={styles.generatingText}>Bericht wird erstellt...</Text>
+          </View>
+        </GlassCard>
       ) : (
         <GlassCard>
-          <Text style={styles.emptyTitle}>Noch kein KI-Bericht erstellt</Text>
-          <Text style={styles.emptyCopy}>
-            PraxisShield nutzt Fragebogen, WLAN-Scan und externe Checks, um daraus einen verständlichen Maßnahmenplan zu
-            erstellen.
+          <Text style={styles.emptyTitle}>
+            {enteredFromCheckFlow ? "Check abgeschlossen" : "Noch kein Bericht vorhanden"}
           </Text>
+          <Text style={styles.emptyCopy}>
+            {enteredFromCheckFlow
+              ? "Ihre Check-Daten sind bereit. Sie können daraus jetzt den KI-Bericht erstellen."
+              : "Starten Sie den Praxis-Check. Danach erstellen wir aus den erhobenen Daten einen verständlichen Maßnahmenplan."}
+          </Text>
+          <AnimatedButton
+            label={enteredFromCheckFlow ? "KI-Bericht erzeugen" : "Praxis-Check starten"}
+            onPress={
+              enteredFromCheckFlow
+                ? handleGenerate
+                : () => router.push("/(tabs)/check/questionnaire")
+            }
+            disabled={enteredFromCheckFlow ? !canGenerate : false}
+            style={styles.emptyAction}
+          />
         </GlassCard>
       )}
 
@@ -112,16 +134,16 @@ export default function ReportsScreen() {
         </View>
       ) : null}
 
-      <AnimatedButton
-        label={generating ? "Bericht wird erstellt..." : "KI-Bericht erzeugen"}
-        onPress={handleGenerate}
-        style={styles.button}
-        disabled={!canGenerate}
-        icon={generating ? <ActivityIndicator color={colors.ink} /> : undefined}
-      />
-
       {latestReport ? (
         <View style={styles.actions}>
+          <AnimatedButton
+            label={generating ? "Bericht wird erstellt..." : "Bericht neu erzeugen"}
+            onPress={handleGenerate}
+            variant="ghost"
+            style={styles.actionButton}
+            disabled={!canGenerate}
+            icon={generating ? <ActivityIndicator color={colors.ink} /> : undefined}
+          />
           <AnimatedButton
             label="Detailbericht öffnen"
             onPress={() => router.push({ pathname: "/(tabs)/report/[id]", params: { id: latestReport.id } })}
@@ -165,8 +187,18 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 10
   },
-  button: {
-    marginTop: 18
+  emptyAction: {
+    marginTop: 16
+  },
+  generatingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12
+  },
+  generatingText: {
+    color: colors.ink,
+    fontSize: 16,
+    fontWeight: "800"
   },
   actions: {
     gap: 12,

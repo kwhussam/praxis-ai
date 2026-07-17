@@ -1,6 +1,6 @@
 import { useLocalSearchParams, router } from "expo-router";
-import { useMemo } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { BarChart } from "@/components/charts/BarChart";
 import { RadarChart } from "@/components/charts/RadarChart";
@@ -12,19 +12,100 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
+import { loadReportById, ReportNotFoundError, type LoadedReport } from "@/lib/ai/report-service";
 import { AppConfig } from "@/lib/config/environment";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
+import { useSessionStore } from "@/lib/store/session";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export default function ReportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const practice = useSessionStore((state) => state.practice);
   const storedReport = useReportStore((state) => state.latest);
-  const latestReport = storedReport ?? (AppConfig.isDemoMode && id === SAMPLE_STORED_REPORT.id ? SAMPLE_STORED_REPORT : null);
+  const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
+  const [viewState, setViewState] = useState<"loading" | "ready" | "error" | "not-found">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
+  const isDemoReport =
+    AppConfig.isDemoMode && practice?.id.startsWith("demo-") === true && id === SAMPLE_STORED_REPORT.id;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoadedReport(null);
+      setViewState("loading");
+
+      if (isDemoReport) {
+        setLoadedReport(SAMPLE_STORED_REPORT);
+        setViewState("ready");
+        return;
+      }
+      if (!practice?.id) {
+        setViewState("error");
+        return;
+      }
+      if (!id || !UUID_RE.test(id) || !UUID_RE.test(practice.id)) {
+        setViewState("not-found");
+        return;
+      }
+
+      try {
+        const report = await loadReportById(practice.id, id);
+        if (cancelled) return;
+        setLoadedReport(report);
+        setViewState("ready");
+      } catch (error) {
+        if (cancelled) return;
+        setViewState(error instanceof ReportNotFoundError ? "not-found" : "error");
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, isDemoReport, practice?.id, reloadKey]);
+
+  const scoreSource = isDemoReport
+    ? SAMPLE_STORED_REPORT.source
+    : storedReport?.id === id
+      ? storedReport.source
+      : undefined;
   const scoreReport = useMemo(
-    () => (latestReport && latestReport.id === id ? buildReportScore(latestReport.source) : null),
-    [id, latestReport]
+    () => (scoreSource ? buildReportScore(scoreSource) : null),
+    [scoreSource]
   );
 
-  if (!latestReport || latestReport.id !== id) {
+  if (viewState === "loading") {
+    return (
+      <Screen>
+        <Text style={styles.title}>Audit-Bericht</Text>
+        <GlassCard style={styles.card}>
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.electric} />
+            <Text style={styles.body}>Bericht wird geladen...</Text>
+          </View>
+        </GlassCard>
+      </Screen>
+    );
+  }
+
+  if (viewState === "error") {
+    return (
+      <Screen>
+        <Text style={styles.title}>Audit-Bericht</Text>
+        <GlassCard style={styles.card}>
+          <Text style={styles.section}>Bericht konnte nicht geladen werden</Text>
+          <Text style={styles.body}>Bitte prüfen Sie Ihre Verbindung und versuchen Sie es erneut.</Text>
+        </GlassCard>
+        <AnimatedButton label="Erneut versuchen" onPress={() => setReloadKey((value) => value + 1)} />
+        <AnimatedButton label="Zurück zu den Berichten" onPress={() => router.push("/(tabs)/report")} variant="ghost" />
+      </Screen>
+    );
+  }
+
+  if (viewState === "not-found" || !loadedReport) {
     return (
       <Screen>
         <Text style={styles.title}>Audit-Bericht</Text>
@@ -37,13 +118,13 @@ export default function ReportDetailScreen() {
     );
   }
 
-  const report = latestReport.report;
+  const report = loadedReport.report;
 
   return (
     <Screen>
       <Text style={styles.title}>Audit-Bericht</Text>
       <Text style={styles.copy}>
-        Report-ID: {latestReport.id} · {new Date(latestReport.createdAt).toLocaleDateString("de-DE")}
+        Report-ID: {loadedReport.id} · {new Date(loadedReport.createdAt).toLocaleDateString("de-DE")}
       </Text>
 
       <AiReport report={report} />
@@ -185,6 +266,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 23,
     marginTop: 10
+  },
+  loadingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12
   },
   space: {
     height: 16

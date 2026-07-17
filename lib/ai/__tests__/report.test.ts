@@ -12,7 +12,7 @@ jest.mock("@/lib/api/client", () => ({
   }
 }));
 
-import { generateReport, validateReport } from "@/lib/ai/report";
+import { generateReport, generateReportWithId, validateReport } from "@/lib/ai/report";
 
 const validReport = {
   executive_summary:
@@ -166,6 +166,24 @@ describe("generateReport", () => {
         }
       }
     });
+  });
+
+  it("uebernimmt die persistierte Report-ID aus der Worker-Antwort", async () => {
+    mockApiRequestCalls.length = 0;
+    mockApiRequestResult = {
+      ...validReport,
+      reportId: "66666666-6666-4666-8666-666666666666"
+    };
+
+    const result = await generateReportWithId({
+      practiceId: "11111111-1111-4111-8111-111111111111",
+      practiceName: "Praxis",
+      questionnaire: {},
+      score: 80
+    });
+
+    expect(result.reportId).toBe("66666666-6666-4666-8666-666666666666");
+    expect(result.report.executive_summary).toBe(validReport.executive_summary);
   });
 });
 

@@ -89,6 +89,11 @@ export type AiReportContent = {
   complianceNotes: string[];
 };
 
+export type GeneratedReport = {
+  reportId: string;
+  report: Report;
+};
+
 const riskValues = ["critical", "high", "medium", "low"] as const;
 const ampelValues = ["rot", "gelb", "grün"] as const;
 const priorityValues = ["sofort", "diese_woche", "diesen_monat"] as const;
@@ -98,16 +103,29 @@ const reliabilityValues = ["high", "medium", "low"] as const;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function generateReport(data: CheckData): Promise<Report> {
+  return validateReport(await requestGeneratedReport(data));
+}
+
+export async function generateReportWithId(data: CheckData): Promise<GeneratedReport> {
+  const response = await requestGeneratedReport(data);
+  const reportId = isObject(response) && typeof response.reportId === "string" ? response.reportId : "";
+  if (!UUID_RE.test(reportId)) throw new Error("Ungültiger KI-Bericht: reportId fehlt oder ist ungültig.");
+
+  return {
+    reportId,
+    report: validateReport(response)
+  };
+}
+
+async function requestGeneratedReport(data: CheckData) {
   if (!data.practiceId || !UUID_RE.test(data.practiceId)) {
     throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein KI-Bericht erzeugt werden kann.");
   }
 
-  const report = await apiRequest<unknown>("/api/report/generate", {
+  return apiRequest<unknown>("/api/report/generate", {
     method: "POST",
     body: data
   });
-
-  return validateReport(report);
 }
 
 export async function generateAiReport(input: AiReportRequest): Promise<AiReportContent> {

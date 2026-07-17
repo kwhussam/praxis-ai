@@ -6,14 +6,14 @@ import { SAMPLE_REPORT, SAMPLE_REPORT_SOURCE } from "@/lib/ai/sample-report";
 export type StoredReport = {
   id: string;
   report: Report;
-  source: CheckData;
+  source?: CheckData;
   createdAt: string;
   pdfPath?: string;
 };
 
 type ReportState = {
   latest: StoredReport | null;
-  saveReport: (report: Report, source: CheckData) => StoredReport;
+  saveReport: (report: Report, source: CheckData, id?: string) => StoredReport;
   setPdfPath: (id: string, pdfPath: string) => void;
   clear: () => void;
 };
@@ -27,9 +27,9 @@ export const SAMPLE_STORED_REPORT: StoredReport = {
 
 export const useReportStore = create<ReportState>()((set) => ({
   latest: null,
-  saveReport: (report, source) => {
+  saveReport: (report, source, id) => {
     const storedReport = {
-      id: `report-${Date.now()}`,
+      id: id ?? `report-${Date.now()}`,
       report,
       source,
       createdAt: new Date().toISOString()

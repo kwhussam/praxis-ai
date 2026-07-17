@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run lint && npm run typecheck && npm test -- --runInBand",
     "test": "jest",
     "test:secrets": "jest --runTestsByPath security/__tests__/secret-exposure.test.ts",
     "test:unit": "jest lib/security/__tests__",

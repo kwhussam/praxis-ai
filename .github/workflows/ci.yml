@@ -16,18 +16,8 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: TypeCheck
-        run: npm run typecheck
-      - name: Lint
-        run: npm run lint
-      - name: Secret Exposure Tests
-        run: npm run test:secrets
-      - name: Unit Tests
-        run: npm run test:unit
-      - name: Worker Tests
-        run: npm run test:worker
-      - name: RLS Integration Tests
-        run: npm run test:rls
+      - name: Verify
+        run: npm run verify
         env:
           SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}

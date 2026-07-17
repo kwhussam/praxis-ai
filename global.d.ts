@@ -2,6 +2,7 @@ declare const process: {
   env: {
     EXPO_PUBLIC_API_BASE_URL?: string;
     EXPO_PUBLIC_APP_ENV?: string;
+    EXPO_PUBLIC_EXTERNAL_CHECK_ENABLED?: string;
     EXPO_PUBLIC_SUPABASE_URL?: string;
     EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
     SUPABASE_URL?: string;
@@ -38,13 +39,16 @@ declare module "expo-secure-store" {
 declare module "react-test-renderer" {
   import type { ReactElement } from "react";
 
-  export type ReactTestInstance = {
+  export type ReactTestInstance<Props extends Record<string, unknown> = Record<string, unknown>> = {
     type: unknown;
-    props: Record<string, unknown>;
+    props: Props;
     children: unknown[];
     parent: ReactTestInstance | null;
     find(predicate: (node: ReactTestInstance) => boolean): ReactTestInstance;
     findAll(predicate: (node: ReactTestInstance) => boolean): ReactTestInstance[];
+    findByProps<MatchedProps extends Record<string, unknown>>(
+      props: Partial<MatchedProps>
+    ): ReactTestInstance<MatchedProps>;
   };
 
   export type ReactTestRenderer = {
@@ -69,12 +73,15 @@ declare const it: JestTestFn & {
   each<T>(cases: readonly T[]): (name: string, fn: (item: T) => void | Promise<void>) => void;
 };
 
-declare function expect(value: unknown): {
+type JestMatchers = {
+  readonly not: JestMatchers;
   toBe(expected: unknown): void;
   toEqual(expected: unknown): void;
   toBeNull(): void;
   toBeDefined(): void;
+  toContain(expected: unknown): void;
   toContainEqual(expected: unknown): void;
+  toHaveBeenCalled(): void;
   toHaveLength(length: number): void;
   toMatch(pattern: RegExp): void;
   toMatchObject(expected: Record<string, unknown>): void;
@@ -83,3 +90,5 @@ declare function expect(value: unknown): {
   toBeLessThan(expected: number): void;
   toBeLessThanOrEqual(expected: number): void;
 };
+
+declare function expect(value: unknown): JestMatchers;

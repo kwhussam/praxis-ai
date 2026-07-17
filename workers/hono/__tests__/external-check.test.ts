@@ -1281,6 +1281,129 @@ describe("POST /api/check/questionnaire", () => {
   });
 });
 
+describe("GET /api/reports", () => {
+  it("listet nur Berichte der autorisierten Praxis fuer viewer", async () => {
+    const originalFetch = globalThis.fetch;
+    const reportId = "66666666-6666-4666-8666-666666666666";
+    const mock = installReportReadFetch([
+      {
+        id: reportId,
+        check_id: null,
+        format_version: "1.0.0",
+        scoring_version: "2026.1",
+        content: { security_score: 50 },
+        pdf_url: null,
+        created_at: "2026-07-17T10:00:00.000Z"
+      }
+    ]);
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/reports?practiceId=${roleGatePracticeId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as { reports: Array<{ id: string }> };
+      expect(body.reports.map((report) => report.id)).toEqual([reportId]);
+      expect(mock.reportRequests[0].includes(`practice_id=eq.${roleGatePracticeId}`)).toBe(true);
+      expect(mock.canAccessRequests).toContainEqual({
+        p_user_id: "22222222-2222-4222-8222-222222222222",
+        p_practice_id: roleGatePracticeId,
+        p_required_role: "viewer"
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("GET /api/reports/:id", () => {
+  it("laedt und entschluesselt einen Bericht der autorisierten Praxis", async () => {
+    const originalFetch = globalThis.fetch;
+    const reportId = "66666666-6666-4666-8666-666666666666";
+    const report = validAiReport();
+    const encryptedContent = await encryptReportFixture(report);
+    const mock = installReportReadFetch([
+      {
+        id: reportId,
+        encrypted_content: encryptedContent,
+        pdf_url: null,
+        created_at: "2026-07-17T10:00:00.000Z"
+      }
+    ]);
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/reports/${reportId}?practiceId=${roleGatePracticeId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const body = await res.json() as { report: { id: string; content: { executive_summary: string } } };
+      expect(body.report.id).toBe(reportId);
+      expect(body.report.content.executive_summary).toBe(report.executive_summary);
+      expect(mock.reportRequests[0].includes(`id=eq.${reportId}`)).toBe(true);
+      expect(mock.reportRequests[0].includes(`practice_id=eq.${roleGatePracticeId}`)).toBe(true);
+      expect(mock.canAccessRequests).toContainEqual({
+        p_user_id: "22222222-2222-4222-8222-222222222222",
+        p_practice_id: roleGatePracticeId,
+        p_required_role: "viewer"
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lehnt einen praxisfremden Nutzer vor dem Report-Lookup ab", async () => {
+    const originalFetch = globalThis.fetch;
+    installForeignPracticeFetch();
+
+    try {
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/reports/66666666-6666-4666-8666-666666666666?practiceId=${roleGatePracticeId}`,
+          { headers: { authorization: "Bearer user-token" } }
+        ),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({ error: "forbidden" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("liefert fuer eine unbekannte Report-ID einen sauberen 404", async () => {
+    const originalFetch = globalThis.fetch;
+    installReportReadFetch([]);
+
+    try {
+      const res = await worker.fetch(
+        new Request(
+          `http://localhost/api/reports/66666666-6666-4666-8666-666666666666?practiceId=${roleGatePracticeId}`,
+          { headers: { authorization: "Bearer user-token" } }
+        ),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "not_found", message: "Bericht nicht gefunden." });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 type PracticeRole = "owner" | "manager" | "viewer";
 
 type RoleGateCase = {
@@ -1298,6 +1421,12 @@ type ReadRoleGateCase = {
   method: "GET";
   path: string;
   requiredRole: "viewer";
+};
+
+type RoleGateRequestCase = {
+  method: "GET" | "POST";
+  path: string;
+  body?: Record<string, unknown>;
 };
 
 const roleGatePracticeId = "11111111-1111-4111-8111-111111111111";
@@ -1501,7 +1630,7 @@ describe("sensitive practice endpoint role gates", () => {
   });
 });
 
-function buildRoleGateRequest(endpoint: RoleGateCase) {
+function buildRoleGateRequest(endpoint: RoleGateRequestCase) {
   return new Request(`http://localhost${endpoint.path}`, {
     method: endpoint.method,
     headers: { authorization: "Bearer user-token" },
@@ -1619,6 +1748,64 @@ function installForeignPracticeFetch() {
     }
     return Response.json({}, { status: 500 });
   }) as typeof fetch;
+}
+
+function installReportReadFetch(reportRows: unknown[]) {
+  const reportRequests: string[] = [];
+  const canAccessRequests: Record<string, unknown>[] = [];
+
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+      return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+      return Response.json([
+        {
+          id: roleGatePracticeId,
+          owner_id: "22222222-2222-4222-8222-222222222222",
+          name: "Praxis",
+          domain: "praxis.de",
+          email: "kontakt@praxis.de",
+          plan: "monitoring"
+        }
+      ]);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+      canAccessRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+      return Response.json(true);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/reports")) {
+      reportRequests.push(url);
+      return Response.json(reportRows);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+      return new Response(null, { status: 204 });
+    }
+    return Response.json({}, { status: 404 });
+  }) as typeof fetch;
+
+  return { canAccessRequests, reportRequests };
+}
+
+async function encryptReportFixture(report: unknown) {
+  const key = await crypto.subtle.importKey("raw", new Uint8Array(32), { name: "AES-GCM" }, false, ["encrypt"]);
+  const iv = new Uint8Array(12);
+  const plaintext = new TextEncoder().encode(JSON.stringify(report));
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+
+  return {
+    alg: "AES-256-GCM",
+    iv: testBytesToBase64(iv),
+    data: testBytesToBase64(new Uint8Array(ciphertext)),
+    created_at: "2026-07-17T10:00:00.000Z"
+  };
+}
+
+function testBytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function roleGateUserId(role: PracticeRole) {

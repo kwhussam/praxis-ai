@@ -71,7 +71,8 @@ describe("CheckStartScreen", () => {
     expect(text).toContain("IN VORBEREITUNG");
     expect(text).not.toContain("bekannte Datenleck-Hinweise");
 
-    act(() => tree.root.findByProps({ label: "Check starten" }).props.onPress());
+    const startButton = tree.root.findByProps<{ label: string; onPress: () => void }>({ label: "Check starten" });
+    act(() => startButton.props.onPress());
 
     expect(mockPushedRoutes).toEqual(["/(tabs)/check/questionnaire"]);
     expect(mockRunExternalCheck).not.toHaveBeenCalled();

@@ -7,6 +7,16 @@ type RequestOptions = {
   token?: string;
 };
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? (await getSupabaseAccessToken());
   const response = await fetch(`${AppConfig.apiBaseUrl}${path}`, {
@@ -20,7 +30,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!response.ok) {
     const message = await errorMessageFromResponse(response);
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
 
   return response.json() as Promise<T>;

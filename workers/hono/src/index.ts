@@ -408,6 +408,8 @@ app.post("/api/check/questionnaire", async (c) => handleQuestionnaireCheck(c));
 app.get("/api/dashboard", async (c) => handleDashboard(c));
 app.post("/api/report/generate", async (c) => handleReportGenerate(c, { requirePractice: true, persist: true }));
 app.post("/api/report/pdf", async (c) => handleReportPdf(c));
+app.get("/api/reports", async (c) => handleReportsList(c));
+app.get("/api/reports/:id", async (c) => handleReportDetail(c));
 app.get("/api/monitoring/status", async (c) => handleMonitoringStatus(c));
 app.post("/api/monitoring/run", async (c) => handleMonitoringRun(c));
 app.get("/api/monitoring/history", async (c) => handleMonitoringHistory(c));
@@ -1027,6 +1029,82 @@ function buildDashboardHistory(securityRows: unknown[], monitoringRows: unknown[
 function readOptionalScore(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return clampScore(value);
+}
+
+async function handleReportsList(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "reports_list", "viewer");
+  if (access instanceof Response) return access;
+
+  try {
+    const rows = await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&order=created_at.desc`,
+      { method: "GET" }
+    );
+    const reports = rows.map(normalizeReportListItem).filter((item) => item !== null);
+    await auditPracticeAccess(c, access, "read", "reports", { format: "list" });
+    return c.json({ reports });
+  } catch (error) {
+    console.error("reports_list_failed", {
+      practice_id: access.practice.id,
+      failure: safeErrorLog(error)
+    });
+    return c.json({ error: "reports_load_failed", message: "Berichte konnten nicht geladen werden." }, 500);
+  }
+}
+
+async function handleReportDetail(c: Context<{ Bindings: Env }>) {
+  const practiceId = c.req.query("practiceId");
+  const access = await requirePracticeAccess(c, practiceId, "report_detail", "viewer");
+  if (access instanceof Response) return access;
+
+  const reportId = c.req.param("id") ?? "";
+  if (!isUuid(reportId)) return c.json({ error: "report id is required" }, 400);
+
+  try {
+    const rows = await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/reports?select=id,encrypted_content,pdf_url,created_at&id=eq.${encodeURIComponent(reportId)}&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&limit=1`,
+      { method: "GET" }
+    );
+    const row = asRecordOrNull(rows[0]);
+    if (!row) return c.json({ error: "not_found", message: "Bericht nicht gefunden." }, 404);
+
+    const report = validateReport(await decryptJson(c.env, row.encrypted_content));
+    await auditPracticeAccess(c, access, "read", "reports", { report_id: reportId });
+    return c.json({
+      report: {
+        id: reportId,
+        content: report,
+        createdAt: typeof row.created_at === "string" ? row.created_at : "",
+        pdfPath: typeof row.pdf_url === "string" ? row.pdf_url : undefined
+      }
+    });
+  } catch (error) {
+    console.error("report_detail_failed", {
+      practice_id: access.practice.id,
+      report_id: reportId,
+      failure: safeErrorLog(error)
+    });
+    return c.json({ error: "report_load_failed", message: "Bericht konnte nicht geladen werden." }, 500);
+  }
+}
+
+function normalizeReportListItem(value: unknown) {
+  const row = asRecordOrNull(value);
+  const id = typeof row?.id === "string" ? row.id : "";
+  if (!isUuid(id)) return null;
+
+  return {
+    id,
+    checkId: typeof row?.check_id === "string" ? row.check_id : null,
+    formatVersion: typeof row?.format_version === "string" ? row.format_version : null,
+    scoringVersion: typeof row?.scoring_version === "string" ? row.scoring_version : null,
+    summary: asRecordOrNull(row?.content) ?? {},
+    pdfPath: typeof row?.pdf_url === "string" ? row.pdf_url : null,
+    createdAt: typeof row?.created_at === "string" ? row.created_at : ""
+  };
 }
 
 async function handleReportGenerate(
@@ -1662,13 +1740,28 @@ async function encryptJson(env: Env, value: unknown) {
   };
 }
 
+async function decryptJson(env: Env, value: unknown) {
+  const encrypted = asRecord(value);
+  if (encrypted.alg !== "AES-256-GCM" || typeof encrypted.iv !== "string" || typeof encrypted.data !== "string") {
+    throw new Error("Encrypted report has an unsupported format");
+  }
+
+  const iv = base64ToBytes(encrypted.iv);
+  const ciphertext = base64ToBytes(encrypted.data);
+  if (iv.length !== 12 || ciphertext.length === 0) throw new Error("Encrypted report payload is invalid");
+
+  const key = await importAesKey(env);
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+  return JSON.parse(new TextDecoder().decode(plaintext)) as unknown;
+}
+
 async function importAesKey(env: Env) {
   const material = decodeEncryptionKey(env.DATA_ENCRYPTION_KEY);
   if (material.length !== 32) {
     throw new Error("DATA_ENCRYPTION_KEY must decode to exactly 32 bytes for AES-256-GCM");
   }
 
-  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt"]);
+  return crypto.subtle.importKey("raw", material, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 function decodeEncryptionKey(value?: string) {
@@ -1700,6 +1793,11 @@ function bytesToBase64(bytes: Uint8Array) {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
 function bytesToHex(bytes: Uint8Array) {

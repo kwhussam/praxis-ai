@@ -34,9 +34,9 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("lucide-react-native", () => ({
-  BellRing: () => {
+  Settings: () => {
     const React = require("react");
-    return React.createElement("BellRing");
+    return React.createElement("Settings");
   }
 }));
 
