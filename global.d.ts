@@ -75,6 +75,7 @@ declare const it: JestTestFn & {
 
 type JestMatchers = {
   readonly not: JestMatchers;
+  readonly rejects: JestMatchers;
   toBe(expected: unknown): void;
   toEqual(expected: unknown): void;
   toBeNull(): void;
@@ -85,6 +86,7 @@ type JestMatchers = {
   toHaveLength(length: number): void;
   toMatch(pattern: RegExp): void;
   toMatchObject(expected: Record<string, unknown>): void;
+  toThrow(expected?: string | RegExp): void;
   toBeGreaterThan(expected: number): void;
   toBeGreaterThanOrEqual(expected: number): void;
   toBeLessThan(expected: number): void;

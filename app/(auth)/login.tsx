@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { requestPasswordReset } from "@/lib/auth/password-reset";
 import { supabase } from "@/lib/supabase/client";
 import { useSessionStore, type Practice } from "@/lib/store/session";
 
@@ -21,12 +22,13 @@ export default function LoginScreen() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const normalizedEmail = email.trim();
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
   const passwordLongEnough = password.length >= 8;
-  const canSubmit = emailLooksValid && passwordLongEnough && !loading;
+  const canSubmit = emailLooksValid && passwordLongEnough && !loading && !resetLoading;
 
   useEffect(() => {
     if (requestedMode === "register") setMode("register");
@@ -85,6 +87,32 @@ export default function LoginScreen() {
     }
   }
 
+  async function handleForgotPassword() {
+    if (resetLoading) return;
+
+    setError(null);
+    setNotice(null);
+
+    if (!emailLooksValid) {
+      setEmailTouched(true);
+      setError("Bitte geben Sie zuerst eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      await requestPasswordReset(normalizedEmail);
+      setNotice(
+        "Falls ein Konto zu dieser E-Mail existiert, wurde ein Link zum Zurücksetzen versendet."
+      );
+    } catch {
+      setError("Der Link konnte nicht versendet werden. Bitte versuchen Sie es erneut.");
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -134,6 +162,24 @@ export default function LoginScreen() {
         />
         {(passwordTouched || password.length > 0) && !passwordLongEnough ? (
           <Text style={styles.validation}>Das Passwort braucht noch {8 - password.length} Zeichen.</Text>
+        ) : null}
+        {mode === "login" ? (
+          <Pressable
+            accessibilityLabel="Passwort vergessen"
+            accessibilityRole="button"
+            accessibilityState={{ disabled: resetLoading }}
+            disabled={resetLoading}
+            onPress={() => {
+              void handleForgotPassword();
+            }}
+            style={[styles.forgotPasswordButton, resetLoading ? styles.forgotPasswordButtonDisabled : null]}
+            testID="auth-forgot-password"
+          >
+            {resetLoading ? <ActivityIndicator color={colors.electricMuted} size="small" /> : null}
+            <Text style={styles.forgotPasswordText}>
+              {resetLoading ? "Link wird versendet..." : "Passwort vergessen"}
+            </Text>
+          </Pressable>
         ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
@@ -247,6 +293,23 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     marginTop: 12
+  },
+  forgotPasswordButton: {
+    alignItems: "center",
+    alignSelf: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+    minHeight: 44,
+    paddingHorizontal: 12
+  },
+  forgotPasswordButtonDisabled: {
+    opacity: 0.6
+  },
+  forgotPasswordText: {
+    color: colors.electricMuted,
+    fontSize: 14,
+    fontWeight: "800"
   },
   error: {
     color: colors.critical,
