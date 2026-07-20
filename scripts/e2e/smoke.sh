@@ -32,9 +32,12 @@ if [[ "$PLATFORM" == "ios" ]]; then
     echo "Development build is not installed. Run npm run e2e:app:ios first." >&2
     exit 1
   }
+  DEV_CLIENT_URL="ai.praxisshield.app://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081"
 elif ! adb get-state >/dev/null 2>&1; then
   echo "No connected Android emulator. Start one before running npm run e2e:smoke:android." >&2
   exit 1
+else
+  DEV_CLIENT_URL="ai.praxisshield.app://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"
 fi
 
 if ! curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
@@ -75,4 +78,5 @@ bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
   -e "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
   -e "WORKER_URL=http://127.0.0.1:8787" \
   -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
+  -e "DEV_CLIENT_URL=$DEV_CLIENT_URL" \
   .

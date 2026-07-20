@@ -3,6 +3,7 @@ name: 06-wlan-scan
 tags:
   - ui-e2e
 ---
+- runFlow: ../subflows/bootstrap.yaml
 - runFlow:
     file: ../subflows/login.yaml
     env:

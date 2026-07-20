@@ -3,22 +3,14 @@ name: 03-login-invalid
 tags:
   - ui-e2e
 ---
-- launchApp:
-    clearState: true
-    clearKeychain: true
-    permissions:
-      all: allow
-- extendedWaitUntil:
-    visible:
-      id: auth-email
-    timeout: 30000
+- runFlow: ../subflows/bootstrap.yaml
 - tapOn:
     id: auth-email
 - inputText: owner-a@example.test
 - tapOn:
     id: auth-password
 - inputText: Definitely-Wrong-Password
-- hideKeyboard
+- pressKey: Enter
 - tapOn:
     id: auth-submit
 - extendedWaitUntil:

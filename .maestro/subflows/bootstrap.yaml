@@ -1,0 +1,64 @@
+appId: ai.praxisshield.app
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    permissions:
+      all: allow
+- retry:
+    maxRetries: 3
+    commands:
+      - openLink:
+          link: "${DEV_CLIENT_URL}"
+- waitForAnimationToEnd:
+    timeout: 420000
+- tapOn:
+    text: Continue
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 30000
+- tapOn:
+    point: "94%,43%"
+- waitForAnimationToEnd:
+    timeout: 30000
+- tapOn:
+    point: "94%,43%"
+- waitForAnimationToEnd:
+    timeout: 30000
+- tapOn:
+    point: "94%,43%"
+- waitForAnimationToEnd:
+    timeout: 30000
+- runFlow:
+    when:
+      notVisible:
+        id: auth-email
+    commands:
+      - retry:
+          maxRetries: 3
+          commands:
+            - openLink:
+                link: "${DEV_CLIENT_URL}"
+      - waitForAnimationToEnd:
+          timeout: 420000
+      - tapOn:
+          text: Continue
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 30000
+      - tapOn:
+          point: "94%,43%"
+      - waitForAnimationToEnd:
+          timeout: 30000
+      - tapOn:
+          point: "94%,43%"
+      - waitForAnimationToEnd:
+          timeout: 30000
+      - tapOn:
+          point: "94%,43%"
+      - waitForAnimationToEnd:
+          timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: auth-email
+    timeout: 420000

@@ -11,5 +11,5 @@ appId: ai.praxisshield.app
     id: auth-submit
 - extendedWaitUntil:
     visible:
-      id: tab-dashboard
+      id: onboarding-screen
     timeout: 30000

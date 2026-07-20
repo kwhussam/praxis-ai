@@ -3,15 +3,7 @@ name: 01-registration
 tags:
   - ui-e2e
 ---
-- launchApp:
-    clearState: true
-    clearKeychain: true
-    permissions:
-      all: allow
-- extendedWaitUntil:
-    visible:
-      id: auth-switch-mode
-    timeout: 30000
+- runFlow: ../subflows/bootstrap.yaml
 - evalScript: ${output.registrationEmail = "registration-" + Date.now() + "@example.test"}
 - tapOn:
     id: auth-switch-mode
@@ -21,7 +13,7 @@ tags:
 - tapOn:
     id: auth-password
 - inputText: "${TEST_PASSWORD}"
-- hideKeyboard
+- pressKey: Enter
 - tapOn:
     id: auth-submit
 - extendedWaitUntil:

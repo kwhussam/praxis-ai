@@ -3,29 +3,18 @@ name: 04-onboarding
 tags:
   - ui-e2e
 ---
-- launchApp:
-    clearState: true
-    clearKeychain: true
-    permissions:
-      all: allow
-- extendedWaitUntil:
-    visible:
-      id: auth-switch-mode
-    timeout: 30000
+- runFlow: ../subflows/bootstrap.yaml
 - evalScript: ${output.onboardingSuffix = Date.now()}
-- evalScript: ${output.onboardingEmail = "onboarding-" + output.onboardingSuffix + "@example.test"}
 - evalScript: ${output.onboardingDomain = "maestro-" + output.onboardingSuffix + ".example.test"}
-- tapOn:
-    id: auth-switch-mode
-- tapOn:
-    id: auth-email
-- inputText: "${output.onboardingEmail}"
-- tapOn:
-    id: auth-password
-- inputText: "${TEST_PASSWORD}"
-- hideKeyboard
-- tapOn:
-    id: auth-submit
+- runScript: ../scripts/create-onboarding-user.js
+- assertTrue:
+    condition: ${output.onboardingUser.status === 200 && output.onboardingUser.hasSession === true}
+    label: Confirmed practice-less onboarding user is created
+- runFlow:
+    file: ../subflows/login-to-onboarding.yaml
+    env:
+      EMAIL: "${output.onboardingUser.email}"
+      PASSWORD: "${output.onboardingUser.password}"
 - extendedWaitUntil:
     visible:
       id: onboarding-next
@@ -34,10 +23,24 @@ tags:
     id: onboarding-next
 - tapOn:
     id: onboarding-next
+- scrollUntilVisible:
+    element:
+      id: onboarding-domain
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
+    centerElement: true
 - tapOn:
     id: onboarding-domain
 - inputText: "${output.onboardingDomain}"
-- hideKeyboard
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      id: onboarding-submit
+    direction: DOWN
+    speed: 70
+    timeout: 30000
+    visibilityPercentage: 20
 - tapOn:
     id: onboarding-submit
 - extendedWaitUntil:

@@ -1,0 +1,36 @@
+diff --git a/node_modules/expo-splash-screen/build/index.native.js b/node_modules/expo-splash-screen/build/index.native.js
+index 643ff83..2fa4b04 100644
+--- a/node_modules/expo-splash-screen/build/index.native.js
++++ b/node_modules/expo-splash-screen/build/index.native.js
+@@ -28,7 +28,15 @@ export async function _internal_preventAutoHideAsync() {
+             originalHandler(error, isFatal);
+         });
+     }
+-    return SplashModule.preventAutoHideAsync();
++    try {
++        return await SplashModule.preventAutoHideAsync();
++    }
++    catch (error) {
++        if (error.message.includes('No native splash screen registered for ')) {
++            return false;
++        }
++        throw error;
++    }
+ }
+ /**
+  * Used for Expo libraries to attempt hiding the splash screen after they've completed their work.
+diff --git a/node_modules/expo-splash-screen/src/index.native.ts b/node_modules/expo-splash-screen/src/index.native.ts
+index 7f5f953..6a12ed7 100644
+--- a/node_modules/expo-splash-screen/src/index.native.ts
++++ b/node_modules/expo-splash-screen/src/index.native.ts
+@@ -41,2 +41,9 @@ export async function _internal_preventAutoHideAsync(): Promise<boolean> {
+-  return SplashModule.preventAutoHideAsync();
++  try {
++    return await SplashModule.preventAutoHideAsync();
++  } catch (error: any) {
++    if (error.message.includes('No native splash screen registered for ')) {
++      return false;
++    }
++    throw error;
++  }
+ }
