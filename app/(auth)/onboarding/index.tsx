@@ -60,7 +60,7 @@ export default function OnboardingScreen() {
   }
 
   return (
-    <Screen scroll={false}>
+    <Screen>
       <View style={styles.shell} testID="onboarding-screen">
         <View style={styles.progressRow}>
           {[0, 1, 2].map((index) => (

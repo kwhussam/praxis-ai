@@ -63,4 +63,25 @@ describe("createSecureAuthStorage", () => {
     expect(Array.from(mockSecureStoreValues.values())).toEqual([]);
     expect(mockMmkvWrites).toEqual([]);
   });
+
+  it("splits large Supabase sessions across bounded SecureStore entries", async () => {
+    const storage = createSecureAuthStorage("praxisshield-auth");
+    const session = "session-value-".repeat(240);
+
+    await storage.setItem("supabase.auth.token", session);
+
+    expect(await storage.getItem("supabase.auth.token")).toBe(session);
+    expect(mockSecureStoreSetCalls).toBeGreaterThan(1);
+    expect(Array.from(mockSecureStoreValues.values()).every((value) => value.length <= 500)).toBe(true);
+    expect(mockMmkvWrites).toEqual([]);
+  });
+
+  it("removes every chunk of a large Supabase session", async () => {
+    const storage = createSecureAuthStorage("praxisshield-auth");
+
+    await storage.setItem("supabase.auth.token", "large-session-".repeat(240));
+    await storage.removeItem("supabase.auth.token");
+
+    expect(mockSecureStoreValues.size).toBe(0);
+  });
 });
