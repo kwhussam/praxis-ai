@@ -44,6 +44,7 @@ type ExternalCheckRequest = {
   domain: string;
   email?: string;
   consent?: boolean;
+  leakConsentAccepted?: boolean;
 };
 
 type MonitoringRunRequest = {
@@ -886,8 +887,15 @@ async function handleExternalCheck(
     }
   }
 
-  const email = normalizeEmail(payload.email ?? access?.practice.email);
-  const result = await performExternalCheck(domain, email, c.env);
+  // SEC-02: the general `consent` gate above only covers running the SSL/DNS/port/
+  // reputation checks. Sending an email address to HIBP is a separate action and needs
+  // its own explicit opt-in, matching handleMonitoringRun's leakConsentAccepted gate -
+  // otherwise the domain-wide consent silently doubled as blanket HIBP consent too.
+  const leakEmails =
+    payload.leakConsentAccepted === true
+      ? uniqueEmails([payload.email, access?.practice.email].filter((item): item is string => Boolean(item)))
+      : [];
+  const result = await performExternalCheck(domain, leakEmails, c.env);
 
   if (access && options.persist) {
     const checkId = await persistSecurityCheck(c.env, access.practice.id, "external", result.overall_score, {
@@ -2211,6 +2219,30 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
       c.env,
       `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
       { method: "GET" }
+    ),
+    // DB-01: complete_privacy_deletion (20260721121000) hard-deletes wlan_scans and
+    // anonymizes monitoring_snapshots for this practice - both must be exportable
+    // *before* that happens, or the DSGVO Art. 15/20 export is missing real personal
+    // data the deletion flow itself treats as in-scope. Encrypted payload columns are
+    // excluded, matching the security_checks/reports selects above.
+    wlan_scans: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/wlan_scans?select=id,network_info,vulnerabilities,devices_found,risk_level,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    ),
+    monitoring_snapshots: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/monitoring_snapshots?select=id,source,score,category_scores,ssl,email_security,devices,checks,checked_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
+    ),
+    // data_processing_agreements (the AVV) is retained past deletion for a legal
+    // commercial-record duty (see complete_privacy_deletion's comment), but that only
+    // exempts it from erasure (DSGVO Art. 17(3)(b)) - it is still personal/contractual
+    // data the practice has a right to see in an Art. 15 export.
+    data_processing_agreements: await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/data_processing_agreements?select=id,version,status,accepted_at,document_url,metadata&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+      { method: "GET" }
     )
   };
   const signature = await sha256Json(exportData);
@@ -3133,6 +3165,7 @@ async function checkPorts(domain: string, apiKey: string | undefined, context: P
     );
 
     if (!response.ok) {
+      markProviderUnavailable(context, "shodan", new Error(`http_${response.status}`));
       return { open_ports: [], known_vulnerabilities: [] };
     }
 
@@ -3215,6 +3248,15 @@ async function checkLeaks(
             { service: "hibp", timeoutMs: context.timeoutMs }
           )
         ]);
+        // HIBP uses 404 to mean "no records found" - a legitimate, verified negative result,
+        // not a failure. Any other non-2xx status (401/429/5xx) means the check did not
+        // actually run and must not be reported as a clean "nothing found".
+        if (!breachesResponse.ok && breachesResponse.status !== 404) {
+          markProviderUnavailable(context, "hibp", new Error(`http_${breachesResponse.status}`));
+        }
+        if (!pastesResponse.ok && pastesResponse.status !== 404) {
+          markProviderUnavailable(context, "hibp", new Error(`http_${pastesResponse.status}`));
+        }
         const breaches =
           breachesResponse.status === 404 || !breachesResponse.ok
             ? []
@@ -3228,6 +3270,9 @@ async function checkLeaks(
       { headers: hibpHeaders(apiKey) },
       { service: "hibp", timeoutMs: context.timeoutMs }
     );
+    if (!domainBreachesResponse.ok && domainBreachesResponse.status !== 404) {
+      markProviderUnavailable(context, "hibp", new Error(`http_${domainBreachesResponse.status}`));
+    }
     const breaches = accountResults.flatMap((result) => result.breaches);
     const pasteCount = accountResults.reduce((sum, result) => sum + result.pasteCount, 0);
     const domainBreaches =
@@ -3280,6 +3325,7 @@ async function checkVirusTotal(domain: string, apiKey: string | undefined, conte
     );
 
     if (!response.ok) {
+      markProviderUnavailable(context, "virusTotal", new Error(`http_${response.status}`));
       return { blacklists: [], malicious: 0, phishing: 0 };
     }
 
@@ -3330,7 +3376,10 @@ async function checkSecurityTrailsHistory(
       { service: "security-trails", timeoutMs: context.timeoutMs }
     );
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      markProviderUnavailable(context, "securityTrails", new Error(`http_${response.status}`));
+      return [];
+    }
 
     const data = (await response.json()) as {
       records?: Array<{
@@ -3393,7 +3442,10 @@ async function discoverSecurityTrailsSubdomains(
       { headers: { APIKEY: apiKey } },
       { service: "security-trails", timeoutMs: context.timeoutMs }
     );
-    if (!response.ok) return [];
+    if (!response.ok) {
+      markProviderUnavailable(context, "securityTrails", new Error(`http_${response.status}`));
+      return [];
+    }
     const data = (await response.json()) as { subdomains?: string[] };
     return uniqueDomains((data.subdomains ?? []).map((item) => `${item}.${domain}`));
   } catch (error) {
@@ -3452,7 +3504,10 @@ async function queryDns(name: string, type: string, context: ProviderExecutionCo
       { service: "cloudflare-dns", timeoutMs: context.timeoutMs }
     );
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      markProviderUnavailable(context, "cloudflareDns", new Error(`http_${response.status}`));
+      return [];
+    }
 
     const data = (await response.json()) as DnsResponse;
 

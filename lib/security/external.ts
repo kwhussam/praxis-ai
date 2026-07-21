@@ -155,13 +155,26 @@ export type ExternalCheckResult = {
   provider_statuses: Record<ExternalProviderName, ExternalProviderStatus>;
 };
 
-export async function runExternalCheck(domain: string, email?: string, practiceId?: string) {
+export type ExternalCheckConsent = {
+  /** User has agreed to run the SSL/DNS/port/reputation check itself. */
+  consent: boolean;
+  /** Separate, explicit opt-in required before `email` is sent to HIBP for a leak check. */
+  leakConsentAccepted?: boolean;
+};
+
+export async function runExternalCheck(domain: string, email: string | undefined, practiceId: string | undefined, consent: ExternalCheckConsent) {
   if (!practiceId || !UUID_RE.test(practiceId)) {
     throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein externer Praxis-Check gestartet werden kann.");
   }
 
   return apiRequest<ExternalCheckResult>("/api/check/external", {
     method: "POST",
-    body: { domain, email, practiceId, consent: true }
+    body: {
+      domain,
+      email,
+      practiceId,
+      consent: consent.consent === true,
+      leakConsentAccepted: consent.leakConsentAccepted === true
+    }
   });
 }

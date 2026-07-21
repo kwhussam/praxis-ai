@@ -29,7 +29,7 @@ describe("runExternalCheck", () => {
   it("rejects missing practiceId before calling the Worker", async () => {
     mockApiRequestCalls.length = 0;
 
-    await expectAsyncError(runExternalCheck("praxis.de", "kontakt@praxis.de"), /Praxis-ID/);
+    await expectAsyncError(runExternalCheck("praxis.de", "kontakt@praxis.de", undefined, { consent: true }), /Praxis-ID/);
 
     expect(mockApiRequestCalls).toEqual([]);
   });
@@ -37,7 +37,7 @@ describe("runExternalCheck", () => {
   it("rejects invalid practiceId before calling the Worker", async () => {
     mockApiRequestCalls.length = 0;
 
-    await expectAsyncError(runExternalCheck("praxis.de", "kontakt@praxis.de", "demo-practice"), /Praxis-ID/);
+    await expectAsyncError(runExternalCheck("praxis.de", "kontakt@praxis.de", "demo-practice", { consent: true }), /Praxis-ID/);
 
     expect(mockApiRequestCalls).toEqual([]);
   });
@@ -45,7 +45,7 @@ describe("runExternalCheck", () => {
   it("uses the authenticated practice endpoint for valid practiceId", async () => {
     mockApiRequestCalls.length = 0;
 
-    await runExternalCheck("praxis.de", "kontakt@praxis.de", "11111111-1111-4111-8111-111111111111");
+    await runExternalCheck("praxis.de", "kontakt@praxis.de", "11111111-1111-4111-8111-111111111111", { consent: true });
 
     expect(mockApiRequestCalls).toHaveLength(1);
     expect(mockApiRequestCalls[0]).toMatchObject({
@@ -56,10 +56,30 @@ describe("runExternalCheck", () => {
           domain: "praxis.de",
           email: "kontakt@praxis.de",
           practiceId: "11111111-1111-4111-8111-111111111111",
-          consent: true
+          consent: true,
+          leakConsentAccepted: false
         }
       }
     });
+  });
+
+  it("defaults leakConsentAccepted to false when the caller does not explicitly opt in", async () => {
+    mockApiRequestCalls.length = 0;
+
+    await runExternalCheck("praxis.de", "kontakt@praxis.de", "11111111-1111-4111-8111-111111111111", { consent: true });
+
+    expect(mockApiRequestCalls[0]).toMatchObject({ options: { body: { leakConsentAccepted: false } } });
+  });
+
+  it("only sends leakConsentAccepted: true when the caller explicitly grants HIBP consent", async () => {
+    mockApiRequestCalls.length = 0;
+
+    await runExternalCheck("praxis.de", "kontakt@praxis.de", "11111111-1111-4111-8111-111111111111", {
+      consent: true,
+      leakConsentAccepted: true
+    });
+
+    expect(mockApiRequestCalls[0]).toMatchObject({ options: { body: { leakConsentAccepted: true } } });
   });
 });
 

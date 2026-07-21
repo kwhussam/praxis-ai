@@ -1027,6 +1027,129 @@ describe("POST /api/check/external", () => {
   });
 });
 
+describe("POST /api/check/external HIBP-Consent getrennt vom allgemeinen Consent (SEC-02)", () => {
+  function installExternalCheckFetch(requestedUrls: string[]) {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://haveibeenpwned.com")) {
+        return new Response(null, { status: 404 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        return Response.json(dnsResponse(requestUrl.searchParams.get("name") ?? "", requestUrl.searchParams.get("type") ?? ""));
+      }
+      if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+  }
+
+  it("sendet die E-Mail nicht an HIBP, wenn nur der allgemeine Consent gesetzt ist", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    installExternalCheckFetch(requestedUrls);
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            consent: true
+            // leakConsentAccepted intentionally omitted
+          })
+        }),
+        { ...baseEnv, HIBP_API_KEY: "hibp-test" },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(requestedUrls.some((url) => url.startsWith("https://haveibeenpwned.com/api/v3/breachedaccount"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("sendet die E-Mail nur an HIBP, wenn leakConsentAccepted explizit true ist", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    installExternalCheckFetch(requestedUrls);
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            consent: true,
+            leakConsentAccepted: true
+          })
+        }),
+        { ...baseEnv, HIBP_API_KEY: "hibp-test" },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(
+        requestedUrls.some(
+          (url) => url.startsWith("https://haveibeenpwned.com/api/v3/breachedaccount") && url.includes(encodeURIComponent("kontakt@praxis.de"))
+        )
+      ).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("performExternalCheck Subrequest-Fan-out (PERF-01)", () => {
   it("deckelt die Subdomain-Evaluation und behaelt volle DKIM-Selektor-Abdeckung, statt unbegrenzt zu faechern", async () => {
     const originalFetch = globalThis.fetch;
@@ -1142,6 +1265,203 @@ describe("performExternalCheck Subrequest-Fan-out (PERF-01)", () => {
       // Total outbound fetch volume stays well below the pre-fix ~150-160/domain figure,
       // even in this worst case where every common subdomain candidate resolves.
       expect(totalFetches).toBeLessThan(120);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("Provider-Fehlerbehandlung markiert unavailable statt sauber (TS-01)", () => {
+  it("meldet Shodan/VirusTotal/HIBP/SecurityTrails als unavailable statt als sauber geprüft, wenn der Provider mit 500 antwortet", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
+      // Every real provider call fails with a mid-request error - none of these are "not
+      // found"/empty results, so none may be reported as a clean "nothing found".
+      if (url.startsWith("https://api.shodan.io")) {
+        return new Response("rate limited", { status: 429 });
+      }
+      if (url.startsWith("https://www.virustotal.com")) {
+        return new Response("server error", { status: 500 });
+      }
+      if (url.startsWith("https://haveibeenpwned.com")) {
+        return new Response("unauthorized", { status: 401 });
+      }
+      if (url.startsWith("https://api.securitytrails.com")) {
+        return new Response("server error", { status: 500 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        return Response.json(dnsResponse(requestUrl.searchParams.get("name") ?? "", requestUrl.searchParams.get("type") ?? ""));
+      }
+      if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            consent: true
+          })
+        }),
+        {
+          ...baseEnv,
+          SHODAN_API_KEY: "shodan-key",
+          VIRUSTOTAL_API_KEY: "virustotal-key",
+          HIBP_API_KEY: "hibp-key",
+          SECURITYTRAILS_API_KEY: "securitytrails-key"
+        },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as {
+        provider_statuses: Record<string, string>;
+        findings: Array<{ id: string }>;
+      };
+
+      expect(result.provider_statuses.shodan).toBe("unavailable");
+      expect(result.provider_statuses.virusTotal).toBe("unavailable");
+      expect(result.provider_statuses.hibp).toBe("unavailable");
+      expect(result.provider_statuses.securityTrails).toBe("unavailable");
+
+      expect(result.findings.some((finding) => finding.id === "unavailable-shodan")).toBe(true);
+      expect(result.findings.some((finding) => finding.id === "unavailable-virusTotal")).toBe(true);
+      expect(result.findings.some((finding) => finding.id === "unavailable-hibp")).toBe(true);
+      expect(result.findings.some((finding) => finding.id === "unavailable-securityTrails")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("behandelt einen HIBP-404 weiterhin als verifiziertes 'kein Leak gefunden', nicht als unavailable", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://haveibeenpwned.com")) {
+        return new Response(null, { status: 404 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        return Response.json(dnsResponse(requestUrl.searchParams.get("name") ?? "", requestUrl.searchParams.get("type") ?? ""));
+      }
+      if (url.startsWith("https://praxis.de") || url.startsWith("https://www.praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            consent: true
+          })
+        }),
+        { ...baseEnv, HIBP_API_KEY: "hibp-key" },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as { provider_statuses: Record<string, string> };
+      expect(result.provider_statuses.hibp).toBe("active");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1979,6 +2299,89 @@ const readRoleGateCases: ReadRoleGateCase[] = [
     requiredRole: "viewer"
   }
 ];
+
+describe("GET /api/privacy/export (DB-01)", () => {
+  it("liefert wlan_scans, monitoring_snapshots und data_processing_agreements zusaetzlich zum bisherigen Export", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: roleGatePracticeId,
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/wlan_scans")) {
+        return Response.json([{ id: "wlan-1", network_info: { ssid: "PraxisNet" }, vulnerabilities: [], devices_found: 3, risk_level: "low" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")) {
+        return Response.json([{ id: "snap-1", source: "manual", score: 80, category_scores: {}, ssl: {}, email_security: {}, devices: {}, checks: {} }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/data_processing_agreements")) {
+        return Response.json([{ id: "avv-1", version: "2026-06-24", status: "accepted", accepted_at: "2026-06-24T00:00:00.000Z", document_url: null }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/")) {
+        return Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/privacy/export?practiceId=${roleGatePracticeId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: {
+          wlan_scans: Array<{ id: string }>;
+          monitoring_snapshots: Array<{ id: string }>;
+          data_processing_agreements: Array<{ id: string }>;
+        };
+      };
+
+      expect(body.data.wlan_scans).toEqual([
+        { id: "wlan-1", network_info: { ssid: "PraxisNet" }, vulnerabilities: [], devices_found: 3, risk_level: "low" }
+      ]);
+      expect(body.data.monitoring_snapshots.map((snapshot) => snapshot.id)).toEqual(["snap-1"]);
+      expect(body.data.data_processing_agreements.map((agreement) => agreement.id)).toEqual(["avv-1"]);
+
+      // Every added query stays scoped to the requesting practice, same as the
+      // pre-existing security_checks/reports/consent_log queries above them.
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
+      expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/data_processing_agreements") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
+      // None of the added selects pull the encrypted payload columns.
+      expect(requestedUrls.some((url) => url.includes("wlan_scans") && url.includes("encrypted_payload"))).toBe(false);
+      expect(requestedUrls.some((url) => url.includes("monitoring_snapshots") && url.includes("encrypted_checks"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 describe("sensitive practice endpoint role gates", () => {
   it.each(roleGateCases)("lehnt $name fuer $deniedRole mit 403 ab", async (endpoint) => {
