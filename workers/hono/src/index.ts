@@ -4,7 +4,7 @@ import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-
 
 import { calculateScore, SCORING_VERSION as SECURITY_SCORING_VERSION } from "@/lib/security/scoring";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
-import { addDays, RETENTION_PERIODS, type DeletionReport } from "./privacy";
+import { addDays, type DeletionReport } from "./privacy";
 
 type Env = {
   ANTHROPIC_API_KEY: string;
@@ -2144,79 +2144,15 @@ async function handlePrivacyDelete(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, payload.practiceId, "privacy_delete", "owner");
   if (access instanceof Response) return access;
 
-  const now = new Date();
-  const deletionId = crypto.randomUUID();
-  const requestedAt = now.toISOString();
-
-  await supabaseRest(c.env, "/rest/v1/deletion_requests", {
+  const deletionReport = await supabaseRest<DeletionReport>(c.env, "/rest/v1/rpc/complete_privacy_deletion", {
     method: "POST",
-    prefer: "return=minimal",
     body: {
-      id: deletionId,
-      practice_id: access.practice.id,
-      user_id: access.user.id,
-      requested_by: access.user.id,
-      status: "requested",
-      state: "requested",
-      requested_at: requestedAt,
-      metadata: { reason: "user_requested_erasure" }
+      p_practice_id: access.practice.id,
+      p_user_id: access.user.id
     }
   });
 
   await auditPracticeAccess(c, access, "delete_requested", "practices");
-
-  await supabaseRest(c.env, `/rest/v1/wlan_scans?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
-    method: "DELETE"
-  });
-
-  await supabaseRest(c.env, `/rest/v1/practices?id=eq.${encodeURIComponent(access.practice.id)}`, {
-    method: "PATCH",
-    body: {
-      name: "[GELOESCHT]",
-      domain: null,
-      email: null,
-      deleted_at: requestedAt
-    }
-  });
-  await supabaseRest(c.env, `/rest/v1/security_checks?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
-    method: "PATCH",
-    body: {
-      results: { anonymized: true },
-      encrypted_payload: {},
-      anonymized_at: requestedAt
-    }
-  });
-  await supabaseRest(c.env, `/rest/v1/reports?practice_id=eq.${encodeURIComponent(access.practice.id)}`, {
-    method: "PATCH",
-    body: {
-      content: { anonymized: true },
-      encrypted_content: {},
-      anonymized_at: requestedAt
-    }
-  });
-
-  const deletionReport: DeletionReport = {
-    deletion_id: deletionId,
-    practice_id: access.practice.id,
-    requested_at: requestedAt,
-    state: "completed",
-    immediate_deletions: ["personal_data", "wlan_scans"],
-    anonymizations: ["security_checks", "reports"],
-    retained_for_legal: ["practice_access_audit", "deletion_requests", "consent_log"],
-    retention_until: addDays(now, RETENTION_PERIODS.audit_logs).toISOString(),
-    completed_by: "system"
-  };
-
-  await supabaseRest(c.env, `/rest/v1/deletion_requests?id=eq.${encodeURIComponent(deletionId)}`, {
-    method: "PATCH",
-    body: {
-      status: "completed",
-      state: "completed",
-      completed_at: new Date().toISOString(),
-      report: deletionReport
-    }
-  });
-
   await sendDeletionConfirmation(c.env, access.user.email, deletionReport);
 
   return c.json({ ok: true, deletion: deletionReport });

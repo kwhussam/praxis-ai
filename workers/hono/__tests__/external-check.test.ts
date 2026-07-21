@@ -1772,12 +1772,100 @@ describe("sensitive practice endpoint role gates", () => {
   });
 });
 
+describe("privacy delete transaction safety (F-088/F-089)", () => {
+  it("meldet 500 statt Teilerfolg, wenn die complete_privacy_deletion-RPC an einem Grant-Fehler scheitert", async () => {
+    const originalFetch = globalThis.fetch;
+    const calledUrls: string[] = [];
+    const auditActions: unknown[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calledUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit") && init?.body) {
+        auditActions.push((JSON.parse(String(init.body)) as { action?: string }).action);
+      }
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: roleGateUserId("owner"), email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices") && method === "GET") {
+        return Response.json([
+          {
+            id: roleGatePracticeId,
+            owner_id: roleGateUserId("owner"),
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "monitoring"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+        return Response.json([]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/complete_privacy_deletion")) {
+        // Simulates the exact F-088 failure mode: service_role has insert/update
+        // but not the SELECT PostgREST needs for a filtered UPDATE / upsert inside
+        // the transaction, so Postgres rejects the whole RPC call.
+        return Response.json(
+          { code: "42501", message: "permission denied for table deletion_requests" },
+          { status: 403 }
+        );
+      }
+      return Response.json({}, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/privacy/delete", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ practiceId: roleGatePracticeId })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal_server_error" });
+
+      // requirePracticeAccess logs a generic "access" audit entry before the
+      // RPC even runs -- that's expected. What must NOT happen is a
+      // "delete_requested" audit entry or a confirmation email, since both
+      // would falsely imply the deletion went through.
+      expect(auditActions).not.toContain("delete_requested");
+      expect(calledUrls.some((url) => url.includes("/rest/v1/email_outbox"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 function buildRoleGateRequest(endpoint: RoleGateRequestCase) {
   return new Request(`http://localhost${endpoint.path}`, {
     method: endpoint.method,
     headers: { authorization: "Bearer user-token" },
     body: endpoint.body ? JSON.stringify(endpoint.body) : undefined
   });
+}
+
+function deletionReportFixture() {
+  return {
+    deletion_id: "66666666-6666-4666-8666-666666666666",
+    practice_id: roleGatePracticeId,
+    requested_at: "2026-07-21T00:00:00.000Z",
+    state: "completed",
+    immediate_deletions: ["personal_data", "wlan_scans"],
+    anonymizations: ["security_checks", "reports", "monitoring_events", "monitoring_snapshots"],
+    retained_for_legal: ["practice_access_audit", "deletion_requests", "consent_log", "data_processing_agreements"],
+    retention_until: "2032-07-21T00:00:00.000Z",
+    monitoring_retention_until: "2027-07-21T00:00:00.000Z",
+    completed_by: "system"
+  };
 }
 
 function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
@@ -1840,6 +1928,9 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
     if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
       const requestUrl = new URL(url);
       return Response.json(dnsResponse(requestUrl.searchParams.get("name") ?? "", requestUrl.searchParams.get("type") ?? ""));
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/rpc/complete_privacy_deletion")) {
+      return Response.json(deletionReportFixture());
     }
     if (
       url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||
