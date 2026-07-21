@@ -376,6 +376,16 @@ const SCORING_VERSION = SECURITY_SCORING_VERSION;
 const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
 const DEFAULT_MONITORING_CONCURRENCY_LIMIT = 5;
 
+// PERF-01: bounds on the subdomain-discovery/DKIM fan-out inside performExternalCheck.
+// A single unbounded pass could previously reach ~150-160 outbound fetches per domain,
+// risking the Cloudflare Workers per-invocation subrequest limit and SSL Labs rate limits.
+const SUBDOMAIN_EVALUATION_LIMIT = 4;
+const SUBDOMAIN_EVALUATION_CONCURRENCY = 3;
+const SUBDOMAIN_DISCOVERY_CONCURRENCY = 5;
+const DKIM_SELECTOR_CONCURRENCY = 4;
+
+const ALL_MONITORING_MODULES: MonitoringModule[] = ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"];
+
 export const OUTBOUND_TIMEOUT_MS = {
   anthropic: 15_000,
   securityProvider: 5_000,
@@ -1971,17 +1981,32 @@ function pdfUtf16Hex(value: string) {
   return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
-async function performExternalCheck(domain: string, email: string | string[] | null, env: Env): Promise<ExternalCheckResult> {
+async function performExternalCheck(
+  domain: string,
+  email: string | string[] | null,
+  env: Env,
+  options?: { modules?: MonitoringModule[]; previousChecks?: ExternalCheckResult["checks"] | null }
+): Promise<ExternalCheckResult> {
   const timestamp = new Date().toISOString();
   const providerContext = createProviderExecutionContext(env);
+  // PERF-02: manual/on-demand checks (handleExternalCheck, handleMonitoringRun) call this
+  // without `options`, so they keep running every check fresh, as before. Only the scheduled
+  // cron (runScheduledMonitoring) passes `modules` + `previousChecks`, so a given cron trigger
+  // only re-fetches the provider data its own module owns and carries the rest over from the
+  // last snapshot — preserving full evidence (never fabricating a "clean" default) while
+  // cutting the outbound fetch count for every invocation that isn't the cron's first run.
+  const activeModules = options?.modules ?? ALL_MONITORING_MODULES;
+  const previousChecks = options?.previousChecks ?? null;
+  const shouldRefresh = (module: MonitoringModule) => !previousChecks || activeModules.includes(module);
+
   const [dns, ssl, emailSecurity, ports, reputation, leaks, subdomains] = await Promise.all([
-    checkDns(domain, providerContext),
-    checkSsl(domain, providerContext),
-    checkEmailSecurity(domain, providerContext),
-    checkPorts(domain, env.SHODAN_API_KEY, providerContext),
-    checkReputation(domain, env, providerContext),
-    checkLeaks(domain, email, env.HIBP_API_KEY, providerContext),
-    checkSubdomains(domain, env, providerContext)
+    shouldRefresh("dns_check") ? checkDns(domain, providerContext) : Promise.resolve(previousChecks!.dns),
+    shouldRefresh("ssl_check") ? checkSsl(domain, providerContext) : Promise.resolve(previousChecks!.ssl),
+    shouldRefresh("dns_check") ? checkEmailSecurity(domain, providerContext) : Promise.resolve(previousChecks!.email_security),
+    shouldRefresh("port_scan") ? checkPorts(domain, env.SHODAN_API_KEY, providerContext) : Promise.resolve(previousChecks!.ports),
+    shouldRefresh("reputation_check") ? checkReputation(domain, env, providerContext) : Promise.resolve(previousChecks!.reputation),
+    shouldRefresh("leak_check") ? checkLeaks(domain, email, env.HIBP_API_KEY, providerContext) : Promise.resolve(previousChecks!.leaks),
+    shouldRefresh("dns_check") ? checkSubdomains(domain, env, providerContext) : Promise.resolve(previousChecks!.subdomains)
   ]);
   const checks = { ssl, dns, email_security: emailSecurity, ports, reputation, leaks, subdomains };
   const provider_statuses = buildProviderStatuses(env, providerContext.statuses, {
@@ -2327,16 +2352,19 @@ async function insertConsentLog(
 }
 
 async function runScheduledMonitoring(cron: string, env: Env) {
-  const modules = CRON_MODULES.get(cron) ?? ["ssl_check", "dns_check", "port_scan", "leak_check", "reputation_check"];
+  const modules = CRON_MODULES.get(cron) ?? ALL_MONITORING_MODULES;
   const targets = await fetchMonitoringTargets(env);
 
   await mapInBatches(
     targets,
     monitoringConcurrencyLimit(env),
     async (target) => {
-      const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env);
-      const previousSummary = await fetchPreviousMonitoringSummary(env, target.id);
-      const comparison = buildMonitoringComparison([result], previousSummary);
+      const previousState = await fetchPreviousMonitoringSnapshot(env, target.id);
+      const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env, {
+        modules,
+        previousChecks: previousState.checks
+      });
+      const comparison = buildMonitoringComparison([result], previousState.summary);
       const snapshot = buildMonitoringSnapshot(target.id, result, "scheduled", comparison, [target.domain], target.email ? 1 : 0);
       const events = buildMonitoringEvents(result, modules, comparison);
 
@@ -2780,6 +2808,50 @@ async function fetchPreviousMonitoringSummary(env: Env, practiceId: string): Pro
   } catch (error) {
     rethrowOutboundTimeout(error);
     return null;
+  }
+}
+
+// PERF-02: used only by runScheduledMonitoring. Returns both the comparison summary (for
+// trend/diff detection, same as fetchPreviousMonitoringSummary) and the full decrypted checks
+// payload from the last snapshot, so a cron trigger whose module set doesn't cover a given
+// check can carry the last real measurement forward instead of re-fetching it or fabricating
+// a default. Falls back to { summary: null, checks: null } on any failure (missing config,
+// no prior snapshot, or a decrypt error) — performExternalCheck treats a null previousChecks
+// as "no carry-over available" and runs every check fresh, identical to today's behavior.
+async function fetchPreviousMonitoringSnapshot(
+  env: Env,
+  practiceId: string
+): Promise<{ summary: MonitoringComparisonSummary | null; checks: ExternalCheckResult["checks"] | null }> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY || !isUuid(practiceId)) {
+    return { summary: null, checks: null };
+  }
+
+  try {
+    const data = await supabaseRest<unknown[]>(
+      env,
+      `/rest/v1/monitoring_snapshots?select=checks,encrypted_checks&practice_id=eq.${encodeURIComponent(practiceId)}&order=checked_at.desc&limit=1`,
+      { method: "GET" }
+    );
+    const previous = asRecordOrNull(data[0]);
+    const checksColumn = asRecordOrNull(previous?.checks);
+    const comparison = asRecordOrNull(checksColumn?.comparison);
+    const current = asRecordOrNull(comparison?.current);
+    const summary = current ? readMonitoringComparisonSummary(current) : null;
+
+    let fullChecks: ExternalCheckResult["checks"] | null = null;
+    if (previous?.encrypted_checks) {
+      try {
+        fullChecks = (await decryptJson(env, previous.encrypted_checks)) as ExternalCheckResult["checks"];
+      } catch (decryptError) {
+        rethrowOutboundTimeout(decryptError);
+        fullChecks = null;
+      }
+    }
+
+    return { summary, checks: fullChecks };
+  } catch (error) {
+    rethrowOutboundTimeout(error);
+    return { summary: null, checks: null };
   }
 }
 
@@ -3286,18 +3358,25 @@ async function checkSubdomains(domain: string, env: Env, context: ProviderExecut
   const securityTrails = await discoverSecurityTrailsSubdomains(domain, env.SECURITYTRAILS_API_KEY, context);
   const discovered = securityTrails.length > 0 ? securityTrails : await discoverCommonDnsSubdomains(domain, context);
   const source = securityTrails.length > 0 ? "securitytrails" : discovered.length > 0 ? "cloudflare_dns_common" : "none";
-  const evaluated = await Promise.all(
-    discovered.slice(0, 12).map(async (subdomain) =>
-      evaluateSubdomain(subdomain, source === "securitytrails" ? "securitytrails" : "cloudflare_dns_common", context)
-    )
+  const subdomainsToEvaluate = discovered.slice(0, SUBDOMAIN_EVALUATION_LIMIT);
+  const truncated = discovered.length > subdomainsToEvaluate.length;
+  const evaluated = await mapInBatches(subdomainsToEvaluate, SUBDOMAIN_EVALUATION_CONCURRENCY, (subdomain) =>
+    evaluateSubdomain(subdomain, source === "securitytrails" ? "securitytrails" : "cloudflare_dns_common", context)
   );
 
   return {
-    status: securityTrails.length > 0 ? "checked" : "partial",
+    // "checked" only when every discovered subdomain was actually evaluated — a run that
+    // truncates at SUBDOMAIN_EVALUATION_LIMIT must not silently claim full coverage.
+    status: securityTrails.length > 0 ? (truncated ? "partial" : "checked") : "partial",
     source: source === "none" ? "cloudflare_dns_common" : source,
     discovered,
     evaluated,
-    not_checked_reason: discovered.length === 0 && !env.SECURITYTRAILS_API_KEY ? "SECURITYTRAILS_API_KEY fehlt; nur begrenzte DNS-Fallbacks möglich." : undefined
+    not_checked_reason:
+      discovered.length === 0 && !env.SECURITYTRAILS_API_KEY
+        ? "SECURITYTRAILS_API_KEY fehlt; nur begrenzte DNS-Fallbacks möglich."
+        : truncated
+          ? `Nur ${subdomainsToEvaluate.length} von ${discovered.length} entdeckten Subdomains wurden geprüft (Limit zur Begrenzung der Provider-Anfragen).`
+          : undefined
   };
 }
 
@@ -3325,16 +3404,14 @@ async function discoverSecurityTrailsSubdomains(
 
 async function discoverCommonDnsSubdomains(domain: string, context: ProviderExecutionContext) {
   const candidates = ["www", "mail", "webmail", "vpn", "remote", "portal", "app", "cloud", "owa", "autodiscover"].map((item) => `${item}.${domain}`);
-  const results = await Promise.all(
-    candidates.map(async (candidate) => {
-      const [a, aaaa, cname] = await Promise.all([
-        queryDns(candidate, "A", context),
-        queryDns(candidate, "AAAA", context),
-        queryDns(candidate, "CNAME", context)
-      ]);
-      return a.length > 0 || aaaa.length > 0 || cname.length > 0 ? candidate : null;
-    })
-  );
+  const results = await mapInBatches(candidates, SUBDOMAIN_DISCOVERY_CONCURRENCY, async (candidate) => {
+    const [a, aaaa, cname] = await Promise.all([
+      queryDns(candidate, "A", context),
+      queryDns(candidate, "AAAA", context),
+      queryDns(candidate, "CNAME", context)
+    ]);
+    return a.length > 0 || aaaa.length > 0 || cname.length > 0 ? candidate : null;
+  });
   return uniqueDomains(results.filter((item): item is string => Boolean(item)));
 }
 
@@ -3395,12 +3472,10 @@ async function queryDns(name: string, type: string, context: ProviderExecutionCo
 
 async function findDkim(domain: string, context: ProviderExecutionContext) {
   const selectors = ["selector1", "selector2", "google", "default", "dkim", "k1", "s1", "s2", "mail", "mandrill", "zoho"];
-  const results = await Promise.all(
-    selectors.map(async (selector) => ({
-      selector,
-      records: await queryDns(`${selector}._domainkey.${domain}`, "TXT", context)
-    }))
-  );
+  const results = await mapInBatches(selectors, DKIM_SELECTOR_CONCURRENCY, async (selector) => ({
+    selector,
+    records: await queryDns(`${selector}._domainkey.${domain}`, "TXT", context)
+  }));
   const found = results.find((result) =>
     result.records.some((record) => record.toLowerCase().includes("v=dkim1") || record.toLowerCase().includes("k=rsa"))
   );

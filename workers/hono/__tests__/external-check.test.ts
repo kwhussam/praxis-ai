@@ -1027,6 +1027,324 @@ describe("POST /api/check/external", () => {
   });
 });
 
+describe("performExternalCheck Subrequest-Fan-out (PERF-01)", () => {
+  it("deckelt die Subdomain-Evaluation und behaelt volle DKIM-Selektor-Abdeckung, statt unbegrenzt zu faechern", async () => {
+    const originalFetch = globalThis.fetch;
+    const cloudflareDnsCalls: string[] = [];
+    let sslLabsCalls = 0;
+    let totalFetches = 0;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      totalFetches += 1;
+
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([
+          {
+            id: "11111111-1111-4111-8111-111111111111",
+            owner_id: "22222222-2222-4222-8222-222222222222",
+            name: "Praxis",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            plan: "free"
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
+        return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        sslLabsCalls += 1;
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        const requestUrl = new URL(url);
+        const name = requestUrl.searchParams.get("name") ?? "";
+        const type = requestUrl.searchParams.get("type") ?? "";
+        cloudflareDnsCalls.push(`${type}:${name}`);
+        // Every *.praxis.de A-record lookup resolves, so all 10 common subdomain
+        // candidates get "discovered" - the worst case the SUBDOMAIN_EVALUATION_LIMIT cap
+        // has to handle.
+        if (type === "A") {
+          return Response.json({ Status: 0, Answer: [{ name, type: 1, TTL: 300, data: "203.0.113.99" }] });
+        }
+        return Response.json({ Status: 0, Answer: [] });
+      }
+      if (/^https:\/\/([a-z0-9-]+\.)*praxis\.de$/.test(url)) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            consent: true
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      const result = (await res.json()) as {
+        checks: {
+          subdomains: {
+            status: string;
+            discovered: string[];
+            evaluated: Array<{ domain: string }>;
+            not_checked_reason?: string;
+          };
+        };
+      };
+
+      // All 10 common-candidate subdomains resolve, but only SUBDOMAIN_EVALUATION_LIMIT (4)
+      // are actually evaluated (checkDns + checkSsl each) - the rest are listed as
+      // "discovered" but explicitly not evaluated, never silently treated as passing.
+      expect(result.checks.subdomains.discovered.length).toBe(10);
+      expect(result.checks.subdomains.evaluated.length).toBe(4);
+      expect(result.checks.subdomains.status).toBe("partial");
+      expect(result.checks.subdomains.not_checked_reason).toContain("4 von 10");
+
+      // DKIM selector coverage is preserved (all 11 selectors still probed) - mapInBatches
+      // only throttles concurrency, it does not drop selectors.
+      const dkimCalls = cloudflareDnsCalls.filter((call) => call.includes("_domainkey.praxis.de"));
+      expect(dkimCalls.length).toBe(11);
+      expect(sslLabsCalls).toBeGreaterThan(0);
+
+      // Total outbound fetch volume stays well below the pre-fix ~150-160/domain figure,
+      // even in this worst case where every common subdomain candidate resolves.
+      expect(totalFetches).toBeLessThan(120);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
+  const targetId = "66666666-6666-4666-8666-666666666666";
+
+  function previousChecksFixture() {
+    return {
+      ssl: {
+        valid: true,
+        issuer: "CN=Old CA",
+        expires_at: "2026-01-01T00:00:00.000Z",
+        days_remaining: 10,
+        protocol: "TLSv1.3",
+        grade: "A",
+        hsts_enabled: true,
+        vulnerabilities: []
+      },
+      dns: {
+        a_records: ["203.0.113.5"],
+        aaaa_records: [],
+        cname_records: [],
+        ns_records: ["ns1.example.net"],
+        txt_records: [],
+        caa_records: []
+      },
+      email_security: {
+        spf: { exists: true, valid: true, record: "v=spf1 -all", issues: [], alignment: "pass", alignment_mode: null },
+        dkim: { exists: true, selector_found: "selector1", valid: true, alignment: "pass", alignment_mode: null },
+        dmarc: {
+          exists: true,
+          policy: "reject",
+          rua: null,
+          spf_alignment_mode: null,
+          dkim_alignment_mode: null,
+          alignment_ready: true,
+          recommendation: ""
+        },
+        mta_sts: { exists: true, mode: "enforce", record: "" },
+        tls_rpt: { exists: true, rua: null, record: "" },
+        caa: { exists: true, records: [] },
+        mx_records: { exists: true, records: ["10 mail.praxis.de"], secure: true }
+      },
+      ports: { open_ports: [], known_vulnerabilities: [] },
+      reputation: { blacklisted: false, blacklists: [], malware_hosting: false, phishing_reports: 0, dns_history: [] },
+      leaks: { email_found: false, breach_count: 0, breaches: [], domain_found: false, paste_count: 0 },
+      subdomains: {
+        status: "partial",
+        source: "cloudflare_dns_common",
+        discovered: ["www.praxis.de"],
+        evaluated: [],
+        not_checked_reason: undefined
+      }
+    };
+  }
+
+  it("ruft bei einem ssl_check-Cron nur SSL frisch ab und uebernimmt DNS/E-Mail/Subdomains aus dem letzten Snapshot", async () => {
+    const originalFetch = globalThis.fetch;
+    const cloudflareDnsCalls: string[] = [];
+    let sslLabsCalls = 0;
+
+    const encryptedChecks = await encryptReportFixture(previousChecksFixture());
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: targetId, domain: "praxis.de", email: "kontakt@praxis.de" }]);
+      }
+      if (url.includes("/rest/v1/monitoring_snapshots") && url.includes("select=checks,encrypted_checks")) {
+        return Response.json([
+          {
+            checks: {
+              comparison: {
+                current: {
+                  critical_ports: [],
+                  dns_fingerprint: "old-fingerprint",
+                  dmarc_policy: "reject",
+                  dmarc_exists: true,
+                  cert_fingerprint: "old-cert",
+                  ssl_expires_at: null,
+                  ssl_issuer: "CN=Old CA",
+                  findings: []
+                }
+              }
+            },
+            encrypted_checks: encryptedChecks
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") && method === "POST") {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") && method === "POST") {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        sslLabsCalls += 1;
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        cloudflareDnsCalls.push(url);
+        return Response.json({ Status: 0, Answer: [] });
+      }
+      if (url.startsWith("https://praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const waitUntilPromises: Promise<unknown>[] = [];
+      const ctx = { waitUntil: (promise: Promise<unknown>) => waitUntilPromises.push(promise) } as unknown as ExecutionContext;
+
+      worker.scheduled({ cron: "0 */6 * * *", scheduledTime: Date.now() } as unknown as ScheduledController, baseEnv, ctx);
+      await Promise.all(waitUntilPromises);
+
+      // dns_check owns checkDns/checkEmailSecurity/checkSubdomains - none of them should have
+      // hit Cloudflare DNS this cycle, because a previous snapshot exists to carry them from.
+      expect(cloudflareDnsCalls.length).toBe(0);
+      // ssl_check is this cron's own module, so it must still run fresh.
+      expect(sslLabsCalls).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("fuehrt beim allerersten Lauf ohne vorherigen Snapshot weiterhin alle Checks aus", async () => {
+    const originalFetch = globalThis.fetch;
+    const cloudflareDnsCalls: string[] = [];
+    let sslLabsCalls = 0;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: targetId, domain: "praxis.de", email: "kontakt@praxis.de" }]);
+      }
+      if (url.includes("/rest/v1/monitoring_snapshots") && url.includes("select=checks,encrypted_checks")) {
+        return Response.json([]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") && method === "POST") {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") && method === "POST") {
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://api.ssllabs.com")) {
+        sslLabsCalls += 1;
+        return Response.json({
+          endpoints: [
+            {
+              grade: "A",
+              details: {
+                protocols: [{ name: "TLS", version: "1.3" }],
+                cert: { notAfter: Date.now() + 60 * 86_400_000, issuerSubject: "CN=Test CA" }
+              }
+            }
+          ]
+        });
+      }
+      if (url.startsWith("https://cloudflare-dns.com/dns-query")) {
+        cloudflareDnsCalls.push(url);
+        return Response.json({ Status: 0, Answer: [] });
+      }
+      if (url.startsWith("https://praxis.de")) {
+        return new Response(null, { status: 200, headers: { "strict-transport-security": "max-age=31536000" } });
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const waitUntilPromises: Promise<unknown>[] = [];
+      const ctx = { waitUntil: (promise: Promise<unknown>) => waitUntilPromises.push(promise) } as unknown as ExecutionContext;
+
+      worker.scheduled({ cron: "0 */6 * * *", scheduledTime: Date.now() } as unknown as ScheduledController, baseEnv, ctx);
+      await Promise.all(waitUntilPromises);
+
+      // No prior snapshot to carry values from, so every check - including dns_check's -
+      // must still run fresh to seed a real baseline.
+      expect(cloudflareDnsCalls.length).toBeGreaterThan(0);
+      expect(sslLabsCalls).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("GET /api/dashboard", () => {
   it("liefert einen Keine-Daten-Zustand ohne Security-, WLAN- oder Monitoring-Rows", async () => {
     const originalFetch = globalThis.fetch;

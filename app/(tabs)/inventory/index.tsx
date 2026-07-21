@@ -237,12 +237,15 @@ export default function InventoryScreen() {
 
       <GlassCard style={styles.card}>
         <Text style={styles.sectionTitle}>Neuer Eintrag</Text>
-        <View style={styles.segmentWrap}>
+        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kategorie des neuen Eintrags">
           {INVENTORY_CATEGORIES.map((category) => (
             <Pressable
               key={category.type}
               onPress={() => setDraftType(category.type)}
               style={[styles.segment, draftType === category.type ? styles.segmentActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: draftType === category.type }}
+              accessibilityLabel={category.label}
             >
               <Text style={[styles.segmentText, draftType === category.type ? styles.segmentTextActive : null]}>
                 {category.label}
@@ -256,6 +259,7 @@ export default function InventoryScreen() {
           onChangeText={setName}
           placeholder={`${inventoryCategoryLabel(draftType)} erfassen`}
           placeholderTextColor={colors.muted}
+          accessibilityLabel={`${inventoryCategoryLabel(draftType)} erfassen`}
           style={styles.input}
         />
         <TextInput
@@ -263,6 +267,7 @@ export default function InventoryScreen() {
           onChangeText={setDetail}
           placeholder="Details, Adresse, Zweck oder Standort"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Details, Adresse, Zweck oder Standort"
           style={styles.input}
         />
         <TextInput
@@ -270,15 +275,19 @@ export default function InventoryScreen() {
           onChangeText={setOwner}
           placeholder="Verantwortlich oder Dienstleister"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Verantwortlich oder Dienstleister"
           style={styles.input}
         />
 
-        <View style={styles.segmentWrap}>
+        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des neuen Eintrags">
           {INVENTORY_CRITICALITIES.map((criticality) => (
             <Pressable
               key={criticality.value}
               onPress={() => setDraftCriticality(criticality.value)}
               style={[styles.segment, draftCriticality === criticality.value ? styles.segmentActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: draftCriticality === criticality.value }}
+              accessibilityLabel={criticality.label}
             >
               <Text style={[styles.segmentText, draftCriticality === criticality.value ? styles.segmentTextActive : null]}>
                 {criticality.label}
@@ -294,12 +303,15 @@ export default function InventoryScreen() {
         <Text style={styles.sectionTitle}>Known Devices</Text>
         <Text style={styles.sectionCopy}>Freigegebene Geräte mit letzter Bestätigung für Netzwerk- und Asset-Abgleich.</Text>
 
-        <View style={styles.segmentWrap}>
+        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Gerätetyp">
           {KNOWN_DEVICE_TYPES.map((type) => (
             <Pressable
               key={type.value}
               onPress={() => setDeviceType(type.value)}
               style={[styles.segment, deviceType === type.value ? styles.segmentActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: deviceType === type.value }}
+              accessibilityLabel={type.label}
             >
               <Text style={[styles.segmentText, deviceType === type.value ? styles.segmentTextActive : null]}>
                 {type.label}
@@ -313,6 +325,7 @@ export default function InventoryScreen() {
           onChangeText={setMacAddress}
           placeholder="MAC-Adresse, z. B. AA:BB:CC:DD:EE:FF"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="MAC-Adresse"
           autoCapitalize="characters"
           style={styles.input}
         />
@@ -321,6 +334,7 @@ export default function InventoryScreen() {
           onChangeText={setHostname}
           placeholder="Hostname"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Hostname"
           autoCapitalize="none"
           style={styles.input}
         />
@@ -329,6 +343,7 @@ export default function InventoryScreen() {
           onChangeText={setLocation}
           placeholder="Standort, z. B. Empfang oder Behandlungsraum 2"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Standort"
           style={styles.input}
         />
         <TextInput
@@ -336,6 +351,7 @@ export default function InventoryScreen() {
           onChangeText={setDeviceOwner}
           placeholder="Besitzer oder Verantwortlicher"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Besitzer oder Verantwortlicher"
           style={styles.input}
         />
         <TextInput
@@ -343,15 +359,19 @@ export default function InventoryScreen() {
           onChangeText={setLastConfirmedAt}
           placeholder="Letzte Bestätigung, JJJJ-MM-TT"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Letzte Bestätigung, Datum im Format Jahr-Monat-Tag"
           style={styles.input}
         />
 
-        <View style={styles.segmentWrap}>
+        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des Geräts">
           {INVENTORY_CRITICALITIES.map((criticality) => (
             <Pressable
               key={criticality.value}
               onPress={() => setDeviceCriticality(criticality.value)}
               style={[styles.segment, deviceCriticality === criticality.value ? styles.segmentActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: deviceCriticality === criticality.value }}
+              accessibilityLabel={criticality.label}
             >
               <Text style={[styles.segmentText, deviceCriticality === criticality.value ? styles.segmentTextActive : null]}>
                 {criticality.label}
@@ -394,6 +414,7 @@ export default function InventoryScreen() {
           onChangeText={setApSsid}
           placeholder="SSID"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="SSID"
           style={styles.input}
         />
         <TextInput
@@ -401,6 +422,7 @@ export default function InventoryScreen() {
           onChangeText={setApBssid}
           placeholder="BSSID, z. B. AA:BB:CC:DD:EE:FF"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="BSSID"
           autoCapitalize="characters"
           style={styles.input}
         />
@@ -409,6 +431,7 @@ export default function InventoryScreen() {
           onChangeText={setApLocation}
           placeholder="Standort"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Standort"
           style={styles.input}
         />
         <TextInput
@@ -416,6 +439,7 @@ export default function InventoryScreen() {
           onChangeText={setApVendor}
           placeholder="Hersteller"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Hersteller"
           style={styles.input}
         />
         <TextInput
@@ -423,16 +447,20 @@ export default function InventoryScreen() {
           onChangeText={setApChannel}
           placeholder="Kanal"
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Kanal"
           keyboardType="number-pad"
           style={styles.input}
         />
 
-        <View style={styles.segmentWrap}>
+        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Erwartete Verschlüsselung">
           {ACCESS_POINT_ENCRYPTIONS.map((encryption) => (
             <Pressable
               key={encryption.value}
               onPress={() => setApExpectedEncryption(encryption.value)}
               style={[styles.segment, apExpectedEncryption === encryption.value ? styles.segmentActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: apExpectedEncryption === encryption.value }}
+              accessibilityLabel={encryption.label}
             >
               <Text style={[styles.segmentText, apExpectedEncryption === encryption.value ? styles.segmentTextActive : null]}>
                 {encryption.label}
@@ -530,7 +558,13 @@ function Metric({ label, value, tone = "info" }: { label: string; value: number;
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.filterChip, active ? styles.filterChipActive : null]}>
+    <Pressable
+      onPress={onPress}
+      style={[styles.filterChip, active ? styles.filterChipActive : null]}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+    >
       <Text style={[styles.filterText, active ? styles.filterTextActive : null]}>{label}</Text>
     </Pressable>
   );
@@ -550,7 +584,12 @@ function InventoryRow({ item, onRemove }: { item: InventoryItem; onRemove: () =>
           <Text style={styles.itemName}>{item.name}</Text>
           <Text style={styles.itemMeta}>{inventoryCategoryLabel(item.type)}</Text>
         </View>
-        <Pressable onPress={onRemove} style={styles.deleteButton}>
+        <Pressable
+          onPress={onRemove}
+          style={styles.deleteButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Eintrag entfernen: ${item.name}`}
+        >
           <Trash2 color={colors.muted} size={18} />
         </Pressable>
       </View>
@@ -589,7 +628,12 @@ function KnownDeviceRow({
             {knownDeviceTypeLabel(device.deviceType)} · {device.macAddress}
           </Text>
         </View>
-        <Pressable onPress={onRemove} style={styles.deleteButton}>
+        <Pressable
+          onPress={onRemove}
+          style={styles.deleteButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Gerät entfernen: ${device.hostname}`}
+        >
           <Trash2 color={colors.muted} size={18} />
         </Pressable>
       </View>
@@ -624,7 +668,12 @@ function AccessPointRow({ accessPoint, onRemove }: { accessPoint: AccessPoint; o
           <Text style={styles.itemName}>{accessPoint.ssid}</Text>
           <Text style={styles.itemMeta}>{accessPoint.bssid}</Text>
         </View>
-        <Pressable onPress={onRemove} style={styles.deleteButton}>
+        <Pressable
+          onPress={onRemove}
+          style={styles.deleteButton}
+          accessibilityRole="button"
+          accessibilityLabel={`Access Point entfernen: ${accessPoint.ssid}`}
+        >
           <Trash2 color={colors.muted} size={18} />
         </Pressable>
       </View>
@@ -670,7 +719,7 @@ function ConfigToggle({ label, value, onChange }: { label: string; value: boolea
   return (
     <View style={styles.configRow}>
       <Text style={styles.configLabel}>{label}</Text>
-      <View style={styles.configOptions}>
+      <View style={styles.configOptions} accessibilityRole="radiogroup" accessibilityLabel={label}>
         {[true, false].map((nextValue) => {
           const active = value === nextValue;
           return (
@@ -678,6 +727,9 @@ function ConfigToggle({ label, value, onChange }: { label: string; value: boolea
               key={String(nextValue)}
               onPress={() => onChange(nextValue)}
               style={[styles.configOption, active ? styles.configOptionActive : null]}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              accessibilityLabel={nextValue ? "Ja" : "Nein"}
             >
               <Text style={[styles.configOptionText, active ? styles.configOptionTextActive : null]}>
                 {nextValue ? "Ja" : "Nein"}
