@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -57,7 +57,9 @@ export default function LoginScreen() {
           return;
         }
 
-        setNotice("Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.");
+        const signUpNotice = "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.";
+        setNotice(signUpNotice);
+        AccessibilityInfo.announceForAccessibility(signUpNotice);
         setMode("login");
         return;
       }
@@ -81,7 +83,9 @@ export default function LoginScreen() {
       setPractice(practice);
       router.replace("/(tabs)/dashboard");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Anmeldung fehlgeschlagen.");
+      const message = submitError instanceof Error ? submitError.message : "Anmeldung fehlgeschlagen.";
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setLoading(false);
     }
@@ -95,7 +99,9 @@ export default function LoginScreen() {
 
     if (!emailLooksValid) {
       setEmailTouched(true);
-      setError("Bitte geben Sie zuerst eine gültige E-Mail-Adresse ein.");
+      const message = "Bitte geben Sie zuerst eine gültige E-Mail-Adresse ein.";
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
       return;
     }
 
@@ -103,11 +109,13 @@ export default function LoginScreen() {
 
     try {
       await requestPasswordReset(normalizedEmail);
-      setNotice(
-        "Falls ein Konto zu dieser E-Mail existiert, wurde ein Link zum Zurücksetzen versendet."
-      );
+      const message = "Falls ein Konto zu dieser E-Mail existiert, wurde ein Link zum Zurücksetzen versendet.";
+      setNotice(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } catch {
-      setError("Der Link konnte nicht versendet werden. Bitte versuchen Sie es erneut.");
+      const message = "Der Link konnte nicht versendet werden. Bitte versuchen Sie es erneut.";
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setResetLoading(false);
     }

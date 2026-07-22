@@ -28,6 +28,7 @@ var mockRecalculate = jest.fn();
 jest.mock("react-native", () => {
   const React = require("react");
   return {
+    AccessibilityInfo: { announceForAccessibility: () => undefined },
     Pressable: ({ children, ...props }: { children: React.ReactNode | ((state: { pressed: boolean }) => React.ReactNode) }) =>
       React.createElement("Pressable", props, typeof children === "function" ? children({ pressed: false }) : children),
     StyleSheet: { create: (styles: unknown) => styles },

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 import { AiReport } from "@/components/modules/AiReport";
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -35,12 +35,15 @@ export default function ReportsScreen() {
 
   async function handleGenerate() {
     if (!practice?.id || !UUID_RE.test(practice.id)) {
-      setError("Praxisdaten werden noch geladen. Bitte versuchen Sie es gleich erneut.");
+      const message = "Praxisdaten werden noch geladen. Bitte versuchen Sie es gleich erneut.";
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
       return;
     }
 
     setGenerating(true);
     setError(null);
+    AccessibilityInfo.announceForAccessibility("Bericht wird erstellt");
 
     const source = {
       practiceId: practice.id,
@@ -59,7 +62,9 @@ export default function ReportsScreen() {
       const storedReport = saveReport(report, source, reportId);
       router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
     } catch {
-      setError("Bericht konnte nicht erstellt werden, bitte erneut versuchen.");
+      const message = "Bericht konnte nicht erstellt werden, bitte erneut versuchen.";
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setGenerating(false);
     }

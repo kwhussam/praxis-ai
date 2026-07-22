@@ -41,7 +41,12 @@ export function ReportFindings({ scoreReport }: ReportFindingsProps) {
           <Text style={styles.kicker}>Für technisch Interessierte</Text>
           <Text style={styles.title}>Prüfdetails</Text>
         </View>
-        <Pressable style={styles.detailsButton} onPress={() => setExpanded((current) => !current)}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          style={styles.detailsButton}
+          onPress={() => setExpanded((current) => !current)}
+        >
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.ink} />
           <Text style={styles.detailsButtonText}>{expanded ? "Details ausblenden" : "Details anzeigen"}</Text>
         </Pressable>

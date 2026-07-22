@@ -17,11 +17,22 @@ const lightMap = {
   green: colors.safe
 } as const;
 
+const statusLabels = {
+  red: "Kritisch (rot)",
+  yellow: "Warnung (gelb)",
+  green: "Sicher (grün)"
+} as const;
+
 export function AmpelKomponente({ status, size = 16, style }: AmpelKomponenteProps) {
   const active = normalizeStatus(status);
 
   return (
-    <View style={[styles.wrap, style]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Status: ${statusLabels[active]}`}
+      style={[styles.wrap, style]}
+    >
       {(["red", "yellow", "green"] as const).map((light) => {
         const isActive = active === light;
         const color = lightMap[light];

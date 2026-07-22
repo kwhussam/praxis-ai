@@ -332,7 +332,13 @@ function MonitoringTargetCard({
       <TargetInput label="Unteradresse" value={subdomainDraft} placeholder="vpn.praxis.de" onChangeText={onSubdomainDraftChange} onAdd={onAddSubdomain} />
       <TargetInput label="E-Mail" value={emailDraft} placeholder="kontakt@praxis.de" onChangeText={onEmailDraftChange} onAdd={onAddEmail} keyboardType="email-address" />
 
-      <Pressable style={styles.consentRow} onPress={onToggleLeakConsent}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: leakConsentAccepted }}
+        accessibilityLabel="Einwilligung zur Datenleck-Prüfung der E-Mail-Adressen"
+        style={styles.consentRow}
+        onPress={onToggleLeakConsent}
+      >
         <View style={[styles.checkbox, leakConsentAccepted ? styles.checkboxActive : null]}>
           {leakConsentAccepted ? <CheckCircle2 color={colors.ink} size={14} /> : null}
         </View>
@@ -377,7 +383,12 @@ function TargetInput({
           style={styles.input}
         />
       </View>
-      <Pressable style={styles.iconButton} onPress={onAdd}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${label} hinzufügen`}
+        style={styles.iconButton}
+        onPress={onAdd}
+      >
         <Plus color={colors.ink} size={16} />
       </Pressable>
     </View>
@@ -392,7 +403,13 @@ function TargetList({ title, items, disabled, onRemove }: { title: string; items
       <Text style={styles.targetLabel}>{title}</Text>
       <View style={styles.targetChips}>
         {items.map((item) => (
-          <Pressable key={item} style={[styles.targetChip, disabled ? styles.targetChipDisabled : null]} onPress={() => onRemove(item)}>
+          <Pressable
+            key={item}
+            accessibilityRole="button"
+            accessibilityLabel={`${item} entfernen`}
+            style={[styles.targetChip, disabled ? styles.targetChipDisabled : null]}
+            onPress={() => onRemove(item)}
+          >
             <Text style={styles.targetChipText}>{item}</Text>
           </Pressable>
         ))}
@@ -497,7 +514,13 @@ function AlertHistory({
       </View>
       <View style={styles.filters}>
         {filters.map((item) => (
-          <Pressable key={item.value} onPress={() => onFilterChange(item.value)}>
+          <Pressable
+            key={item.value}
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeFilter === item.value }}
+            accessibilityLabel={`Filter: ${item.label}`}
+            onPress={() => onFilterChange(item.value)}
+          >
             <View style={[styles.filterChip, activeFilter === item.value ? styles.filterChipActive : null]}>
               <Text style={[styles.filterText, activeFilter === item.value ? styles.filterTextActive : null]}>{item.label}</Text>
             </View>

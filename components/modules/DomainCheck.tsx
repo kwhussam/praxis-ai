@@ -37,11 +37,17 @@ export function DomainCheck({ domain, checks, providers, subdomains = [] }: Doma
           <View key={check.label} style={styles.row}>
             <View style={[styles.dot, { backgroundColor: statusColor(check.status) }]} />
             <Text style={styles.label}>{check.label}</Text>
+            <Text style={[styles.statusWord, { color: statusColor(check.status) }]}>{statusLabel(check.status)}</Text>
           </View>
         ))}
       </View>
       {subdomains.length > 0 || providerEntries.length > 0 ? (
-        <Pressable style={styles.detailsButton} onPress={() => setExpanded((current) => !current)}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          style={styles.detailsButton}
+          onPress={() => setExpanded((current) => !current)}
+        >
           <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={16} color={colors.ink} />
           <Text style={styles.detailsButtonText}>{expanded ? "Details ausblenden" : "Details anzeigen"}</Text>
         </Pressable>
@@ -68,6 +74,13 @@ function statusColor(status: "ok" | "warn" | "critical" | "not_checked") {
   if (status === "warn") return colors.warning;
   if (status === "not_checked") return colors.muted;
   return colors.critical;
+}
+
+function statusLabel(status: "ok" | "warn" | "critical" | "not_checked") {
+  if (status === "ok") return "Bestanden";
+  if (status === "warn") return "Warnung";
+  if (status === "not_checked") return "Nicht geprüft";
+  return "Kritisch";
 }
 
 function providerStatusColor(status: ExternalProviderStatus) {
@@ -150,8 +163,14 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.ink,
+    flex: 1,
     fontSize: 15,
     fontWeight: "600"
+  },
+  statusWord: {
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
   },
   subdomainBox: {
     borderTopColor: colors.border,

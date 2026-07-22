@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { MotiView } from "moti";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AccessibilityInfo, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { AmpelKomponente } from "@/components/ui/Ampel";
@@ -53,7 +53,9 @@ export default function OnboardingScreen() {
 
       router.replace("/(tabs)/dashboard");
     } catch (nextError) {
-      setError(errorMessage(nextError));
+      const message = errorMessage(nextError);
+      setError(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setLoading(false);
     }

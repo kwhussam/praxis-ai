@@ -27,13 +27,22 @@ export function ScoreHistory({ data }: ScoreHistoryProps) {
     return { ...item, x, y };
   });
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const summaryLabel = `Score-Verlauf: ${points.map((point) => `${point.day} ${Math.round(point.score)}`).join(", ")}`;
 
   return (
     <GlassCard>
       <Text style={styles.title}>Score-Verlauf</Text>
-      <View style={styles.chart}>
+      <View
+        style={styles.chart}
+        {...(points.length > 0 ? { accessible: true, accessibilityLabel: summaryLabel } : null)}
+      >
         {points.length > 0 ? (
-          <Svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+          <Svg
+            importantForAccessibility="no-hide-descendants"
+            width="100%"
+            height={chartHeight}
+            viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          >
             {[0, 50, 100].map((score) => {
               const y = padding + (chartHeight - padding * 2) * (1 - score / 100);
               return (

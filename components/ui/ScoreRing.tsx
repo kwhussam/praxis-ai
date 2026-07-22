@@ -50,7 +50,11 @@ export function ScoreRing({ score, size = 188, stroke = 16, label = "Shield Scor
   }));
 
   return (
-    <View style={[styles.wrap, { height: size, width: size }]}>
+    <View
+      accessible
+      accessibilityLabel={`${label}: ${clampedScore} von 100, Status ${scoreTierLabel(clampedScore)}`}
+      style={[styles.wrap, { height: size, width: size }]}
+    >
       {isCritical ? (
         <MotiView
           from={{ opacity: 0.28, scale: 0.92 }}
@@ -83,11 +87,21 @@ export function ScoreRing({ score, size = 188, stroke = 16, label = "Shield Scor
         </G>
       </Svg>
       <View style={styles.scoreContent}>
-        <Text style={[styles.score, { color: scoreColor }]}>{displayScore}</Text>
-        <Text style={styles.caption}>{label}</Text>
+        <Text maxFontSizeMultiplier={1.4} style={[styles.score, { color: scoreColor }]}>
+          {displayScore}
+        </Text>
+        <Text maxFontSizeMultiplier={1.4} style={styles.caption}>
+          {label}
+        </Text>
       </View>
     </View>
   );
+}
+
+function scoreTierLabel(score: number) {
+  if (score < 50) return "kritisch";
+  if (score < 75) return "mittel";
+  return "gut";
 }
 
 function scoreToColor(score: number) {

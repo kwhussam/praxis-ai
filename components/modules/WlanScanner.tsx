@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { MotiView } from "moti";
 import type { ComponentProps } from "react";
-import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { AmpelBadge } from "@/components/ui/AmpelBadge";
@@ -62,6 +62,28 @@ export function WlanScanner() {
     const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
     return mapDevicesToScanNodes(displayedDevices, progress?.vulnerabilities ?? result?.vulnerabilities ?? []);
   }, [visibleDevices, progress, result]);
+
+  useEffect(() => {
+    if (state === "done") {
+      AccessibilityInfo.announceForAccessibility("Scan abgeschlossen");
+    } else if (state === "scanning" && progress?.check) {
+      AccessibilityInfo.announceForAccessibility(progress.check);
+    }
+  }, [state, progress?.check]);
+
+  useEffect(() => {
+    if (syncPending) {
+      AccessibilityInfo.announceForAccessibility("Scan wird gespeichert...");
+    } else if (syncError) {
+      AccessibilityInfo.announceForAccessibility(syncError);
+    }
+  }, [syncPending, syncError]);
+
+  useEffect(() => {
+    if (state === "error" && error) {
+      AccessibilityInfo.announceForAccessibility(error);
+    }
+  }, [state, error]);
 
   async function scan() {
     if (state === "scanning") return;
@@ -256,7 +278,7 @@ export function WlanScanner() {
 
       <View style={styles.segmentBox}>
         <Text style={styles.segmentTitle}>Ausgeführtes Netz</Text>
-        <View style={styles.segmentOptions}>
+        <View accessibilityLabel="Ausgeführtes Netz" accessibilityRole="radiogroup" style={styles.segmentOptions}>
           {NETWORK_SEGMENTS.map((segment) => (
             <Pressable
               accessibilityLabel={`Zu prüfendes Netz: ${segment.label}`}

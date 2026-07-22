@@ -22,7 +22,12 @@ export function BarChart({ title, data, showValues = false }: BarChartProps) {
       <Text style={styles.title}>{title}</Text>
       <View style={styles.rows}>
         {data.map((item) => (
-          <View key={item.label} style={styles.row}>
+          <View
+            key={item.label}
+            accessible
+            accessibilityLabel={`${item.label}: ${item.value} von 100`}
+            style={styles.row}
+          >
             <Text style={styles.label}>{item.label}</Text>
             <View style={styles.track}>
               <MotiView

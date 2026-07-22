@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -123,7 +123,9 @@ export default function QuestionnaireScreen() {
       router.push("/(tabs)/check/wlan-scan");
     } catch (error) {
       console.error("questionnaire_save_failed", error);
-      setSaveError(`Fragebogen konnte nicht gespeichert werden: ${errorMessage(error)}`);
+      const message = `Fragebogen konnte nicht gespeichert werden: ${errorMessage(error)}`;
+      setSaveError(message);
+      AccessibilityInfo.announceForAccessibility(message);
     } finally {
       setSaving(false);
     }

@@ -32,11 +32,13 @@ export function RadarChart({ title, data }: RadarChartProps) {
     };
   });
 
+  const summaryLabel = `${title}: ${data.map((item) => `${item.label} ${Math.round(item.value)} von 100`).join(", ")}`;
+
   return (
     <GlassCard>
       <Text style={styles.title}>{title}</Text>
-      <View style={styles.chart}>
-        <Svg width={size} height={size}>
+      <View accessible accessibilityLabel={summaryLabel} style={styles.chart}>
+        <Svg width={size} height={size} importantForAccessibility="no-hide-descendants">
           {[0.33, 0.66, 1].map((ring) => (
             <Circle key={ring} cx={center} cy={center} r={radius * ring} fill="transparent" stroke="rgba(255,255,255,0.12)" />
           ))}
