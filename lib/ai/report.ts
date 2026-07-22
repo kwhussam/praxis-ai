@@ -124,7 +124,8 @@ async function requestGeneratedReport(data: CheckData) {
 
   return apiRequest<unknown>("/api/report/generate", {
     method: "POST",
-    body: data
+    body: data,
+    timeoutMs: 60_000
   });
 }
 

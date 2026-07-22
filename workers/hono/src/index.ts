@@ -10,6 +10,7 @@ type Env = {
   ANTHROPIC_API_KEY: string;
   ANTHROPIC_MODEL?: string;
   APP_ENV?: string;
+  ALLOWED_ORIGINS?: string;
   DATA_ENCRYPTION_KEY?: string;
   SUPABASE_ANON_KEY?: string;
   SUPABASE_URL?: string;
@@ -45,6 +46,7 @@ type ExternalCheckRequest = {
   email?: string;
   consent?: boolean;
   leakConsentAccepted?: boolean;
+  clientSyncId?: string;
 };
 
 type MonitoringRunRequest = {
@@ -60,11 +62,13 @@ type MonitoringRunRequest = {
 type QuestionnaireRequest = {
   practiceId?: string;
   questionnaire?: Record<string, QuestionnaireAnswerValue>;
+  clientSyncId?: string;
 };
 
 type ReportRequest = CheckData & {
   practiceId?: string;
   checkId?: string;
+  clientSyncId?: string;
 };
 
 type PdfReportRequest = {
@@ -91,12 +95,24 @@ type DashboardHistoryPoint = {
   checkedAt: string;
 };
 
+// DB-08: must mirror consent_log_type_check (20260715121000_extend_consent_log_types.sql)
+// exactly so invalid values are rejected with 400 before hitting the DB constraint.
+const CONSENT_TYPES = [
+  "avv",
+  "privacy_policy",
+  "wlan_scan",
+  "ai_processing",
+  "wlan_audit_scan",
+  "wlan_ipv6_reachability_scan"
+] as const;
+type ConsentType = (typeof CONSENT_TYPES)[number];
+
 type ConsentRequest = {
   practiceId?: string;
-  type?: "avv" | "privacy_policy" | "wlan_scan" | "ai_processing";
+  type?: ConsentType;
   version?: string;
   accepted?: boolean;
-  consentTypes?: Array<"avv" | "privacy_policy" | "wlan_scan" | "ai_processing">;
+  consentTypes?: ConsentType[];
 };
 
 type MonitoringModule = "ssl_check" | "dns_check" | "port_scan" | "leak_check" | "reputation_check";
@@ -375,6 +391,26 @@ type PracticeAccess = {
 const REPORT_FORMAT_VERSION = "1.0.0";
 const SCORING_VERSION = SECURITY_SCORING_VERSION;
 const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
+
+// DB-06: paid plans previously skipped quota checks entirely. These are deliberately generous
+// (well above realistic daily usage) so real customers never notice them; they only stop an
+// unbounded burst of paid provider calls on a compromised/misused account.
+const PLAN_DAILY_EXTERNAL_CHECK_LIMIT: Record<string, number> = {
+  free: 3,
+  audit: 50,
+  monitoring: 50,
+  compliance: 50
+};
+const PLAN_DAILY_AI_REPORT_LIMIT: Record<string, number> = {
+  free: FREE_PLAN_DAILY_AI_REPORT_LIMIT,
+  audit: 20,
+  monitoring: 20,
+  compliance: 20
+};
+const EXTERNAL_CHECK_RATE_WINDOW_MINUTES = 10;
+const EXTERNAL_CHECK_RATE_WINDOW_LIMIT = 10;
+const AI_REPORT_RATE_WINDOW_MINUTES = 10;
+const AI_REPORT_RATE_WINDOW_LIMIT = 5;
 const DEFAULT_MONITORING_CONCURRENCY_LIMIT = 5;
 
 // PERF-01: bounds on the subdomain-discovery/DKIM fan-out inside performExternalCheck.
@@ -483,7 +519,29 @@ const CRON_MODULES = new Map<string, MonitoringModule[]>(
   Object.entries(MONITORING_SCHEDULE).map(([module, cron]) => [cron, [module as MonitoringModule]])
 );
 
-app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+// DB-10: separate daily cron from the monitoring schedules above, so it runs once regardless
+// of how many monitoring modules exist.
+const EMAIL_OUTBOX_RETENTION_CRON = "0 4 * * *";
+const EMAIL_OUTBOX_RETENTION_DAYS = 30;
+
+app.use(
+  "*",
+  cors({
+    // In production, only browser origins listed in ALLOWED_ORIGINS (comma-separated) are
+    // allowed; the native app never sends an Origin header, so this only restricts
+    // browser-based cross-origin access, not the mobile client. Team must set
+    // ALLOWED_ORIGINS via wrangler secret/var before deploying an [env.production] block.
+    origin: (origin, c) => {
+      if (c.env.APP_ENV !== "production") return origin || "*";
+      const allowedOrigins = String(c.env.ALLOWED_ORIGINS ?? "")
+        .split(",")
+        .map((value: string) => value.trim())
+        .filter(Boolean);
+      return origin && allowedOrigins.includes(origin) ? origin : "";
+    },
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  })
+);
 
 app.get("/health", (c) =>
   c.json({
@@ -883,7 +941,8 @@ async function handleExternalCheck(
     if (allowed instanceof Response) return allowed;
     if (!allowed) {
       await auditPracticeAccess(c, access, "quota_denied", "external_check", { plan: access.practice.plan });
-      return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
+      const limit = PLAN_DAILY_EXTERNAL_CHECK_LIMIT[access.practice.plan] ?? PLAN_DAILY_EXTERNAL_CHECK_LIMIT.free;
+      return c.json({ error: "daily_limit_reached", limit, plan: access.practice.plan }, 429);
     }
   }
 
@@ -898,10 +957,14 @@ async function handleExternalCheck(
   const result = await performExternalCheck(domain, leakEmails, c.env);
 
   if (access && options.persist) {
-    const checkId = await persistSecurityCheck(c.env, access.practice.id, "external", result.overall_score, {
-      summary: redactedExternalSummary(result),
-      encryptedPayload: result
-    });
+    const checkId = await persistSecurityCheck(
+      c.env,
+      access.practice.id,
+      "external",
+      result.overall_score,
+      { summary: redactedExternalSummary(result), encryptedPayload: result },
+      payload.clientSyncId
+    );
     await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "external" });
     return c.json({ ...result, checkId });
   }
@@ -930,10 +993,14 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
   };
   let checkId: string;
   try {
-    checkId = await persistSecurityCheck(c.env, access.practice.id, "questionnaire", scoreReport.score, {
-      summary: results,
-      encryptedPayload: { ...results, findings }
-    });
+    checkId = await persistSecurityCheck(
+      c.env,
+      access.practice.id,
+      "questionnaire",
+      scoreReport.score,
+      { summary: results, encryptedPayload: { ...results, findings } },
+      payload.clientSyncId
+    );
   } catch (error) {
     rethrowOutboundTimeout(error);
     console.error("questionnaire_check_persist_failed", {
@@ -1131,15 +1198,24 @@ function readOptionalScore(value: unknown) {
   return clampScore(value);
 }
 
+const REPORTS_LIST_MAX_LIMIT = 50;
+
 async function handleReportsList(c: Context<{ Bindings: Env }>) {
   const practiceId = c.req.query("practiceId");
   const access = await requirePracticeAccess(c, practiceId, "reports_list", "viewer");
   if (access instanceof Response) return access;
 
+  const requestedLimit = Number.parseInt(c.req.query("limit") ?? "", 10);
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(requestedLimit, REPORTS_LIST_MAX_LIMIT)
+    : REPORTS_LIST_MAX_LIMIT;
+  const requestedOffset = Number.parseInt(c.req.query("offset") ?? "", 10);
+  const offset = Number.isFinite(requestedOffset) && requestedOffset > 0 ? requestedOffset : 0;
+
   try {
     const rows = await supabaseRest<unknown[]>(
       c.env,
-      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&order=created_at.desc`,
+      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`,
       { method: "GET" }
     );
     const reports = rows.map(normalizeReportListItem).filter((item) => item !== null);
@@ -1236,7 +1312,8 @@ async function handleReportGenerate(
     if (allowed instanceof Response) return allowed;
     if (!allowed) {
       await auditPracticeAccess(c, access, "quota_denied", "reports", { plan: access.practice.plan });
-      return c.json({ error: "daily_ai_report_limit_reached", limit: FREE_PLAN_DAILY_AI_REPORT_LIMIT, plan: "free" }, 429);
+      const limit = PLAN_DAILY_AI_REPORT_LIMIT[access.practice.plan] ?? PLAN_DAILY_AI_REPORT_LIMIT.free;
+      return c.json({ error: "daily_ai_report_limit_reached", limit, plan: access.practice.plan }, 429);
     }
   }
 
@@ -1251,12 +1328,13 @@ async function handleReportGenerate(
   if (reportResult instanceof Response) return reportResult;
 
   if (access && options.persist) {
-    const reportId = crypto.randomUUID();
-    await persistReport(c.env, {
-      id: reportId,
+    const generatedReportId = crypto.randomUUID();
+    const reportId = await persistReport(c.env, {
+      id: generatedReportId,
       practiceId: access.practice.id,
       checkId: payload.checkId,
-      report: reportResult
+      report: reportResult,
+      clientSyncId: payload.clientSyncId
     });
     await auditPracticeAccess(c, access, "create", "reports", { report_id: reportId });
     return c.json({ ...reportResult, reportId });
@@ -1444,7 +1522,7 @@ async function requirePracticeAccess(
   try {
     user = await getAuthenticatedUser(c);
   } catch (error) {
-    console.error("practice_access_auth_failed", error);
+    console.error("practice_access_auth_failed", { failure: safeErrorLog(error) });
     return c.json({ error: "internal_server_error" }, 500);
   }
 
@@ -1574,7 +1652,7 @@ async function getAuthenticatedUser(c: Context<{ Bindings: Env }>): Promise<Auth
       email: typeof data.email === "string" ? data.email : undefined
     };
   } catch (error) {
-    console.error("supabase_auth_unavailable", error);
+    console.error("supabase_auth_unavailable", { failure: safeErrorLog(error) });
     throw error;
   }
 }
@@ -1619,14 +1697,44 @@ function normalizePractice(value: unknown): PracticeRecord | null {
   };
 }
 
+async function consumeRateLimitWindow(
+  env: Env,
+  practiceId: string,
+  endpoint: string,
+  windowMinutes: number,
+  limit: number
+) {
+  const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_rate_limit_window", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      p_practice_id: practiceId,
+      p_endpoint: endpoint,
+      p_window_minutes: windowMinutes,
+      p_limit: limit
+    }
+  });
+
+  return allowed === true;
+}
+
 async function consumeExternalQuota(env: Env, access: PracticeAccess) {
-  if (access.practice.plan !== "free") return true;
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("worker_misconfigured_external_quota");
     throw new Error("Supabase service credentials are not configured");
   }
 
+  const withinWindow = await consumeRateLimitWindow(
+    env,
+    access.practice.id,
+    "external_check",
+    EXTERNAL_CHECK_RATE_WINDOW_MINUTES,
+    EXTERNAL_CHECK_RATE_WINDOW_LIMIT
+  );
+  if (!withinWindow) return false;
+
   const today = new Date().toISOString().slice(0, 10);
+  const limit = PLAN_DAILY_EXTERNAL_CHECK_LIMIT[access.practice.plan] ?? PLAN_DAILY_EXTERNAL_CHECK_LIMIT.free;
   const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_external_check_quota", {
     method: "POST",
     prefer: "return=representation",
@@ -1634,7 +1742,7 @@ async function consumeExternalQuota(env: Env, access: PracticeAccess) {
       p_user_id: access.user.id,
       p_practice_id: access.practice.id,
       p_usage_date: today,
-      p_limit: 3
+      p_limit: limit
     }
   });
 
@@ -1656,13 +1764,22 @@ async function consumeExternalQuotaOrErrorResponse(
 }
 
 async function consumeAiReportQuota(env: Env, access: PracticeAccess) {
-  if (access.practice.plan !== "free") return true;
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
     console.error("worker_misconfigured_ai_report_quota");
     throw new Error("Supabase service credentials are not configured");
   }
 
+  const withinWindow = await consumeRateLimitWindow(
+    env,
+    access.practice.id,
+    "ai_report",
+    AI_REPORT_RATE_WINDOW_MINUTES,
+    AI_REPORT_RATE_WINDOW_LIMIT
+  );
+  if (!withinWindow) return false;
+
   const today = new Date().toISOString().slice(0, 10);
+  const limit = PLAN_DAILY_AI_REPORT_LIMIT[access.practice.plan] ?? PLAN_DAILY_AI_REPORT_LIMIT.free;
   const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/consume_ai_report_quota", {
     method: "POST",
     prefer: "return=representation",
@@ -1670,7 +1787,7 @@ async function consumeAiReportQuota(env: Env, access: PracticeAccess) {
       p_user_id: access.user.id,
       p_practice_id: access.practice.id,
       p_usage_date: today,
-      p_limit: FREE_PLAN_DAILY_AI_REPORT_LIMIT
+      p_limit: limit
     }
   });
 
@@ -1709,52 +1826,90 @@ async function requireSecurityCheckForPractice(env: Env, practiceId: string, che
   return true;
 }
 
+async function findByClientSyncId(env: Env, table: string, practiceId: string, clientSyncId: string) {
+  const rows = await supabaseRest<Array<{ id: string }>>(
+    env,
+    `/rest/v1/${table}?select=id&practice_id=eq.${encodeURIComponent(practiceId)}&client_sync_id=eq.${encodeURIComponent(clientSyncId)}&limit=1`,
+    { method: "GET" }
+  );
+  return rows[0]?.id;
+}
+
 async function persistSecurityCheck(
   env: Env,
   practiceId: string,
   type: "questionnaire" | "wlan" | "external" | "full",
   score: number,
-  payload: { summary: Record<string, unknown>; encryptedPayload: unknown }
+  payload: { summary: Record<string, unknown>; encryptedPayload: unknown },
+  clientSyncId?: string
 ) {
   const id = crypto.randomUUID();
   const encrypted = await encryptJson(env, payload.encryptedPayload);
   const payloadHash = await sha256Json(payload.encryptedPayload);
 
-  await supabaseRest(env, "/rest/v1/security_checks", {
-    method: "POST",
-    body: {
-      id,
-      practice_id: practiceId,
-      type,
-      score: clampScore(score),
-      scoring_version: SCORING_VERSION,
-      results: payload.summary,
-      encrypted_payload: encrypted,
-      payload_sha256: payloadHash
+  try {
+    await supabaseRest(env, "/rest/v1/security_checks", {
+      method: "POST",
+      body: {
+        id,
+        practice_id: practiceId,
+        type,
+        score: clampScore(score),
+        scoring_version: SCORING_VERSION,
+        results: payload.summary,
+        encrypted_payload: encrypted,
+        payload_sha256: payloadHash,
+        client_sync_id: clientSyncId ?? null
+      }
+    });
+  } catch (error) {
+    // DB-05: a retried request carrying the same clientSyncId hits the partial unique index
+    // instead of creating a duplicate row and consuming a second quota slot.
+    if (clientSyncId && error instanceof Error && error.message.includes("409")) {
+      const existingId = await findByClientSyncId(env, "security_checks", practiceId, clientSyncId);
+      if (existingId) return existingId;
     }
-  });
+    throw error;
+  }
 
   return id;
 }
 
-async function persistReport(env: Env, input: { id: string; practiceId: string; checkId?: string; report: Report }) {
+async function persistReport(
+  env: Env,
+  input: { id: string; practiceId: string; checkId?: string; report: Report; clientSyncId?: string }
+): Promise<string> {
   const encrypted = await encryptJson(env, input.report);
   const payloadHash = await sha256Json(input.report);
 
-  await supabaseRest(env, "/rest/v1/reports", {
-    method: "POST",
-    body: {
-      id: input.id,
-      practice_id: input.practiceId,
-      check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
-      format_version: REPORT_FORMAT_VERSION,
-      scoring_version: SCORING_VERSION,
-      content: redactedReportSummary(input.report),
-      encrypted_content: encrypted,
-      payload_sha256: payloadHash,
-      input_hash: payloadHash
+  try {
+    await supabaseRest(env, "/rest/v1/reports", {
+      method: "POST",
+      body: {
+        id: input.id,
+        practice_id: input.practiceId,
+        check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
+        format_version: REPORT_FORMAT_VERSION,
+        scoring_version: SCORING_VERSION,
+        content: redactedReportSummary(input.report),
+        encrypted_content: encrypted,
+        payload_sha256: payloadHash,
+        input_hash: payloadHash,
+        client_sync_id: input.clientSyncId ?? null
+      }
+    });
+  } catch (error) {
+    // DB-05: a retried request carrying the same clientSyncId hits the partial unique index
+    // instead of creating a duplicate row - return the id of the row that already exists
+    // rather than the never-inserted freshly generated one.
+    if (input.clientSyncId && error instanceof Error && error.message.includes("409")) {
+      const existingId = await findByClientSyncId(env, "reports", input.practiceId, input.clientSyncId);
+      if (existingId) return existingId;
     }
-  });
+    throw error;
+  }
+
+  return input.id;
 }
 
 async function auditPracticeAccess(
@@ -2072,7 +2227,8 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
     if (allowed instanceof Response) return allowed;
     if (!allowed) {
       await auditPracticeAccess(c, access, "quota_denied", "monitoring_run", { plan: access.practice.plan });
-      return c.json({ error: "daily_limit_reached", limit: 3, plan: "free" }, 429);
+      const limit = PLAN_DAILY_EXTERNAL_CHECK_LIMIT[access.practice.plan] ?? PLAN_DAILY_EXTERNAL_CHECK_LIMIT.free;
+      return c.json({ error: "daily_limit_reached", limit, plan: access.practice.plan }, 429);
     }
   }
 
@@ -2196,54 +2352,65 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, practiceId, "privacy_export", "manager");
   if (access instanceof Response) return access;
 
+  const [securityChecks, reports, monitoringEvents, consentLog, wlanScans, monitoringSnapshots, dataProcessingAgreements] =
+    await Promise.all([
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/security_checks?select=id,type,score,scoring_version,results,completed_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at,input_hash&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      // DB-01: complete_privacy_deletion (20260721121000) hard-deletes wlan_scans and
+      // anonymizes monitoring_snapshots for this practice - both must be exportable
+      // *before* that happens, or the DSGVO Art. 15/20 export is missing real personal
+      // data the deletion flow itself treats as in-scope. Encrypted payload columns are
+      // excluded, matching the security_checks/reports selects above.
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/wlan_scans?select=id,network_info,vulnerabilities,devices_found,risk_level,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/monitoring_snapshots?select=id,source,score,category_scores,ssl,email_security,devices,checks,checked_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      // data_processing_agreements (the AVV) is retained past deletion for a legal
+      // commercial-record duty (see complete_privacy_deletion's comment), but that only
+      // exempts it from erasure (DSGVO Art. 17(3)(b)) - it is still personal/contractual
+      // data the practice has a right to see in an Art. 15 export.
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/data_processing_agreements?select=id,version,status,accepted_at,document_url,metadata&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      )
+    ]);
+
   const exportData = {
     export_created_at: new Date().toISOString(),
     export_format: "1.0",
     practice: access.practice,
-    security_checks: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/security_checks?select=id,type,score,scoring_version,results,completed_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    reports: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at,input_hash&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    monitoring_events: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    consent_log: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    // DB-01: complete_privacy_deletion (20260721121000) hard-deletes wlan_scans and
-    // anonymizes monitoring_snapshots for this practice - both must be exportable
-    // *before* that happens, or the DSGVO Art. 15/20 export is missing real personal
-    // data the deletion flow itself treats as in-scope. Encrypted payload columns are
-    // excluded, matching the security_checks/reports selects above.
-    wlan_scans: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/wlan_scans?select=id,network_info,vulnerabilities,devices_found,risk_level,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    monitoring_snapshots: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/monitoring_snapshots?select=id,source,score,category_scores,ssl,email_security,devices,checks,checked_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    ),
-    // data_processing_agreements (the AVV) is retained past deletion for a legal
-    // commercial-record duty (see complete_privacy_deletion's comment), but that only
-    // exempts it from erasure (DSGVO Art. 17(3)(b)) - it is still personal/contractual
-    // data the practice has a right to see in an Art. 15 export.
-    data_processing_agreements: await supabaseRest<unknown[]>(
-      c.env,
-      `/rest/v1/data_processing_agreements?select=id,version,status,accepted_at,document_url,metadata&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
-      { method: "GET" }
-    )
+    security_checks: securityChecks,
+    reports,
+    monitoring_events: monitoringEvents,
+    consent_log: consentLog,
+    wlan_scans: wlanScans,
+    monitoring_snapshots: monitoringSnapshots,
+    data_processing_agreements: dataProcessingAgreements
   };
   const signature = await sha256Json(exportData);
 
@@ -2311,6 +2478,11 @@ async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, payload.practiceId, "avv_accept", "owner");
   if (access instanceof Response) return access;
 
+  const consentTypes = payload.consentTypes ?? ["avv"];
+  if (!consentTypes.every((type) => CONSENT_TYPES.includes(type))) {
+    return c.json({ error: "invalid_type", message: `consentTypes must each be one of: ${CONSENT_TYPES.join(", ")}` }, 400);
+  }
+
   await supabaseRest(c.env, "/rest/v1/data_processing_agreements?on_conflict=practice_id,version", {
     method: "POST",
     prefer: "resolution=merge-duplicates,return=minimal",
@@ -2327,7 +2499,7 @@ async function handleAvvAccept(c: Context<{ Bindings: Env }>) {
       }
     }
   });
-  await insertConsentLog(c, access, payload.consentTypes ?? ["avv"], payload.version ?? "2026-06-24", true);
+  await insertConsentLog(c, access, consentTypes, payload.version ?? "2026-06-24", true);
   await auditPracticeAccess(c, access, "accept", "data_processing_agreements");
 
   return c.json({ ok: true });
@@ -2349,6 +2521,9 @@ async function handleConsent(c: Context<{ Bindings: Env }>) {
   if (!consentType) {
     return c.json({ error: "type is required" }, 400);
   }
+  if (!CONSENT_TYPES.includes(consentType)) {
+    return c.json({ error: "invalid_type", message: `type must be one of: ${CONSENT_TYPES.join(", ")}` }, 400);
+  }
 
   await insertConsentLog(c, access, [consentType], payload.version ?? "1.0", payload.accepted === true);
   await auditPracticeAccess(c, access, payload.accepted === true ? "accept" : "withdraw", "consent_log", { type: consentType });
@@ -2359,7 +2534,7 @@ async function handleConsent(c: Context<{ Bindings: Env }>) {
 async function insertConsentLog(
   c: Context<{ Bindings: Env }>,
   access: PracticeAccess,
-  types: Array<"avv" | "privacy_policy" | "wlan_scan" | "ai_processing">,
+  types: ConsentType[],
   version: string,
   accepted: boolean
 ) {
@@ -2403,6 +2578,17 @@ async function runScheduledMonitoring(cron: string, env: Env) {
       await persistMonitoringResult(env, snapshot, events);
     }
   );
+}
+
+async function runEmailOutboxRetention(env: Env) {
+  try {
+    await supabaseRest(env, "/rest/v1/rpc/cleanup_email_outbox", {
+      method: "POST",
+      body: { retention_days: EMAIL_OUTBOX_RETENTION_DAYS }
+    });
+  } catch (error) {
+    console.error("email_outbox_retention_failed", { failure: safeErrorLog(error) });
+  }
 }
 
 function monitoringConcurrencyLimit(env: Env) {
@@ -2972,7 +3158,7 @@ function scoreLeaks(leaks: LeakCheck) {
 }
 
 async function checkSsl(domain: string, context: ProviderExecutionContext): Promise<SSLCheck> {
-  const https = await checkHttpsSignal(domain);
+  const https = await checkHttpsSignal(domain, context);
   const fallback: SSLCheck = {
     valid: https.reachable,
     issuer: "unknown",
@@ -3043,12 +3229,13 @@ async function checkSsl(domain: string, context: ProviderExecutionContext): Prom
   }
 }
 
-async function checkHttpsSignal(domain: string) {
+async function checkHttpsSignal(domain: string, context: ProviderExecutionContext) {
   try {
-    const response = await fetch(`https://${domain}`, {
-      method: "HEAD",
-      redirect: "follow"
-    });
+    const response = await fetchWithTimeout(
+      `https://${domain}`,
+      { method: "HEAD", redirect: "follow" },
+      { service: "https-signal", timeoutMs: context.timeoutMs }
+    );
 
     return {
       reachable: response.ok,
@@ -3851,6 +4038,10 @@ function providerLabel(provider: ProviderName) {
 export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => app.fetch(request, env, ctx),
   scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
+    if (controller.cron === EMAIL_OUTBOX_RETENTION_CRON) {
+      ctx.waitUntil(runEmailOutboxRetention(env));
+      return;
+    }
     ctx.waitUntil(runScheduledMonitoring(controller.cron, env));
   }
 };

@@ -32,6 +32,14 @@ Cloudflare Worker:
 - Keeps provider keys out of the mobile app.
 - Normalizes results into PraxisShield findings before scoring.
 
+## API Versioning Convention (DB-12)
+
+All current Worker endpoints live under `/api/*` with no version segment. New or
+behavior-changed endpoints going forward should be introduced under `/api/v1/*` instead, so a
+future breaking change gets a clean `/api/v2/*` migration window rather than forcing a
+coordinated app+Worker deploy. Existing `/api/*` paths are not being renamed by this
+convention alone — only new/changed surface area adopts `/api/v1/*`.
+
 ## Data Flow
 
 1. A practice signs in and creates/loads a `practice`.

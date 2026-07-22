@@ -38,6 +38,18 @@ Direct practice owners satisfy every required role for their own practice. Partn
 | `partner_practices` | Read | Self grant or practice owner | Partners can see their own grants; practice owners can manage grants. |
 | `partner_practices` | Create/update/delete | Practice owner | Partners cannot self-grant access to arbitrary practices. |
 | `email_outbox` | Any | No policy | Deny-by-default. Server-side delivery only. |
+| `inventory_items` | Read | `viewer` | pgTAP-covered (DB-03): owner A ↛ practice B, viewer-partner read-only. |
+| `inventory_items` | Write | `manager` | pgTAP-covered (DB-03): viewer-partner insert denied. |
+| `monitoring_targets` | Read | `viewer` | pgTAP-covered (DB-03): owner A ↛ practice B, viewer-partner read-only. |
+| `monitoring_targets` | Write | `manager` | pgTAP-covered (DB-03): viewer-partner insert denied. |
+| `inventory_known_devices` | Read | `viewer` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `inventory_known_devices` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `inventory_access_points` | Read | `viewer` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `inventory_access_points` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `router_wifi_configurations` | Read | `viewer` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `router_wifi_configurations` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `router_firewall_rules` | Read | `viewer` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `router_firewall_rules` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
 
 Audit note:
 

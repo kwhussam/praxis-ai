@@ -21,3 +21,7 @@ export const AppConfig = {
 if (AppConfig.isProduction && (!AppConfig.supabaseUrl || !AppConfig.supabaseAnonKey)) {
   throw new Error("FATAL: Supabase-Konfiguration fehlt im Produktionsmodus.");
 }
+
+if (AppConfig.isProduction && !AppConfig.apiBaseUrl.startsWith("https://")) {
+  throw new Error("FATAL: API-Base-URL muss im Produktionsmodus HTTPS nutzen.");
+}

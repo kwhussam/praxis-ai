@@ -5,7 +5,7 @@ begin;
 
 set local search_path = public, extensions;
 
-select plan(37);
+select plan(48);
 
 select set_config('request.jwt.claim.sub', '', false);
 select set_config('request.jwt.claims', '{}', false);
@@ -99,6 +99,19 @@ values
   ('d0000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 'privacy_policy', 'rls-test-b', true, now())
 on conflict (id) do nothing;
 
+-- DB-03: inventory_items/monitoring_targets had RLS policies but no pgTAP coverage.
+insert into public.inventory_items (id, practice_id, type, name, criticality)
+values
+  ('e0000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000a1', 'device', 'Kartenterminal A', 'high'),
+  ('e0000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000b1', 'device', 'Kartenterminal B', 'high')
+on conflict (id) do nothing;
+
+insert into public.monitoring_targets (id, practice_id, target_type, value)
+values
+  ('f0000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000a1', 'domain', 'a.example.test'),
+  ('f0000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000b1', 'domain', 'b.example.test')
+on conflict (id) do nothing;
+
 grant usage on schema public to authenticated;
 grant select on
   public.white_label_partners,
@@ -176,6 +189,14 @@ select lives_ok(
   'audit function ignores direct practice owner access'
 );
 
+select throws_ok(
+  $$insert into public.deletion_requests (practice_id, status)
+    values ('99999999-0000-4000-8000-000000000000', 'completed')$$,
+  '23503',
+  null,
+  'deletion_requests rejects insert with non-existent practice_id'
+);
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
@@ -196,6 +217,10 @@ select is((select count(*) from public.practice_access_audit where practice_id =
 select is((select count(*) from public.data_processing_agreements where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select AVV row for practice B even with matching user_id');
 select is((select count(*) from public.deletion_requests where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select deletion request for practice B even with matching user_id');
 select is((select count(*) from public.consent_log where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select consent log for practice B');
+select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own inventory item (DB-03)');
+select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B inventory item (DB-03)');
+select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own monitoring target (DB-03)');
+select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B monitoring target (DB-03)');
 
 select throws_ok(
   $$insert into public.reports (practice_id, check_id, content)
@@ -236,6 +261,22 @@ select throws_ok(
 );
 
 select throws_ok(
+  $$insert into public.inventory_items (practice_id, type, name, criticality)
+    values ('20000000-0000-4000-8000-0000000000b1', 'device', 'Fremdgeraet', 'high')$$,
+  '42501',
+  null,
+  'owner A cannot insert inventory item for practice B (DB-03)'
+);
+
+select throws_ok(
+  $$insert into public.monitoring_targets (practice_id, target_type, value)
+    values ('20000000-0000-4000-8000-0000000000b1', 'domain', 'fremd.example.test')$$,
+  '42501',
+  null,
+  'owner A cannot insert monitoring target for practice B (DB-03)'
+);
+
+select throws_ok(
   $$select public.consume_external_check_quota('00000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000b1', current_date, 3)$$,
   '42501',
   null,
@@ -271,6 +312,26 @@ select is((select count(*) from public.monitoring_snapshots where id = '70000000
 select is((select count(*) from public.security_checks where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'partner cannot select ungranted practice B checks');
 select is((select count(*) from public.reports where id = '50000000-0000-4000-8000-0000000000b1'), 0::bigint, 'partner cannot select ungranted practice B report by exchanged report_id');
 select is((select count(*) from public.monitoring_snapshots where id = '70000000-0000-4000-8000-0000000000b1'), 0::bigint, 'partner cannot select ungranted practice B snapshot by exchanged snapshot_id');
+
+-- DB-03: partner C has only a 'viewer' grant on practice A - can read, cannot write.
+select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A inventory item (DB-03)');
+select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A monitoring target (DB-03)');
+
+select throws_ok(
+  $$insert into public.inventory_items (practice_id, type, name, criticality)
+    values ('20000000-0000-4000-8000-0000000000a1', 'device', 'Viewer-Insert', 'low')$$,
+  '42501',
+  null,
+  'viewer partner cannot insert inventory item for granted practice A (DB-03)'
+);
+
+select throws_ok(
+  $$insert into public.monitoring_targets (practice_id, target_type, value)
+    values ('20000000-0000-4000-8000-0000000000a1', 'domain', 'viewer-insert.example.test')$$,
+  '42501',
+  null,
+  'viewer partner cannot insert monitoring target for granted practice A (DB-03)'
+);
 
 select * from finish();
 
