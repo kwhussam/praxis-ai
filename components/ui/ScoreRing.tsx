@@ -3,7 +3,9 @@ import { StyleSheet, Text, View } from "react-native";
 import { MotiView } from "moti";
 import Animated, {
   interpolate,
+  runOnJS,
   useAnimatedProps,
+  useAnimatedReaction,
   useSharedValue,
   withTiming
 } from "react-native-reanimated";
@@ -33,21 +35,15 @@ export function ScoreRing({ score, size = 188, stroke = 16, label = "Shield Scor
     progress.value = withTiming(clampedScore, { duration: 900 });
   }, [clampedScore, progress]);
 
-  useEffect(() => {
-    const duration = 900;
-    const start = displayScore;
-    const delta = clampedScore - start;
-    const startedAt = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startedAt;
-      const ratio = Math.min(1, elapsed / duration);
-      const eased = 1 - Math.pow(1 - ratio, 3);
-      setDisplayScore(Math.round(start + delta * eased));
-      if (ratio === 1) clearInterval(interval);
-    }, 16);
-
-    return () => clearInterval(interval);
-  }, [clampedScore]);
+  useAnimatedReaction(
+    () => Math.round(progress.value),
+    (current, previous) => {
+      if (current !== previous) {
+        runOnJS(setDisplayScore)(current);
+      }
+    },
+    []
+  );
 
   const animatedProps = useAnimatedProps(() => ({
     strokeDashoffset: interpolate(progress.value, [0, 100], [circumference, 0])

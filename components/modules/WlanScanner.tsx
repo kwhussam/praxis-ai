@@ -56,13 +56,12 @@ export function WlanScanner() {
   const [scanSegment, setScanSegment] = useState<NetworkSegmentId>("practice_wifi");
 
   const phase = progress ? SCAN_PHASES[progress.phaseIndex] ?? SCAN_PHASES[0] : SCAN_PHASES[0];
-  const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
   const sortedVulnerabilities = useMemo(() => sortVulnerabilities(result?.vulnerabilities ?? []), [result]);
   const scanDisabled = state === "scanning" || (auditMode && !auditAccepted) || !practiceId;
-  const scanNodes = useMemo(
-    () => mapDevicesToScanNodes(displayedDevices, progress?.vulnerabilities ?? result?.vulnerabilities ?? []),
-    [displayedDevices, progress, result]
-  );
+  const scanNodes = useMemo(() => {
+    const displayedDevices = visibleDevices.length > 0 ? visibleDevices : result?.connectedDevices ?? [];
+    return mapDevicesToScanNodes(displayedDevices, progress?.vulnerabilities ?? result?.vulnerabilities ?? []);
+  }, [visibleDevices, progress, result]);
 
   async function scan() {
     if (state === "scanning") return;
