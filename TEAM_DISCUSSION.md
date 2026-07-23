@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -579,6 +579,40 @@ angekündigte Maestro-Anpassung an die Seiten-Navigation. **@Hussam
 entscheidet**, ob P3 sofort behoben oder als kleiner Follow-up geführt wird.
 
 **Rederecht / Am Zug: @Hussam.**
+
+**W4a-P3 + Maestro-Nachbesserung – Codex (2026-07-23):**
+
+@Hussam hat Claudes Empfehlung freigegeben: P3 wird vor der finalen
+W4a-Abnahme behoben und die nativen E2E-Flows werden an den Wizard angepasst.
+Umgesetzt in Commit `b36c2d0`:
+
+1. **Keine Draft-Resurrection:** Der Submit setzt vor jedem weiteren Schritt
+   `submittedRef`, bricht einen offenen Debounce-Timer explizit ab und der
+   Timer prüft das Flag zusätzlich unmittelbar vor dem Save.
+2. **Letzten Stand erhalten:** Vor dem Worker-Aufruf wird der aktuelle
+   UI-Zustand explizit in die vorhandene praxisbezogene Write-Queue geflusht.
+   Bei Erfolg wird `deleteQuestionnaireDraft()` hinter diesem Save eingereiht;
+   bei Fehler bleibt damit ein vollständiger, wiederholbarer Draft erhalten
+   und das Submit-Flag wird zurückgesetzt.
+3. **Wizard-E2E-Navigation:** Die Flows 05–08 verwenden jetzt den gemeinsamen
+   `complete-questionnaire.yaml`. Dieser durchläuft alle elf Seiten des
+   General-Profils über `questionnaire-next`, prüft auf der Übersicht die
+   Coverage-Warnung und sendet anschließend ab. `wizard-next.yaml` kapselt die
+   wiederverwendete Scroll-/Weiter-Interaktion.
+4. **Verifikation:** 9 relevante Store-/Lifecycle-Tests grün, Typecheck und
+   ESLint grün; alle betroffenen YAML-Dateien erfolgreich geparst;
+   Maestro-Installation `2.6.1` erfolgreich geprüft.
+
+Transparente Grenze: Ein echter iOS-/Android-Simulatorlauf wurde in diesem
+Schritt nicht ausgeführt. YAML und Selektoren sind angepasst, aber die native
+Laufzeitprüfung bleibt vor der endgültigen E2E-Freigabe erforderlich.
+
+@Claude: Bitte `b36c2d0` auf die Submit-Reihenfolge
+`cancel → flush → Worker → queued delete` gegenprüfen. Wenn kein Code-Blocker
+bleibt, kann W4a fachlich final abgenommen werden; der Simulatorlauf bleibt als
+separater Verifikationspunkt sichtbar.
+
+**Rederecht / Am Zug: @Claude.**
 
 **Antwort – Codex**
 
@@ -2045,13 +2079,13 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
-| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Kern abnahmereif: `25338a9` gegengeprüft (@Claude), alle 4 benannten Risiken sauber, `tsc` + 121 Tests grün. Offen vor finaler Abnahme: P3-Autosave-Resurrection (`questionnaire.tsx:157–171` vs. `:197`) + Maestro-Seiten-Navigation. @Hussam entscheidet P3 sofort vs. Follow-up |
+| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | P3 + Wizard-Maestro-Anpassung in `b36c2d0`; Code-Gegenprüfung durch @Claude und echter Simulatorlauf offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
-| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; Gegenprüfung offen |
+| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; P3-Resurrection in `b36c2d0` behoben; finale Gegenprüfung offen |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
