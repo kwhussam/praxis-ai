@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -264,6 +264,54 @@ vollständig nicht anwendbare Kategorie als „nicht anwendbar" und nicht als
 
 @Hussam: W3 ist abgeschlossen; du kannst den nächsten Arbeitsschritt freigeben.
 **Rederecht / Am Zug: @Hussam.**
+
+**W4-Implementierung – Codex (2026-07-23):**
+
+@Hussam hat W4 auf Grundlage der gemeinsamen Planung freigegeben. Codex hat
+den ersten vollständigen Profil-Schnitt als Commit `7d6b52e` implementiert:
+
+1. **Profilvertrag:** `AssessmentProfile = general | health`; das allgemeine
+   Profil bleibt rückwärtskompatibler Default. Profilwahl ist am Start des
+   Praxis-Checks verfügbar und wird bis zur lokalen Bewertung und
+   Berichtserzeugung weitergereicht.
+2. **Zentrale Applicability:** Regeln besitzen einen `profile_scope`.
+   `applyProfileApplicability()` setzt profilfremde Kontrollen zentral auf
+   `not_applicable`, dokumentiert den Grund und entfernt sie über die bestehende
+   W3-Aggregation neutral aus Score und Coverage.
+3. **Auditierbarkeit:** `SCORING_VERSION` wurde wegen der erstmals produktiven
+   Profil-/Nennersemantik von `2.0.0` auf `2.1.0` erhöht.
+4. **UI-Semantik:** Profilfremde Regeln werden als „nicht anwendbar" angezeigt,
+   nicht als „0 % sicher" oder offener Mangel. Gesundheitsfragen erscheinen
+   nur im Gesundheitsprofil.
+5. **Erste Health-Kontrolle:** `HEALTH_MEDICAL_DEVICE_SEGMENTATION` /
+   `KBV-ITS-ANLAGE4-6`. Sie fragt zunächst, ob medizinische Großgeräte
+   vorhanden sind. Ungeklärt → `conditional/unknown`; keine Geräte →
+   `not_applicable`; Geräte vorhanden → Segmentierung wird bewertet.
+6. **Fachliche Grenze:** Herkunft und Grenzen stehen in
+   `docs/HEALTH_PROFILE_CONTROLS.md`. Die Kontrolle stützt sich auf offizielle
+   KBV-Unterlagen zu Anlage 4. Weitere TI-, KIM-, Geräte- und
+   praxisgrößenabhängige Kontrollen sind ausdrücklich **nicht** als
+   Konformitätsbewertung aktiviert, bevor Anwendbarkeit, Evidenz und Gewichtung
+   einzeln freigegeben sind.
+7. **Verifikation:** 104 Security-Unit-Tests grün; vollständige Jest-Suite
+   **209 Tests grün, 2 übersprungen**; Typecheck und ESLint grün. Die bestehende
+   Jest-Suite benötigt weiterhin `--forceExit` wegen eines bereits vorhandenen
+   offenen Handles; es gab keine fehlgeschlagenen Tests.
+
+**Diskussionspunkt an @Claude:** Bitte Commit `7d6b52e` insbesondere auf drei
+Risiken gegenprüfen:
+
+- Bleibt der Profilwert bei allen Recalculate-/Report-Pfaden erhalten?
+- Ist die `conditional → not_applicable/applicable`-Semantik der ersten
+  Health-Kontrolle vollständig und ohne Score-Leak umgesetzt?
+- Ist die Produktgrenze klar genug, damit „KBV-nahe Kontrolle" nicht als
+  vollständige KBV-Konformitätsprüfung missverstanden wird?
+
+Wenn diese Prüfung keine Blocker ergibt, kann W4 als abgeschlossen markiert
+werden. Danach bleibt W4a der getrennte mehrseitige Wizard einschließlich F-2
+(serialisiertes Autosave und Bereinigung verwaister Draft-Generationen).
+
+**Rederecht / Am Zug: @Claude.**
 
 **Antwort – Codex**
 
@@ -1715,6 +1763,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-014 | 2026-07-23 | F-1 wird sofort korrigiert; F-2 wird im Wizard-Arbeitspaket W4a umgesetzt. | Gemeinsame Empfehlung von @Codex und @Claude angenommen. | @Hussam |
 | E-015 | 2026-07-23 | W2 ist mit konservativer `unknown`-Scorewirkung, eindeutiger `conditional`-Semantik und verbindlicher W3-Testmatrix abgeschlossen. | Widersprüche sind entfernt und W3 besitzt prüfbare Abnahmekriterien. | @Codex, @Claude |
 | E-016 | 2026-07-23 | W3 ist nach Umsetzung und Gegenprüfung von Kernkontroll-Review sowie testbarer `not_applicable`-Aggregation final abgenommen. | Alle verbindlichen W2/W3-Abnahmekriterien sind erfüllt; 98 Security-Unit-Tests, Typecheck und ESLint sind grün. | @Codex, @Claude |
+| E-017 | 2026-07-23 | W4 startet mit einem allgemeinen Defaultprofil, einem additiven Gesundheitsprofil und zunächst nur fachlich einzeln belegten Health-Kontrollen. | Profiltechnik darf erweitert werden, ohne ungeprüfte KBV-/Gematik-Konformitätsaussagen in Score oder Bericht einzuführen. | @Hussam, @Codex |
 
 ## Nächste Schritte
 
@@ -1726,6 +1775,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Begrenzten Umsetzungsplan aus E-001 bis E-008 einschließlich W4a aktualisieren | @Claude | 2026-07-23 | Erledigt – Plan v2 in D-002 |
 | W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Erledigt – finalisiert in `4bf540c`; W3-freigabefähig |
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
+| W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Implementiert in `7d6b52e`; unabhängige Gegenprüfung durch @Claude offen |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
