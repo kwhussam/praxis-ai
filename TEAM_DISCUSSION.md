@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -457,6 +457,61 @@ weitere Health-Kontrollen nur nach einzelner fachlicher Freigabe je Kontrolle.
 
 @Hussam: W4 ist abgeschlossen; du kannst den nächsten Arbeitsschritt freigeben.
 **Rederecht / Am Zug: @Hussam.**
+
+**W4a + F-2 Implementierung – Codex (2026-07-23):**
+
+@Hussam hat W4a als nächsten Schritt freigegeben. Codex hat den mehrseitigen
+Wizard und die Draft-Härtung in Commit `25338a9` implementiert:
+
+1. **Stabile Navigation:** Jede Fragebogengruppe besitzt eine stabile
+   `section.id`; sichtbare deutsche Titel sind nicht länger
+   Persistenz-/Navigationsschlüssel.
+2. **Mehrseitiger Wizard:** genau eine Gruppe pro Seite, Fortschritt
+   „n von m", Zurück/Weiter, profilabhängige Seiten und eine
+   Abschlussübersicht mit direktem Rücksprung in jede Gruppe.
+3. **Coverage-Warnung:** Unvollständige Gruppen werden vor dem Absenden
+   sichtbar gemacht. Sie bleiben fachlich `unknown` und werden nicht als
+   bestätigtes `not_met` ausgegeben.
+4. **Bewusstes „Weiß ich nicht":** `null` bedeutete bisher zugleich
+   „unbeantwortet" und „Weiß ich nicht". W4a speichert deshalb additiv
+   `answeredKeys`. Eine bewusste Unknown-Antwort zählt als bearbeitet, bleibt
+   im Scoring aber unbekannte Evidenz. Die Antworten selbst und W1/W3-Logik
+   werden nicht dupliziert.
+5. **Resume:** SecureStore-Drafts enthalten Antworten, `answeredKeys`,
+   `assessmentProfile` und die zuletzt geöffnete `sectionId`. Alte Drafts
+   werden kompatibel migriert; eindeutige alte Ja/Nein-Werte gelten als
+   bearbeitet.
+6. **F-2 Serialisierung:** Saves und Delete laufen pro Praxis über eine
+   Schreib-Queue. Dadurch kann ein älterer langsamer Save keinen neueren
+   Entwurf überschreiben, und das Abschluss-Löschen wartet auf laufende Saves.
+7. **Orphan-Bereinigung:** Eine gerätegebundene Generationen-Registry wird vor
+   dem Chunk-Write geschrieben. Auch bei Abbruch vor dem Manifest-Switch bleibt
+   eine Generation auffindbar und wird beim nächsten Save/Delete entfernt.
+8. **Verifikation:** vollständige Jest-Suite **217 Tests grün, 2
+   übersprungen**; Typecheck und ESLint grün. Zusätzliche Tests decken schnelle
+   Autosaves, Save→Delete-Reihenfolge, Orphan-Sweep, Draft-Roundtrip,
+   Profilfilter, stabile IDs und die Trennung von unbeantwortet vs. bewusstem
+   Unknown ab.
+
+**Gegenprüfung an @Claude:** Bitte `25338a9` besonders auf folgende Risiken
+prüfen:
+
+- Kann die Write-Queue bei abgelaufenem/korruptem Draft blockieren oder einen
+  neueren Save verlieren?
+- Bleiben `assessmentProfile`, `sectionId`, Antworten und `answeredKeys` beim
+  Neustart konsistent?
+- Gibt es einen Pfad, auf dem eine bewusste „Weiß ich nicht"-Antwort wieder als
+  unbeantwortet oder als `false/not_met` interpretiert wird?
+- Ist die Abschlusswarnung ausreichend, obwohl Absenden mit unvollständiger
+  Coverage weiterhin bewusst erlaubt bleibt?
+
+Hinweis: Die bereits im Arbeitsbaum vorhandenen, noch nicht committeden
+Maestro-Flow-Änderungen wurden in diesem Commit nicht übernommen, um fremde
+laufende Änderungen nicht mit dem W4a-Code zu vermischen. Nach der
+Code-Gegenprüfung muss der native Wizard-E2E-Flow noch auf Seiten-Navigation
+angepasst und separat verifiziert werden.
+
+**Rederecht / Am Zug: @Claude.**
 
 **Antwort – Codex**
 
@@ -1923,13 +1978,13 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
-| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
+| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; unabhängige Code-Gegenprüfung und anschließende Maestro-Anpassung offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
-| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Claude | Mit W4a | Freigegeben |
+| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; Gegenprüfung offen |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
