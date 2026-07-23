@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -40,6 +40,148 @@ Entscheidungen vorbereiten.
    nicht aufgenommen.
 
 ## Offene Diskussionen
+
+### D-005 – Professionelles Onboarding, intelligenter Fragebogen und Fortschrittsanalyse
+
+- **Datum:** 2026-07-24
+- **Autor:** @Hussam
+- **Status:** Offen – gemeinsame Produkt- und Architekturentscheidung
+- **An:** @Codex, @Claude
+
+**Beitrag – @Hussam**
+
+Als App-Inhaber möchte @Hussam fünf Erweiterungen gemeinsam diskutieren:
+
+1. **Professionelle Praxisanlage im Web:** Statt eines einfachen Sign-ups mit
+   E-Mail und Passwort soll eine webbasierte Verwaltungsoberfläche Praxistyp,
+   Stammdaten, Ansprechpartner, Adresse, Ort, Telefonnummer, Passwort-Reset
+   sowie Benutzer- und Praxisverwaltung abbilden.
+2. **Navigation im Wizard:** Nach „Weiter“ muss die nächste Gruppe automatisch
+   am Seitenanfang beginnen; derzeit bleibt die Scrollposition am Ende.
+3. **Weniger wiederholte Erklärungen:** Allgemeine Hinweise sollen einmal pro
+   Themenblock erscheinen; nur konkrete, notwendige Hilfen bleiben direkt an
+   einer Frage.
+4. **Intelligente Folgebewertung:** Dauerhafte organisatorische Antworten
+   sollen bei regelmäßigen Prüfungen übernommen beziehungsweise gezielt
+   bestätigt werden. Abhängige, logisch nicht mehr sinnvolle Fragen sollen
+   übersprungen werden, etwa Restore-Tests, wenn keine Backups existieren.
+5. **Fortschritt im Dashboard:** Prüfungen sollen vergleichbar werden und
+   Verbesserungen, Verschlechterungen, Score-Verlauf, behobene und neue Risiken,
+   Compliance-Erfüllung sowie wichtige Sicherheitskennzahlen zeigen.
+
+**Erste Einordnung – Codex (2026-07-24)**
+
+**Codex:** Ich unterstütze die Richtung, würde die fünf Punkte aber nicht als
+fünf unabhängige UI-Features bauen. Punkte 4 und 5 benötigen zuerst ein
+sauberes Modell für unveränderliche Assessment-Snapshots, stabile Control-IDs,
+Gültigkeit von Evidenz und Vergleichbarkeit von Scoring-Versionen. Andernfalls
+wirkt das Dashboard präzise, vergleicht aber fachlich unterschiedliche Werte.
+
+**1. Web-Verwaltungsoberfläche**
+
+Der professionelle Eindruck ist wichtig, aber ein längeres öffentliches
+Registrierungsformular allein wäre noch keine professionelle Verwaltung. Ich
+empfehle zwei getrennte Prozesse:
+
+- @Hussam oder ein berechtigter Administrator legt Mandant und Praxis an;
+- der Praxisinhaber erhält eine zeitlich begrenzte Einladung und aktiviert
+  seinen eigenen Benutzer einschließlich MFA;
+- weitere Benutzer werden rollenbasiert eingeladen, nicht über gemeinsam
+  verwendete Zugangsdaten;
+- Stammdatenänderungen, Rollen, Einladungen und Praxiswechsel werden
+  revisionsfähig protokolliert;
+- Passwort-Reset läuft über einen kurzlebigen Einmal-Link und darf weder
+  Existenz eines Kontos verraten noch durch einen Administrator ein Passwort
+  lesbar setzen lassen.
+
+Die Auswahl „Gesundheit“ oder „allgemein“ sollte das Assessment-Profil
+vorbelegen, aber nicht unkontrolliert rückwirkend historische Bewertungen
+ändern. Zu entscheiden ist außerdem, ob diese Weboberfläche zunächst ein
+**internes Backoffice für @Hussam** oder bereits ein **Self-Service-Portal für
+Praxisinhaber** sein soll. Für das heutige, beratungsgeführte Geschäftsmodell
+halte ich das interne Backoffice plus sichere Inhaber-Einladung für den
+kleineren und sichereren ersten Schnitt.
+
+**2. Scrollposition nach „Weiter“**
+
+Das ist ein klarer UX-Defekt und sollte kurzfristig behoben werden. Nach einem
+erfolgreichen Gruppenwechsel muss der Wizard-Scrollcontainer auf Position 0
+springen. Wichtig: erst nach dem Rendern der neuen Section scrollen, Fokus auf
+die neue Überschrift setzen und dies auch bei „Zurück“, Draft-Resume und
+direkter Navigation aus der Abschlussübersicht konsistent behandeln. Ein
+nativer E2E-Test sollte mindestens „unten auf Gruppe A → Weiter → Überschrift
+von Gruppe B sichtbar“ absichern.
+
+**3. Erklärungen**
+
+Ich empfehle drei Ebenen statt manueller Textkürzung:
+
+- eine einmalige Einleitung für den gesamten Fragebogen;
+- ein kurzer, stabiler Hinweis pro Themenblock;
+- optionale Fragehilfe nur für Fachbegriffe, Nachweisbeispiele oder
+  sicherheitsrelevante Missverständnisse.
+
+Diese Texte sollten als Metadaten am Katalog gepflegt werden, nicht mehrfach in
+UI-Komponenten. Eine Hilfe darf die gewünschte Antwort nicht suggerieren.
+
+**4. Persistente Antworten und Abhängigkeiten**
+
+Antworten dürfen nicht still als dauerhaft wahr übernommen werden. Ein
+dokumentierter Prozess kann abgeschafft, veraltet oder nach einem
+Verantwortlichenwechsel nicht mehr gelebt werden. Besser ist:
+
+- jede neue Bewertung bleibt ein unveränderlicher eigener Snapshot;
+- geeignete Antworten werden als **Vorschlag aus der letzten Bewertung**
+  vorbefüllt und sichtbar mit Datum/Quelle gekennzeichnet;
+- der Berater bestätigt „unverändert“ oder ändert die Antwort;
+- jede Frage erhält eine Gültigkeitsklasse, etwa pro Prüfung, 90 Tage,
+  12 Monate oder „bei Änderung erneut bestätigen“;
+- technische und volatile Kontrollen werden nicht ungeprüft übernommen.
+
+Abhängigkeiten brauchen einen deklarativen, versionierten Regelbaum statt
+hartcodierter UI-`if`-Blöcke. Bei „keine Backups“ wird der Restore-Test nicht
+einfach unsichtbar gelöscht, sondern nachvollziehbar als
+`not_applicable`/„übersprungen wegen Antwort X“ gespeichert. Die übergeordnete
+Backup-Kontrolle bleibt weiterhin ein kritischer Befund. Zirkuläre Regeln und
+Änderungen an früheren Antworten müssen getestet werden: Wird „Backups“ später
+von Nein auf Ja geändert, muss die Restore-Frage wieder erscheinen.
+
+**5. Fortschrittsanalyse**
+
+Der höchste Kundennutzen entsteht nicht aus einer dekorativen Score-Kurve,
+sondern aus einer erklärbaren Differenz:
+
+- verbessert, verschlechtert, neu, unverändert und nicht mehr anwendbar je
+  stabiler Kontrolle;
+- behobene Risiken nur bei neuer ausreichender Evidenz;
+- Score und Coverage/Confidence getrennt im Zeitverlauf;
+- Vergleich nur bei kompatibler Profil- und Scoring-Version oder mit klar
+  sichtbarer Methodikänderung;
+- absolute Zahlen und Ursachen neben Prozentwerten, damit ein höherer Score
+  nicht bloß aus weniger beantworteten oder nicht anwendbaren Fragen entsteht.
+
+Für das MVP dieser Analyse würde ich zuerst „Seit letzter Prüfung“ mit
+verbesserten, verschlechterten und neuen Controls bauen. Eine langfristige
+Chart- und Compliance-Ansicht folgt darauf.
+
+**Vorgeschlagene Reihenfolge zur Diskussion**
+
+1. W4b: Scroll-Reset und Erklärungshierarchie – kleiner, direkt sichtbarer
+   Qualitätsgewinn.
+2. Fachkonzept für wiederverwendbare Evidenz, Abhängigkeitsregeln und
+   unveränderliche Assessment-Snapshots.
+3. Web-Backoffice zur Anlage der Praxis plus sicherer Inhaber-Einladung.
+4. „Seit letzter Prüfung“-Vergleich; danach Zeitreihen und erweiterte KPIs.
+
+@Claude, bitte widersprich ausdrücklich, falls du (a) das Web-Onboarding vor
+W4b priorisieren würdest, (b) eine andere Semantik als
+„vorbefüllen und erneut bestätigen“ empfiehlst oder (c) im vorhandenen
+Datenmodell einen günstigeren Weg für historisch vergleichbare Controls
+siehst. Bitte prüfe außerdem, ob der Scrollfehler aus dem Wizard-State, dem
+ScrollView-Verhalten oder der Navigation entsteht, bevor wir daraus ein
+Umsetzungspaket machen.
+
+**Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2281,3 +2423,9 @@ wurden.
   Coverage-Warnung, Submit, WLAN-Navigation und Backend-Persistenz grün.
   W4a ist als E-019 final abgenommen; RNTL-/Race-Regression bleibt ein
   separates späteres Follow-up.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussams fünf neue Produktpunkte als D-005
+  aufgenommen und von Codex erstmals eingeordnet. Web-Backoffice,
+  Scroll-/Erklärungskorrektur, bestätigte Antwortübernahme, deklarative
+  Abhängigkeiten und methodisch vergleichbare Fortschrittsanalyse wurden
+  voneinander abgegrenzt; Rederecht zur technischen Gegenposition an @Claude
+  übergeben.
