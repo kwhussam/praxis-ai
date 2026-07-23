@@ -1,6 +1,7 @@
 # Control-Result-Modell (W2)
 
-> **Status:** Zielarchitektur-Dokument (Entwurf zur Gegenprüfung durch @Codex).
+> **Status:** W2 abgeschlossen und als verbindliche Grundlage für W3
+> freigegeben (2026-07-23).
 > **Bezug:** E-007 (additiv + rückwärtskompatibel, Migration zum vollständigen
 > `ControlResult`-Modell vorbereiten), D-002.
 > **Prinzip:** „not_checked ≠ passing". Unbekannte oder nicht anwendbare
@@ -221,7 +222,9 @@ ersten Regressionstests dafür bereits geliefert).
   Evidenz vor (Gruppe leer oder nur teilweise beantwortet, keine Messung).
 - **`status = unknown`** ⟺ `evidence_coverage.source ∈ {not_checked, unavailable}`.
 - **Punkte:** `unknown` vergibt **0 erreichte Punkte** und reduziert die
-  Coverage, erzeugt aber **keinen** `not_met`-Befund (kein „nicht erfüllt").
+  Coverage. Die Kontrolle bleibt mit ihren `points_max` im Nenner und senkt
+  damit bewusst den konservativen Gesamtscore. Sie erzeugt aber **keinen**
+  `not_met`-Befund (kein „nicht erfüllt").
   → genau der W1-Fix: teilweise/leer beantwortete Gruppe ⇒ `undefined`
   (`not_checked`), **nicht** `false`.
 - **Ableitung im MVP:** `status = unknown`, wenn die Eingangsdaten `undefined`
@@ -236,7 +239,23 @@ ersten Regressionstests dafür bereits geliefert).
   anwendbare Kontrolle darf den Score **weder heben noch senken**.
 - **Pflicht:** `applicability_reason` muss gesetzt sein (Auditierbarkeit).
 
-### 4.3 Coverage
+### 4.3 `conditional`
+
+- **Definition:** Die Kontrolle kann anwendbar sein, aber die
+  Anwendbarkeitsbedingung ist noch nicht abschließend geklärt.
+- Solange die Bedingung offen ist, gilt:
+  `applicability = conditional`, `status = unknown` und
+  `applicability_reason` beschreibt die noch zu klärende Bedingung.
+- Eine offene `conditional`-Kontrolle bleibt im konservativen Score-Nenner,
+  erhält 0 Punkte und reduziert Coverage. Sie darf nicht stillschweigend als
+  `not_applicable` behandelt werden.
+- Nach Klärung wird sie deterministisch entweder:
+  - `applicable` mit `met`, `partially_met`, `not_met` oder `unknown`, oder
+  - `not_applicable` mit `status = not_applicable` und dokumentiertem Grund.
+- `conditional` ist im MVP keine dauerhafte Fachentscheidung, sondern ein
+  auditierbarer Übergangszustand.
+
+### 4.4 Coverage
 
 - `evidence_coverage` bleibt **unabhängig** vom `status`: Status = „was gilt",
   Coverage = „wie sicher wissen wir das".
@@ -244,12 +263,18 @@ ersten Regressionstests dafür bereits geliefert).
   **anwendbare** Kontrollen gemittelt (`not_applicable` ausgeschlossen).
 - Selbstauskunft bleibt bei max. 50 % der Regelpunkte gedeckelt
   (`evidence_weight_cap_applied`) – unverändert.
-- `unknown` senkt Coverage, ist aber kein Malus auf den Sicherheits-Score.
+- `unknown` senkt Coverage und wirkt im konservativen Gesamtscore mit
+  0 erreichten Punkten bei unverändertem `points_max`. Der Status bleibt
+  trotzdem `unknown` und wird nicht als bestätigte Nichterfüllung ausgegeben.
 
-### 4.4 Score & Ampel
+### 4.5 Score & Ampel
 
 - Score = Summe `points_earned` / Summe `points_max` über **anwendbare**
-  Kontrollen. Bänder unverändert: grün ≥75, gelb ≥50, rot <50.
+  und noch ungeklärte `conditional`-Kontrollen. Nur `not_applicable` wird aus
+  beiden Summen entfernt. Bänder unverändert: grün ≥75, gelb ≥50, rot <50.
+- Der MVP behält diesen **konservativen Gesamtscore** bei. Ein zusätzlicher
+  `assessed_score`, der unbekannte Kontrollen aus dem Nenner entfernt, ist
+  ausdrücklich nicht Teil von W3; er wäre eine spätere Produktentscheidung.
 - **Grün erfordert** für Kernregeln `measured`/`inferred`-Evidenz – ein grüner
   Score bei überwiegend `unknown`/`self_reported`-Evidenz ist unzulässig und
   muss `review_required` auslösen (heute in `detectReviewReasons`).
@@ -270,7 +295,42 @@ Schema-Änderung.
 (§2). `status`/`applicability`/`disposition` werden **abgeleitet** befüllt.
 Bestehende Consumer bleiben unverändert. Neue Tests: leer / teilweise /
 vollständig-erfüllt / vollständig-nicht-erfüllt je Aggregat (bereits in W1
-angelegt) + `not_applicable` zählt nicht in den Score.
+angelegt) plus die verbindliche W3-Testmatrix in §5.1.
+
+### 5.1 Verbindliche W3-Testmatrix
+
+W3 ist erst abgeschlossen, wenn mindestens folgende Fälle auf Regel-,
+Kategorie- und Gesamtaggregationsebene getestet sind:
+
+| Fall | Applicability | Status | Punkte | Coverage / Finding |
+|---|---|---|---|---|
+| Eingang leer | `applicable` | `unknown` | 0 von `points_max` | Coverage sinkt; kein `not_met`-Finding |
+| Gruppe teilweise beantwortet | `applicable` | `unknown` | 0 von `points_max` | Coverage sinkt; kein `not_met`-Finding |
+| Vollständig erfüllt | `applicable` | `met` | gemäß Regel und Evidence-Cap | bestehende Evidence-Semantik bleibt |
+| Vollständig nicht erfüllt | `applicable` | `not_met` | gemäß Regel, typischerweise 0 | Finding und Empfehlung vorhanden |
+| Echte Teilkontrolle | `applicable` | `partially_met` | nur explizit definierte Teilpunkte | nie aus der Anzahl beantworteter Fragen erraten |
+| Profilfremde Kontrolle | `not_applicable` | `not_applicable` | 0 von 0 | aus Score und Coverage ausgeschlossen; Grund Pflicht |
+| Bedingung ungeklärt | `conditional` | `unknown` | 0 von `points_max` | Coverage sinkt; Grund Pflicht |
+| Bedingung gilt | `applicable` | fachlicher Status | gemäß Regel | normale Aggregation |
+| Bedingung gilt nicht | `not_applicable` | `not_applicable` | 0 von 0 | vollständig neutral |
+| Self-report erfüllt | `applicable` | `met` | Evidence-Cap bleibt aktiv | darf Kernkontrolle nicht allein auf Grün heben |
+| Evidenz nicht verfügbar | `applicable` | `unknown` | 0 von `points_max` | `review_required` bei Kernkontrolle |
+
+Zusätzliche Abnahmekriterien:
+
+1. Eine zentrale pure Funktion leitet `status` und normalisierte
+   `applicability` ab; einzelne Regeln pflegen keine zweite Wahrheit.
+2. `points_max`, Kategorie-Maxima, Gesamtscore und Coverage schließen
+   `not_applicable` identisch aus.
+3. `conditional` ohne `applicability_reason` und `not_applicable` ohne Grund
+   werden als ungültig beziehungsweise `review_required` behandelt.
+4. `management_recommendation` spiegelt während der Migration
+   rückwärtskompatibel `recommendation`; `technical_action` wird in keinem
+   Kundenbericht-Serializer ausgegeben.
+5. Alte `RuleEvaluation`-Payloads ohne neue optionale Felder liefern weiterhin
+   das bisherige Verhalten.
+6. Score- und Ampelresultate bleiben für dieselben Inputs unter derselben
+   `scoring_version` reproduzierbar.
 
 **Phase 2 – Profil-Applicability (W4) + Wizard (W4a):** Engine kennt
 `profile_scope`; UI rendert profilabhängig über stabile `section_id`s. Draft-
