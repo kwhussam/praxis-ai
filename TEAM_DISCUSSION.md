@@ -699,6 +699,34 @@ der Simulatorlauf als verbleibendes Freigabegate vor der finalen Abnahme
 durchgeführt wird oder als unmittelbar nachgelagerte Verifikation geführt
 wird. **Rederecht / Am Zug: @Hussam.**
 
+**Entscheidung und finales Freigabegate – @Hussam / Codex (2026-07-23):**
+
+@Hussam hat den nativen Simulatorlauf als letztes Freigabegate festgelegt:
+Wenn der Wizard vollständig funktioniert, ist W4a final abgenommen. Die
+zusätzliche React-Native-Komponenten-Testinfrastruktur wird als späteres
+Follow-up dokumentiert.
+
+**Codex – Ergebnis:** Das Gate ist bestanden. Flow `05-questionnaire` lief
+nativ auf einem iPhone 16 Pro mit iOS 18.6 vollständig durch:
+
+- Anmeldung und Einstieg in den Praxis-Check;
+- Navigation durch alle 11 Gruppen des General-Profils;
+- bewusste Antworten einschließlich „Weiß ich nicht“;
+- sichtbare Coverage-Warnung in der Abschlussübersicht;
+- erfolgreiches Absenden und Navigation zum WLAN-Scan;
+- Backend-Verifikation der persistierten Fragebogendaten.
+
+Der Lauf deckte zwei Testumgebungsprobleme auf: Der installierte Development
+Build enthielt `ExpoSecureStore` noch nicht und musste neu gebaut werden; zudem
+lag „Check starten“ auf dem getesteten Viewport unterhalb des sichtbaren
+Bereichs. Der E2E-Einstieg scrollt den Button jetzt vor dem Tap sichtbar ins
+Zentrum (`799ae61`). Nach aktuellem Rebuild und korrekt mit E2E-Werten
+gestartetem Metro-Bundler ist der vollständige native Flow grün.
+
+Damit ist **W4a final abgenommen**. Die RNTL-/Komponenten-Testinfrastruktur
+bleibt ein ausdrücklich getrenntes Follow-up und blockiert den Abschluss
+nicht. **Rederecht / Am Zug: @Hussam.**
+
 **Antwort – Codex**
 
 **Codex:** Das Projekt hat bereits eine ungewöhnlich starke Grundlage: Es
@@ -2151,6 +2179,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-016 | 2026-07-23 | W3 ist nach Umsetzung und Gegenprüfung von Kernkontroll-Review sowie testbarer `not_applicable`-Aggregation final abgenommen. | Alle verbindlichen W2/W3-Abnahmekriterien sind erfüllt; 98 Security-Unit-Tests, Typecheck und ESLint sind grün. | @Codex, @Claude |
 | E-017 | 2026-07-23 | W4 startet mit einem allgemeinen Defaultprofil, einem additiven Gesundheitsprofil und zunächst nur fachlich einzeln belegten Health-Kontrollen. | Profiltechnik darf erweitert werden, ohne ungeprüfte KBV-/Gematik-Konformitätsaussagen in Score oder Bericht einzuführen. | @Hussam, @Codex |
 | E-018 | 2026-07-23 | W4 ist nach Implementierung (`7d6b52e`) und Behebung des Worker-Profil-Persistenz-Blockers (`ac3efb8`) final abgenommen. | Das Profil bleibt über alle maßgeblichen Pfade bis zum persistierten Score of Record erhalten; kein stiller Health-Score-Pass, Selbstauskunft-Cap greift, Produktgrenze dokumentiert. | @Codex, @Claude |
+| E-019 | 2026-07-23 | W4a ist nach bestandenem nativen iOS-Simulatorlauf final abgenommen; zusätzliche React-Native-Komponententest-Infrastruktur folgt später. | Der Wizard durchlief alle 11 Gruppen bis zur persistierten Speicherung und zum WLAN-Scan; die Coverage-Warnung war sichtbar. | @Hussam, @Codex |
 
 ## Nächste Schritte
 
@@ -2164,7 +2193,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
-| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Code-seitig final abnahmereif: `b36c2d0` gegengeprüft (@Claude), P3-Race geschlossen, W4-P1 intakt, tsc + eslint + 14 Tests grün. Offen (non-blocking): nativer Simulatorlauf der Wizard-E2E + optional Regressionstest (braucht RNTL-Infra). @Hussam entscheidet finale Abnahme |
+| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-019): nativer iOS-Flow durch alle 11 Gruppen, Coverage-Warnung, Submit, WLAN-Navigation und Backend-Persistenz grün; E2E-Viewport-Fix `799ae61` |
+| Follow-up: React-Native-Komponententest-Infrastruktur und Race-Regressionstest für Draft-Löschung | @Codex, @Claude | Später | Offen – ausdrücklich kein W4a-Blocker |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
@@ -2246,3 +2276,8 @@ wurden.
   native Wizard-E2E-Verifikation sowie den optionalen Komponenten-
   Regressionstest als getrennte, nicht blockierende Punkte präzisiert;
   finale Produktabnahme liegt bei @Hussam.
+- **Zuletzt geprüft:** 2026-07-23 23:59 CEST – @Hussams letztes W4a-Gate
+  ausgeführt. Der native iOS-Wizardflow ist einschließlich aller 11 Gruppen,
+  Coverage-Warnung, Submit, WLAN-Navigation und Backend-Persistenz grün.
+  W4a ist als E-019 final abgenommen; RNTL-/Race-Regression bleibt ein
+  separates späteres Follow-up.
