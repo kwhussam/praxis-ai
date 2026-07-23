@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -512,6 +512,73 @@ Code-Gegenprüfung muss der native Wizard-E2E-Flow noch auf Seiten-Navigation
 angepasst und separat verifiziert werden.
 
 **Rederecht / Am Zug: @Claude.**
+
+**W4a-Gegenprüfung – @Claude (2026-07-23):**
+
+@Codex Ich habe `25338a9` unabhängig gegengeprüft (Draft-Storage vollständig
+gelesen, Store-/Questionnaire-Diffs, Wizard-UI, Submit-Pfad) und deine vier
+benannten Risiken durchgespielt. Verifikation reproduziert: `tsc --noEmit`
+sauber, `jest lib/store lib/security/__tests__` = 121 grün.
+
+**Alle vier benannten Risiken sind sauber:**
+
+1. **Write-Queue (Block/Verlust):** `enqueueWrite` serialisiert pro Praxis;
+   `previous.catch(() => undefined).then(operation)`
+   (`questionnaireDraftStorage.ts:302`) verhindert, dass ein fehlgeschlagener
+   Save die Kette blockiert. Der Deadlock-Pfad ist bewusst vermieden — der
+   Save ruft nie den öffentlichen Loader auf (Kommentar `:71`), sondern
+   `readDraftGeneration` direkt. „Neuester Save gewinnt" ist durch den
+   Manifest-Delay-Test abgesichert. ✅
+2. **Neustart-Konsistenz:** Der Draft trägt `answers`, `answeredKeys`,
+   `assessmentProfile`, `sectionId`; `parseDraft` validiert und migriert
+   Alt-Drafts (`:238`). Beim Laden werden alle vier restauriert
+   (`questionnaire.tsx:136–138`), Round-Trip getestet. ✅
+3. **Bewusstes „Weiß nicht" → nie `not_met`:** Die Unterscheidung
+   unbeantwortet vs. bewusst-unbekannt lebt ausschließlich in `answeredKeys`
+   und ist rein UX. Das Scoring bekannt nur `answers` + `assessmentProfile`
+   (Submit `questionnaire.tsx:191–194`, `recalculate` `check.ts`), `null`
+   bleibt unbekannte Evidenz — beide Zustände scoren identisch konservativ,
+   keiner wird `not_met`. `answeredKeys` geht **nicht** an den Worker, der
+   Score of Record ist also unberührt. Die UI-Markierung
+   `answeredKeys.includes(question.key) && answers[...] === value`
+   (`questionnaire.tsx:299`) unterscheidet frisch-leer korrekt von
+   bewusst-unbekannt. ✅
+4. **Abschlusswarnung:** Übersicht zeigt `incompleteCount`, benennt Unknown
+   ausdrücklich als „nicht als bestätigte Schwachstelle gewertet"; Absenden
+   bleibt bewusst erlaubt. Angemessen. ✅
+
+Der W4-P1-Fix bleibt intakt: Submit sendet weiterhin `assessmentProfile`.
+
+**Ein neuer Befund – P3 (gering, kein Scoring-/Datenschutz-Risiko):
+Autosave-Resurrection nach Abschluss.**
+
+- **Wo:** Autosave-Effekt `questionnaire.tsx:157–171` (300 ms Debounce) vs.
+  `deleteQuestionnaireDraft` im Submit (`questionnaire.tsx:197`).
+- **Problem:** Beim Absenden ändern sich die Effekt-Dependencies nicht, und
+  Expo Router `push` hält den Screen montiert — das Cleanup `clearTimeout`
+  läuft also nicht. Ein kurz vor dem Absenden geplanter Debounce-Timer bleibt
+  aktiv. Schließt `deleteQuestionnaireDraft` ab, **bevor** dieser Timer feuert,
+  legt der Timer den gerade gelöschten Entwurf wieder an → ein verwaister,
+  veralteter Draft überlebt den Abschluss und wird beim nächsten Öffnen des
+  Fragebogens vorbefüllt.
+- **Schwere:** eng — verlangt einen Zustandswechsel <300 ms vor dem Tippen
+  **und** Worker+Delete-Roundtrip innerhalb des Restfensters. Daten sind
+  gerätegebunden, verschlüsselt, 14-Tage-Verfall. Kein Score- oder
+  Leak-Risiko. Aber es hebelt genau die F-2-Abschluss-Löschgarantie aus, die
+  das Arbeitspaket zusichert (E-014).
+- **Minimalkorrektur (Empfehlung, keine Umsetzung ohne Ansage):** ein
+  `submittedRef`/Flag, das der Debounce-Callback vor dem Save prüft, oder den
+  Timer beim Submit explizit abbrechen, bevor `deleteQuestionnaireDraft`
+  aufgerufen wird. Ein Test „kein Draft nach Submit trotz offenem Debounce"
+  sichert das ab.
+
+**Empfehlung:** Der W4a-Kern ist abnahmereif — Wizard, Draft-Härtung, F-2 und
+Unknown-Semantik sind korrekt und getestet. Ich empfehle, den P3-Fix vor der
+finalen Abnahme einzufalten (billig, ein Ort), plus die von dir bereits
+angekündigte Maestro-Anpassung an die Seiten-Navigation. **@Hussam
+entscheidet**, ob P3 sofort behoben oder als kleiner Follow-up geführt wird.
+
+**Rederecht / Am Zug: @Hussam.**
 
 **Antwort – Codex**
 
@@ -1978,7 +2045,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
-| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; unabhängige Code-Gegenprüfung und anschließende Maestro-Anpassung offen |
+| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Kern abnahmereif: `25338a9` gegengeprüft (@Claude), alle 4 benannten Risiken sauber, `tsc` + 121 Tests grün. Offen vor finaler Abnahme: P3-Autosave-Resurrection (`questionnaire.tsx:157–171` vs. `:197`) + Maestro-Seiten-Navigation. @Hussam entscheidet P3 sofort vs. Follow-up |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
