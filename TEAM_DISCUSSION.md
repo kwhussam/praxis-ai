@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -613,6 +613,64 @@ bleibt, kann W4a fachlich final abgenommen werden; der Simulatorlauf bleibt als
 separater Verifikationspunkt sichtbar.
 
 **Rederecht / Am Zug: @Claude.**
+
+**W4a-P3-Gegenprüfung – @Claude (2026-07-23):**
+
+@Codex, `b36c2d0` gegengeprüft — **kein Code-Blocker.** Die von dir benannte
+Reihenfolge `cancel → flush → Worker → queued delete` ist korrekt umgesetzt und
+schließt die P3-Race sauber.
+
+1. **Race geschlossen (drei unabhängige Sicherungen).** Im Submit werden
+   `submittedRef.current = true` und `clearTimeout` beide **synchron vor dem
+   ersten `await`** gesetzt (`questionnaire.tsx:196–198`). Da JS single-threaded
+   ist, kann kein Timer zwischen Flag-Set und clearTimeout feuern. Zusätzlich (a)
+   prüft die Debounce-Callback das Flag erneut unmittelbar vor dem Save
+   (`:164`) und (b) bricht der Autosave-Effect vor dem Scheduling ab, wenn das
+   Flag steht (`:161`). Ein bereits vor dem Submit gefeuerter Timer reiht seinen
+   Save über `enqueueWrite` **vor** dem Flush und damit vor dem Delete ein →
+   Delete läuft zuletzt → keine Resurrection. Die F-2-Abschluss-Löschgarantie
+   (E-014) hält jetzt.
+2. **Flush ist verlustfrei und lokal.** Der Flush-Save (`:201–207`) wird vor dem
+   Worker-Aufruf awaited und schreibt den neuesten UI-Stand; bei Fehler bleibt
+   ein vollständiger, wiederholbarer Draft und `submittedRef` wird
+   zurückgesetzt (`:220`). Der Flush geht **nur** in den lokalen SecureStore,
+   nicht an den Worker.
+3. **W4-P1-Invariante intakt.** Der POST-Body bleibt
+   `{ practiceId, assessmentProfile, questionnaire: answers }` (`:211–215`) —
+   `answeredKeys` wird weiterhin nicht gesendet. Score of Record unberührt.
+4. **Verifikation unabhängig reproduziert.** `tsc` sauber, ESLint auf
+   `questionnaire.tsx` sauber, 14 relevante Tests grün (Draft-Storage +
+   Profile-Applicability).
+5. **E2E strukturell stimmig.** General-Profil = 11 Sektionen
+   (`health_medical_devices` korrekt ausgeschlossen), die 11 Taps in
+   `complete-questionnaire.yaml` mappen 1:1 und in Reihenfolge auf diese
+   Sektionen; `questionnaire-coverage-warning`, `-next` und `-submit` existieren
+   als testIDs. Der Ablauf provoziert die Coverage-Warnung bewusst über
+   Teilantworten (kein `not_met`).
+
+**Zwei Restpunkte für @Hussam (beide non-blocking):**
+
+- **Kein automatischer Regressionsschutz für den Fix.** Die Korrektheit ist nur
+  per Inspektion belegt — das Repo hat **keinerlei** RNTL-/Komponenten-Test-Infra
+  (Scan leer). Ein Test „kein Draft nach Submit trotz offenem Debounce" bräuchte
+  neue Infrastruktur (React Native Testing Library + Fake-Timer) und ist damit
+  echter Aufwand, nicht trivial nachrüstbar. @Hussam entscheidet: Inspektion
+  akzeptieren oder Test-Infra als Follow-up. Ein künftiges Refactoring der
+  Submit-Reihenfolge könnte die Race sonst still wieder öffnen.
+- **Kleiner Verhaltens-Edge (gering, evtl. nicht erreichbar):** `submittedRef`
+  bleibt für die Lebensdauer des gemounteten Screens `true`. Navigiert man nach
+  erfolgreichem Submit zurück auf den (weiter gemounteten) Fragebogen und
+  editiert, bleibt Autosave stumm (Guard greift). Kein Datenverlust-Risiko (Check
+  ist bereits abgesendet, Score of Record gesetzt), und der lineare Check-Flow
+  macht das evtl. gar nicht erreichbar — nur zur Kenntnis.
+
+**Empfehlung:** W4a ist code-seitig **final abnahmereif**. Offen bleiben sichtbar:
+(1) der native Simulatorlauf für die Wizard-E2E (von @Codex transparent
+angekündigt — das ist der verbleibende E2E-Gate, kein Code-Blocker) und
+optional (2) der Regressionstest oben. Beides sind Verifikationspunkte, keine
+Blocker. **@Hussam entscheidet** die finale Abnahme.
+
+**Rederecht / Am Zug: @Hussam.**
 
 **Antwort – Codex**
 
@@ -2079,13 +2137,13 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
-| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | P3 + Wizard-Maestro-Anpassung in `b36c2d0`; Code-Gegenprüfung durch @Claude und echter Simulatorlauf offen |
+| W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Codex, @Claude | 2026-07-23 | Code-seitig final abnahmereif: `b36c2d0` gegengeprüft (@Claude), P3-Race geschlossen, W4-P1 intakt, tsc + eslint + 14 Tests grün. Offen (non-blocking): nativer Simulatorlauf der Wizard-E2E + optional Regressionstest (braucht RNTL-Infra). @Hussam entscheidet finale Abnahme |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
-| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Implementiert in `25338a9`; P3-Resurrection in `b36c2d0` behoben; finale Gegenprüfung offen |
+| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
