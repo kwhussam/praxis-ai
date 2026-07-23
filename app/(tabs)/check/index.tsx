@@ -1,14 +1,17 @@
 import { router } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { AppConfig } from "@/lib/config/environment";
+import { useCheckStore } from "@/lib/store/check";
 
 export default function CheckStartScreen() {
   const externalCheckEnabled = AppConfig.features.externalCheckEnabled;
+  const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
+  const setAssessmentProfile = useCheckStore((state) => state.setAssessmentProfile);
 
   return (
     <Screen>
@@ -18,6 +21,34 @@ export default function CheckStartScreen() {
           ? "Ein kombinierter Check aus kurzen Fragen, WLAN-Prüfung und Online-Sicht auf Ihre Praxisadresse."
           : "Ein kombinierter Check aus kurzen Fragen und WLAN-Prüfung."}
       </Text>
+      <GlassCard style={styles.profileCard}>
+        <Text style={styles.profileTitle}>Profil für diesen Check</Text>
+        <Text style={styles.profileCopy}>
+          Das Gesundheitsprofil ergänzt die allgemeine Sicherheitsbasis um anwendbare KBV-nahe Kontrollen.
+        </Text>
+        <View style={styles.profileOptions}>
+          {([
+            { value: "general" as const, label: "Allgemeine Praxis" },
+            { value: "health" as const, label: "Gesundheitswesen" }
+          ]).map((option) => {
+            const selected = assessmentProfile === option.value;
+            return (
+              <Pressable
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                key={option.value}
+                onPress={() => setAssessmentProfile(option.value)}
+                style={[styles.profileOption, selected ? styles.profileOptionSelected : null]}
+                testID={`check-profile-${option.value}`}
+              >
+                <Text style={[styles.profileOptionText, selected ? styles.profileOptionTextSelected : null]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </GlassCard>
       <View style={styles.cards}>
         <GlassCard delay={60}>
           <Text style={styles.cardTitle}>1. Schnellfragebogen</Text>
@@ -61,6 +92,46 @@ const styles = StyleSheet.create({
   cards: {
     gap: 14,
     marginVertical: 24
+  },
+  profileCard: {
+    marginTop: 20
+  },
+  profileTitle: {
+    color: colors.ink,
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  profileCopy: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6
+  },
+  profileOptions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14
+  },
+  profileOption: {
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12
+  },
+  profileOptionSelected: {
+    backgroundColor: colors.glassStrong,
+    borderColor: colors.electric
+  },
+  profileOptionText: {
+    color: colors.muted,
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  profileOptionTextSelected: {
+    color: colors.ink
   },
   cardTitle: {
     color: colors.ink,

@@ -254,7 +254,7 @@ describe("calculateScore – Integration der Matrix (produktiv erreichbare Zust�
 
   it("vollständig erfüllt: jede Regel met/applicable/open, kein not_met", () => {
     const report = calculateScore(FULL_MET);
-    for (const rule of report.rule_results) {
+    for (const rule of report.rule_results.filter((result) => result.status !== "not_applicable")) {
       expect(rule.applicability).toBe("applicable");
       expect(rule.disposition).toBe("open");
       expect(rule.status).not.toBe("not_met");

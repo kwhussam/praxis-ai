@@ -21,6 +21,7 @@ export default function ReportsScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const answers = useCheckStore((state) => state.answers);
   const score = useCheckStore((state) => state.currentScore);
+  const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
   const practice = useSessionStore((state) => state.practice);
   const storedReport = useReportStore((state) => state.latest);
   const demoSampleReport = AppConfig.isDemoMode && practice?.id.startsWith("demo-") ? SAMPLE_STORED_REPORT : null;
@@ -49,6 +50,7 @@ export default function ReportsScreen() {
       practiceId: practice.id,
       practiceName: practice?.name,
       domain: practice?.domain,
+      assessmentProfile,
       questionnaire: answers,
       wlan: getLatestWlanScanResult(),
       // TODO(external-check): runExternalCheck hier einbinden, sobald das Feature-Flag aktiv ist und

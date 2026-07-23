@@ -1,4 +1,4 @@
-import type { CheckData } from "@/lib/security/scoring";
+import type { AssessmentProfile, CheckData } from "@/lib/security/scoring";
 
 export type QuestionnaireAnswerKey =
   | "mfa"
@@ -68,7 +68,9 @@ export type QuestionnaireAnswerKey =
   | "ipv6FirewallRulesCovered"
   | "ipv6DnsRulesCovered"
   | "staffTraining"
-  | "dmarc";
+  | "dmarc"
+  | "hasMedicalLargeDevices"
+  | "medicalLargeDevicesSegmented";
 
 export type QuestionnaireAnswerValue = boolean | null;
 export type QuestionnaireAnswers = Record<QuestionnaireAnswerKey, QuestionnaireAnswerValue>;
@@ -80,6 +82,7 @@ export type QuestionnaireQuestion = {
 
 export type QuestionnaireSection = {
   title: string;
+  profile_scope?: AssessmentProfile[];
   questions: QuestionnaireQuestion[];
 };
 
@@ -151,7 +154,9 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   ipv6FirewallRulesCovered: null,
   ipv6DnsRulesCovered: null,
   staffTraining: null,
-  dmarc: null
+  dmarc: null,
+  hasMedicalLargeDevices: null,
+  medicalLargeDevicesSegmented: null
 };
 
 export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
@@ -272,6 +277,14 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    title: "Medizinische Großgeräte",
+    profile_scope: ["health"],
+    questions: [
+      { key: "hasMedicalLargeDevices", label: "Werden medizinische Großgeräte wie CT, MRT, PET oder Linearbeschleuniger eingesetzt?" },
+      { key: "medicalLargeDevicesSegmented", label: "Sind diese Großgeräte in einem abgegrenzten Netzwerksegment und nur über notwendige Verbindungen erreichbar?" }
+    ]
+  },
+  {
     title: "Weitere Basisfragen",
     questions: [
       { key: "staffTraining", label: "Gab es in den letzten 12 Monaten Awareness-Schulung?" },
@@ -357,7 +370,12 @@ export function questionnaireAnswersToCheckData(answers: Partial<Record<string, 
     updates_current: allAnswered(answers, patchKeys) ? hasPatchEvidence : undefined,
     staff_training: allAnswered(answers, trainingKeys) ? answers.staffTraining === true && answers.privacyTrainingDocumented === true : undefined,
     privacy_documents_current: allAnswered(answers, privacyKeys) ? hasPrivacyEvidence : undefined,
-    responsibilities_defined: allAnswered(answers, responsibilityKeys) ? answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true : undefined
+    responsibilities_defined: allAnswered(answers, responsibilityKeys) ? answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true : undefined,
+    has_medical_large_devices: answers.hasMedicalLargeDevices ?? undefined,
+    medical_large_devices_segmented:
+      answers.hasMedicalLargeDevices === true
+        ? answers.medicalLargeDevicesSegmented ?? undefined
+        : undefined
   };
 }
 

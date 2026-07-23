@@ -99,6 +99,7 @@ export default function QuestionnaireScreen() {
   const setAnswer = useCheckStore((state) => state.setAnswer);
   const replaceAnswers = useCheckStore((state) => state.replaceAnswers);
   const recalculate = useCheckStore((state) => state.recalculate);
+  const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
   const practice = useSessionStore((state) => state.practice);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -175,7 +176,9 @@ export default function QuestionnaireScreen() {
         gelesen.
       </Text>
       <View style={styles.list}>
-        {QUESTIONNAIRE_SECTIONS.map((section) => (
+        {QUESTIONNAIRE_SECTIONS.filter(
+          (section) => !section.profile_scope || section.profile_scope.includes(assessmentProfile)
+        ).map((section) => (
           <GlassCard key={section.title}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.questions}>

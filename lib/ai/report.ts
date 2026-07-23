@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import type { ExternalCheckResult } from "@/lib/security/external";
 import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import type { WlanScanResult } from "@/lib/security/wlan";
+import type { AssessmentProfile } from "@/lib/security/scoring";
 
 export type OverallRisk = "critical" | "high" | "medium" | "low";
 export type AmpelColor = "rot" | "gelb" | "grün";
@@ -15,6 +16,7 @@ export type CheckData = {
   checkId?: string;
   practiceName?: string;
   domain?: string;
+  assessmentProfile?: AssessmentProfile;
   questionnaire: Record<string, QuestionnaireAnswerValue>;
   wlan?: WlanScanResult | null;
   external?: ExternalCheckResult | null;

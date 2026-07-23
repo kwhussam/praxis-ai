@@ -12,6 +12,7 @@ function reportSourceToCheckData(source: ReportSource): SecurityCheckData {
 
   return {
     ...questionnaireAnswersToCheckData(source.questionnaire ?? {}),
+    assessment_profile: source.assessmentProfile,
     encryption: source.wlan?.securityProtocol,
     external:
       source.external?.checks?.email_security !== undefined

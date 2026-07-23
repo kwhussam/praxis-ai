@@ -20,7 +20,8 @@ const moduleLabels: Record<string, string> = {
   PRIVACY_DOCUMENTATION: "DSGVO-Doku",
   SECURITY_RESPONSIBILITIES: "Verantwortung",
   ACTIVE_FINDINGS: "Aktive Warnungen",
-  NETWORK_SECURITY_PROBES: "Netzwerk"
+  NETWORK_SECURITY_PROBES: "Netzwerk",
+  HEALTH_MEDICAL_DEVICE_SEGMENTATION: "Medizinische Großgeräte"
 };
 
 const sourceColors: Record<EvidenceSource, string> = {
@@ -62,13 +63,23 @@ export function EvidenceCoveragePanel({ report }: EvidenceCoveragePanelProps) {
             <View key={rule.rule_id} style={styles.row}>
               <View style={styles.module}>
                 <Text style={styles.moduleName}>{moduleLabels[rule.rule_id] ?? rule.rule_id}</Text>
-                <Text style={styles.moduleMeta}>{rule.points_earned}/{rule.points_max} Punkte</Text>
+                <Text style={styles.moduleMeta}>
+                  {rule.status === "not_applicable"
+                    ? "Für dieses Profil nicht anwendbar"
+                    : `${rule.points_earned}/${rule.points_max} Punkte`}
+                </Text>
               </View>
               <View style={styles.coverage}>
-                <Text style={[styles.source, { color: sourceColors[rule.evidence_coverage.source] }]}>
-                  {rule.evidence_coverage.label}
-                </Text>
-                <Text style={styles.coverageScore}>{rule.evidence_coverage.score}/100</Text>
+                {rule.status === "not_applicable" ? (
+                  <Text style={[styles.source, { color: colors.muted }]}>Nicht anwendbar</Text>
+                ) : (
+                  <>
+                    <Text style={[styles.source, { color: sourceColors[rule.evidence_coverage.source] }]}>
+                      {rule.evidence_coverage.label}
+                    </Text>
+                    <Text style={styles.coverageScore}>{rule.evidence_coverage.score}/100</Text>
+                  </>
+                )}
               </View>
             </View>
           ))}

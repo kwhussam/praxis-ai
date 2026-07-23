@@ -1,10 +1,9 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
-// W3-Audit-Hinweis (Codex): Sobald W4 erstmals produktiv `not_applicable` emittiert und dadurch
-// Scores ändert, MUSS diese Version erhöht werden – sonst sind alte und neue Scoresemantik unter
-// derselben Version nicht reproduzierbar unterscheidbar.
-export const SCORING_VERSION = "2.0.0";
+// W4 führt profilabhängige Applicability ein. Dadurch kann dieselbe Evidenz je
+// Profil einen anderen Nenner ergeben; die Version muss deshalb von W3 abweichen.
+export const SCORING_VERSION = "2.1.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
@@ -12,6 +11,8 @@ export type SecurityCategory = "access_control" | "backup" | "email_security" | 
 export type EvidenceSource = "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
 export type EvidenceKind = "technical_evidence" | "derived_signal" | "claim" | "missing";
 export type ReviewStatus = "ok" | "review_required";
+export type AssessmentProfile = "general" | "health";
+export type CategoryApplicability = "applicable" | "not_applicable";
 export type ScoringRuleId =
   | "MFA_ENABLED"
   | "BACKUP_TESTED"
@@ -22,7 +23,8 @@ export type ScoringRuleId =
   | "PRIVACY_DOCUMENTATION"
   | "SECURITY_RESPONSIBILITIES"
   | "ACTIVE_FINDINGS"
-  | "NETWORK_SECURITY_PROBES";
+  | "NETWORK_SECURITY_PROBES"
+  | "HEALTH_MEDICAL_DEVICE_SEGMENTATION";
 
 // W3: additives Control-Result-Vokabular (siehe docs/CONTROL_RESULT_MODEL.md §2/§4).
 // Diese Typen erweitern das Modell, ersetzen aber nichts Bestehendes.
@@ -48,6 +50,7 @@ export type SecurityFinding = {
 
 export type ScoreInput = {
   questionnaire: Record<string, QuestionnaireAnswerValue>;
+  assessmentProfile?: AssessmentProfile;
   encryption?: CheckData["encryption"];
   externalFindings?: SecurityFinding[];
   wlanFindings?: SecurityFinding[];
@@ -55,6 +58,7 @@ export type ScoreInput = {
 };
 
 export type CheckData = {
+  assessment_profile?: AssessmentProfile;
   mfa_enabled?: boolean;
   backup_tested?: boolean;
   backup_frequency?: "none" | "weekly" | "daily";
@@ -63,6 +67,8 @@ export type CheckData = {
   staff_training?: boolean;
   privacy_documents_current?: boolean;
   responsibilities_defined?: boolean;
+  has_medical_large_devices?: boolean;
+  medical_large_devices_segmented?: boolean;
   encryption?: "WEP" | "WPA" | "WPA2" | "WPA3" | "OPEN" | "UNKNOWN";
   external?: {
     email_security?: {
@@ -122,10 +128,12 @@ export interface ScoringRule {
   category: SecurityCategory;
   weight: number;
   max_points: number;
+  profile_scope?: AssessmentProfile[];
   evaluate: (data: CheckData) => RuleEvaluation;
 }
 
 export type ScoreReport = {
+  assessment_profile?: AssessmentProfile;
   score: number;
   scoring_version: string;
   calculated_at: string;
@@ -134,6 +142,7 @@ export type ScoreReport = {
   evidence_confidence: number;
   rule_results: RuleEvaluation[];
   scores_by_category: Record<SecurityCategory, number>;
+  category_applicability?: Record<SecurityCategory, CategoryApplicability>;
   evidence_coverage_score: number;
   category_minimums: Partial<Record<SecurityCategory, number>>;
   review_status: ReviewStatus;
@@ -439,11 +448,57 @@ export const SCORING_RULES: ScoringRule[] = [
         recommendation: "Telnet/RDP deaktivieren, Router-HTTP auf HTTPS umstellen, SMB absichern und UPnP nur bei zwingendem Bedarf erlauben."
       });
     }
+  },
+  {
+    id: "HEALTH_MEDICAL_DEVICE_SEGMENTATION",
+    category: "network",
+    weight: 10,
+    max_points: 10,
+    profile_scope: ["health"],
+    evaluate: (data) => {
+      const applicability: Applicability =
+        data.has_medical_large_devices === undefined
+          ? "conditional"
+          : data.has_medical_large_devices
+            ? "applicable"
+            : "not_applicable";
+      const applicabilityReason =
+        applicability === "conditional"
+          ? "Es ist noch zu klären, ob medizinische Großgeräte eingesetzt werden."
+          : applicability === "not_applicable"
+            ? "Die Praxis hat bestätigt, dass keine medizinischen Großgeräte eingesetzt werden."
+            : undefined;
+
+      return buildResult({
+        data,
+        ruleId: "HEALTH_MEDICAL_DEVICE_SEGMENTATION",
+        category: "network",
+        earned: data.medical_large_devices_segmented ? 10 : 0,
+        max: 10,
+        passed: data.medical_large_devices_segmented === true,
+        finding:
+          data.medical_large_devices_segmented === true
+            ? "Medizinische Großgeräte sind vom übrigen Praxisnetz getrennt."
+            : "Die Netztrennung medizinischer Großgeräte ist nicht nachgewiesen.",
+        evidence: `questionnaire.has_medical_large_devices=${String(data.has_medical_large_devices)}; questionnaire.medical_large_devices_segmented=${String(data.medical_large_devices_segmented)}`,
+        evidenceCoverage:
+          applicability !== "applicable" || data.medical_large_devices_segmented === undefined
+            ? coverage("not_checked", "Anwendbarkeit oder Netzsegmentierung medizinischer Großgeräte ist nicht vollständig geklärt.")
+            : coverage("self_reported", "Die Netzsegmentierung medizinischer Großgeräte wurde per Fragebogen erfasst."),
+        recommendation: "Medizinische Großgeräte in einem abgegrenzten Netzwerksegment betreiben und nur notwendige Verbindungen erlauben.",
+        applicability,
+        applicabilityReason,
+        controlIds: ["KBV-ITS-ANLAGE4-6"]
+      });
+    }
   }
 ];
 
 export function calculateScore(data: CheckData): ScoreReport {
-  const ruleResults = SCORING_RULES.map((rule) => rule.evaluate(data));
+  const assessmentProfile = data.assessment_profile ?? "general";
+  const ruleResults = SCORING_RULES.map((rule) =>
+    applyProfileApplicability(rule, rule.evaluate(data), assessmentProfile)
+  );
   const aggregate = aggregateRuleResults(ruleResults);
   const reviewReasons = detectReviewReasons(data, ruleResults);
   const reviewStatus = deriveReportReviewStatus(reviewReasons, ruleResults);
@@ -457,6 +512,7 @@ export function calculateScore(data: CheckData): ScoreReport {
   });
 
   return {
+    assessment_profile: assessmentProfile,
     score: aggregate.score,
     scoring_version: SCORING_VERSION,
     calculated_at: new Date().toISOString(),
@@ -465,6 +521,7 @@ export function calculateScore(data: CheckData): ScoreReport {
     evidence_confidence: aggregate.evidence_coverage_score,
     rule_results: ruleResults,
     scores_by_category: aggregate.scores_by_category,
+    category_applicability: aggregate.category_applicability,
     evidence_coverage_score: aggregate.evidence_coverage_score,
     category_minimums: CATEGORY_MINIMUM_SCORES,
     review_status: reviewStatus,
@@ -482,6 +539,7 @@ export function aggregateRuleResults(results: RuleEvaluation[]): {
   max_points: number;
   score: number;
   scores_by_category: Record<SecurityCategory, number>;
+  category_applicability: Record<SecurityCategory, CategoryApplicability>;
   evidence_coverage_score: number;
 } {
   const counted = results.filter(isCountedInScore);
@@ -492,7 +550,37 @@ export function aggregateRuleResults(results: RuleEvaluation[]): {
     max_points: maxPoints,
     score: maxPoints === 0 ? 0 : Math.round((totalPoints / maxPoints) * 100),
     scores_by_category: groupByCategory(results),
+    category_applicability: groupCategoryApplicability(results),
     evidence_coverage_score: groupEvidenceCoverage(results)
+  };
+}
+
+// W4: Profilfremde Kontrollen werden nach ihrer fachlichen Evaluation zentral
+// neutralisiert. Einzelne Regeln müssen diese Logik nicht duplizieren.
+export function applyProfileApplicability(
+  rule: ScoringRule,
+  result: RuleEvaluation,
+  profile: AssessmentProfile
+): RuleEvaluation {
+  const profileScope = rule.profile_scope ?? ["general", "health"];
+  if (profileScope.includes(profile)) return result;
+
+  const applicabilityReason = `Kontrolle gilt nicht für das Profil "${profile}".`;
+  return {
+    ...result,
+    points_earned: 0,
+    points_before_evidence_cap: 0,
+    passed: false,
+    status: "not_applicable",
+    applicability: "not_applicable",
+    applicability_reason: applicabilityReason,
+    finding: applicabilityReason,
+    evidence: `profile=${profile}`,
+    evidence_weight_cap_applied: false,
+    review_status: "ok",
+    review_reasons: [],
+    recommendation: undefined,
+    management_recommendation: undefined
   };
 }
 
@@ -515,6 +603,7 @@ export function calculateShieldScore(input: ScoreInput) {
 function scoreInputToCheckData(input: ScoreInput): CheckData {
   return {
     ...questionnaireAnswersToCheckData(input.questionnaire),
+    assessment_profile: input.assessmentProfile,
     encryption: input.encryption,
     externalFindings: input.externalFindings,
     wlanFindings: input.wlanFindings,
@@ -533,6 +622,24 @@ function groupByCategory(results: RuleEvaluation[]): Record<SecurityCategory, nu
       return [category, max === 0 ? 0 : Math.round((earned / max) * 100)];
     })
   ) as Record<SecurityCategory, number>;
+}
+
+function groupCategoryApplicability(
+  results: RuleEvaluation[]
+): Record<SecurityCategory, CategoryApplicability> {
+  const categories: SecurityCategory[] = ["access_control", "backup", "email_security", "network", "dsgvo", "updates"];
+
+  return Object.fromEntries(
+    categories.map((category) => {
+      const categoryResults = results.filter((result) => result.category === category);
+      return [
+        category,
+        categoryResults.length > 0 && categoryResults.every((result) => !isCountedInScore(result))
+          ? "not_applicable"
+          : "applicable"
+      ];
+    })
+  ) as Record<SecurityCategory, CategoryApplicability>;
 }
 
 function groupEvidenceCoverage(results: RuleEvaluation[]) {

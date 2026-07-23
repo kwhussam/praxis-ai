@@ -12,10 +12,13 @@ declare const jest: {
 
 var mockRunExternalCheck = jest.fn();
 var mockPushedRoutes: unknown[] = [];
+var mockSelectedProfiles: unknown[] = [];
 
 jest.mock("react-native", () => {
   const React = require("react");
   return {
+    Pressable: ({ children, ...props }: { children?: React.ReactNode }) =>
+      React.createElement("Pressable", props, children),
     StyleSheet: { create: (styles: unknown) => styles },
     Text: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("Text", props, children),
     View: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("View", props, children)
@@ -55,6 +58,14 @@ jest.mock("@/lib/config/environment", () => ({
   }
 }));
 
+jest.mock("@/lib/store/check", () => ({
+  useCheckStore: (selector: (state: unknown) => unknown) =>
+    selector({
+      assessmentProfile: "general",
+      setAssessmentProfile: (profile: unknown) => mockSelectedProfiles.push(profile)
+    })
+}));
+
 jest.mock("@/lib/security/external", () => ({
   runExternalCheck: (...args: unknown[]) => mockRunExternalCheck(...args)
 }));
@@ -64,12 +75,21 @@ import CheckStartScreen from "../index";
 describe("CheckStartScreen", () => {
   it("startet bei deaktiviertem Flag keinen externen Check", () => {
     mockPushedRoutes = [];
+    mockSelectedProfiles = [];
     const tree = renderer.create(<CheckStartScreen />);
     const text = allText(tree.root);
 
     expect(text).toContain("3. Externer Check");
     expect(text).toContain("IN VORBEREITUNG");
     expect(text).not.toContain("bekannte Datenleck-Hinweise");
+    expect(text).toContain("Allgemeine Praxis");
+    expect(text).toContain("Gesundheitswesen");
+
+    const healthProfile = tree.root.findByProps<{ testID: string; onPress: () => void }>({
+      testID: "check-profile-health"
+    });
+    act(() => healthProfile.props.onPress());
+    expect(mockSelectedProfiles).toEqual(["health"]);
 
     const startButton = tree.root.findByProps<{ label: string; onPress: () => void }>({ label: "Check starten" });
     act(() => startButton.props.onPress());

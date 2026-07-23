@@ -20,7 +20,8 @@ const moduleLabels: Record<string, string> = {
   PRIVACY_DOCUMENTATION: "DSGVO-Dokumentation",
   SECURITY_RESPONSIBILITIES: "Verantwortlichkeiten",
   ACTIVE_FINDINGS: "Aktive Warnungen",
-  NETWORK_SECURITY_PROBES: "Netzwerkprüfungen"
+  NETWORK_SECURITY_PROBES: "Netzwerkprüfungen",
+  HEALTH_MEDICAL_DEVICE_SEGMENTATION: "Medizinische Großgeräte"
 };
 
 const sourceColors: Record<EvidenceSource, string> = {
@@ -76,7 +77,9 @@ function FindingItem({ finding }: { finding: RuleEvaluation }) {
         <View style={styles.findingTitleWrap}>
           <Text style={styles.findingTitle}>{moduleLabels[finding.rule_id] ?? finding.rule_id}</Text>
           <Text style={styles.points}>
-            {finding.points_earned}/{finding.points_max} Punkte · {finding.passed ? "Bestanden" : "Offen"}
+            {finding.status === "not_applicable"
+              ? "Für dieses Profil nicht anwendbar"
+              : `${finding.points_earned}/${finding.points_max} Punkte · ${finding.passed ? "Bestanden" : "Offen"}`}
           </Text>
         </View>
         <View style={[styles.sourceBadge, { borderColor: sourceColor, backgroundColor: `${sourceColor}1A` }]}>
