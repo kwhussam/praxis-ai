@@ -303,6 +303,7 @@ export function questionnaireAnswersToCheckData(answers: Partial<Record<string, 
     "privacyReviewEvidence"
   ];
   const responsibilityKeys: QuestionnaireAnswerKey[] = ["securityOwnerAssigned", "responsibilityDocumented"];
+  const trainingKeys: QuestionnaireAnswerKey[] = ["staffTraining", "privacyTrainingDocumented"];
   const hasMfaEvidence =
     answers.mfa === true &&
     answers.mfaEvidence === true &&
@@ -339,17 +340,30 @@ export function questionnaireAnswersToCheckData(answers: Partial<Record<string, 
     answers.privacyReviewEvidence === true;
 
   return {
-    mfa_enabled: hasKnownAnswer(answers, mfaKeys) ? hasMfaEvidence : undefined,
-    backup_tested: hasKnownAnswer(answers, restoreKeys) ? hasRestoreEvidence : undefined,
+    // Aggregat-Booleans werden nur ausgewertet, wenn die GESAMTE Fragengruppe
+    // beantwortet ist. Teilweise oder gar nicht beantwortete Gruppen ergeben
+    // `undefined` (= not_checked), niemals `false`. Andernfalls würde eine
+    // unbekannte/teilweise Angabe fälschlich als selbst berichteter Fehlschlag
+    // gewertet — der bestätigte P0-Scoring-Defekt (siehe TEAM_DISCUSSION D-002,
+    // Entscheidung E-007/E-009, Arbeitspaket W1).
+    mfa_enabled: allAnswered(answers, mfaKeys) ? hasMfaEvidence : undefined,
+    backup_tested: allAnswered(answers, restoreKeys) ? hasRestoreEvidence : undefined,
+    // Ausnahme: `backup_frequency` hängt an der Leitfrage `backups`. Ein klares
+    // "Nein" (backups === false) ist eine vollständige Selbstauskunft ("keine
+    // täglichen Backups") und darf NICHT zu not_checked verwässert werden;
+    // zusätzliche Nachweise stufen lediglich von "weekly" auf "daily" hoch.
     backup_frequency: answers.backups == null ? undefined : hasDailyBackupEvidence ? "daily" : answers.backups ? "weekly" : "none",
     dmarc_exists: answers.dmarc ?? undefined,
-    updates_current: hasKnownAnswer(answers, patchKeys) ? hasPatchEvidence : undefined,
-    staff_training: hasKnownAnswer(answers, ["staffTraining", "privacyTrainingDocumented"]) ? answers.staffTraining === true && answers.privacyTrainingDocumented === true : undefined,
-    privacy_documents_current: hasKnownAnswer(answers, privacyKeys) ? hasPrivacyEvidence : undefined,
-    responsibilities_defined: hasKnownAnswer(answers, responsibilityKeys) ? answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true : undefined
+    updates_current: allAnswered(answers, patchKeys) ? hasPatchEvidence : undefined,
+    staff_training: allAnswered(answers, trainingKeys) ? answers.staffTraining === true && answers.privacyTrainingDocumented === true : undefined,
+    privacy_documents_current: allAnswered(answers, privacyKeys) ? hasPrivacyEvidence : undefined,
+    responsibilities_defined: allAnswered(answers, responsibilityKeys) ? answers.securityOwnerAssigned === true && answers.responsibilityDocumented === true : undefined
   };
 }
 
-function hasKnownAnswer(answers: Partial<Record<string, QuestionnaireAnswerValue>>, keys: QuestionnaireAnswerKey[]) {
-  return keys.some((key) => answers[key] !== undefined && answers[key] !== null);
+// Eine Gruppe gilt nur dann als bewertbar, wenn JEDE Frage der Gruppe eine
+// belastbare Ja/Nein-Angabe hat. Fehlt eine Antwort (null/undefined), bleibt die
+// Gruppe unbekannt.
+function allAnswered(answers: Partial<Record<string, QuestionnaireAnswerValue>>, keys: QuestionnaireAnswerKey[]) {
+  return keys.every((key) => answers[key] !== undefined && answers[key] !== null);
 }

@@ -202,7 +202,11 @@ describe("SecurityScoring", () => {
     expect(checkData.responsibilities_defined).toBe(true);
   });
 
-  it("wertet Status ohne Nachweis nicht als vollständig nachgewiesen", () => {
+  it("behandelt nur teilweise beantwortete Gruppen als unbekannt, nicht als Selbstauskunft-Nein", () => {
+    // Nur die jeweilige Leitfrage ist beantwortet, die restlichen Fragen der
+    // Gruppe sind offen (null). Das darf NICHT zu einem selbst berichteten
+    // Fehlschlag (false) führen, sondern muss `undefined` (not_checked) ergeben.
+    // Regressionsschutz für den P0-Defekt (W1, TEAM_DISCUSSION D-002/E-009).
     const checkData = questionnaireAnswersToCheckData({
       mfa: true,
       backups: true,
@@ -212,12 +216,47 @@ describe("SecurityScoring", () => {
       securityOwnerAssigned: true
     });
 
-    expect(checkData.mfa_enabled).toBe(false);
+    expect(checkData.mfa_enabled).toBe(undefined);
+    expect(checkData.backup_tested).toBe(undefined);
+    expect(checkData.updates_current).toBe(undefined);
+    expect(checkData.privacy_documents_current).toBe(undefined);
+    expect(checkData.responsibilities_defined).toBe(undefined);
+    // Ausnahme: `backup_frequency` hängt an der Leitfrage `backups`; eine
+    // Selbstauskunft "ja, Backups" ohne vollständige Nachweise bleibt "weekly".
     expect(checkData.backup_frequency).toBe("weekly");
-    expect(checkData.backup_tested).toBe(false);
-    expect(checkData.updates_current).toBe(false);
-    expect(checkData.privacy_documents_current).toBe(false);
+  });
+
+  it("wertet eine vollständig beantwortete Gruppe mit Nein als not_met (false), nicht als unbekannt", () => {
+    const checkData = questionnaireAnswersToCheckData({
+      // MFA-Gruppe vollständig beantwortet, aber Fernwartung ohne MFA → false.
+      mfa: true,
+      mfaEvidence: true,
+      mfaEmail: true,
+      mfaAdminAccounts: true,
+      mfaRemoteMaintenance: false,
+      // Verantwortlichkeiten vollständig beantwortet, eine Angabe negativ.
+      securityOwnerAssigned: true,
+      responsibilityDocumented: false,
+      // Backups klar verneint → vollständige Selbstauskunft "keine Backups".
+      backups: false
+    });
+
+    expect(checkData.mfa_enabled).toBe(false);
     expect(checkData.responsibilities_defined).toBe(false);
+    expect(checkData.backup_frequency).toBe("none");
+  });
+
+  it("lässt eine teilweise beantwortete Gruppe auch bei gemischten Ja/Nein-Angaben unbekannt", () => {
+    // Innerhalb der MFA-Gruppe sind einige Fragen beantwortet (auch mit Nein),
+    // aber nicht alle. Solange die Gruppe unvollständig ist, bleibt sie unknown.
+    const checkData = questionnaireAnswersToCheckData({
+      mfa: true,
+      mfaEvidence: false,
+      mfaEmail: true
+      // mfaAdminAccounts, mfaRemoteMaintenance offen → Gruppe unvollständig
+    });
+
+    expect(checkData.mfa_enabled).toBe(undefined);
   });
 
   it("behandelt Weiß-ich-nicht-Antworten als unbekannt statt als Nein", () => {
