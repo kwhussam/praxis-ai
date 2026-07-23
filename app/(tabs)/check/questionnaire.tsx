@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -8,7 +8,13 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
-import { QUESTIONNAIRE_SECTIONS, type QuestionnaireAnswerValue, type QuestionnaireQuestion } from "@/lib/security/questionnaire";
+import {
+  questionnaireSectionsForProfile,
+  questionnaireSectionStatus,
+  type QuestionnaireAnswerValue,
+  type QuestionnaireQuestion,
+  type QuestionnaireSectionStatus
+} from "@/lib/security/questionnaire";
 import { useCheckStore } from "@/lib/store/check";
 import {
   deleteQuestionnaireDraft,
@@ -96,14 +102,27 @@ const TERM_EXPLANATIONS: Array<{ terms: string[]; explanation: string }> = [
 
 export default function QuestionnaireScreen() {
   const answers = useCheckStore((state) => state.answers);
+  const answeredKeys = useCheckStore((state) => state.answeredKeys);
   const setAnswer = useCheckStore((state) => state.setAnswer);
   const replaceAnswers = useCheckStore((state) => state.replaceAnswers);
   const recalculate = useCheckStore((state) => state.recalculate);
   const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
+  const setAssessmentProfile = useCheckStore((state) => state.setAssessmentProfile);
   const practice = useSessionStore((state) => state.practice);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
+  const [currentSectionId, setCurrentSectionId] = useState<string>();
+  const [showSummary, setShowSummary] = useState(false);
+  const sections = useMemo(
+    () => questionnaireSectionsForProfile(assessmentProfile),
+    [assessmentProfile]
+  );
+  const currentIndex = Math.max(
+    0,
+    sections.findIndex((section) => section.id === currentSectionId)
+  );
+  const currentSection = sections[currentIndex];
 
   useEffect(() => {
     let active = true;
@@ -113,7 +132,11 @@ export default function QuestionnaireScreen() {
     };
     void loadQuestionnaireDraft(practice.id)
       .then((draft) => {
-        if (active && draft) replaceAnswers(draft.answers);
+        if (active && draft) {
+          setAssessmentProfile(draft.assessmentProfile);
+          replaceAnswers(draft.answers, draft.answeredKeys);
+          setCurrentSectionId(draft.sectionId);
+        }
       })
       .finally(() => {
         if (active) setDraftReady(true);
@@ -121,17 +144,31 @@ export default function QuestionnaireScreen() {
     return () => {
       active = false;
     };
-  }, [practice?.id, replaceAnswers]);
+  }, [practice?.id, replaceAnswers, setAssessmentProfile]);
+
+  useEffect(() => {
+    if (sections.length === 0) return;
+    if (!currentSectionId || !sections.some((section) => section.id === currentSectionId)) {
+      setCurrentSectionId(sections[0].id);
+      setShowSummary(false);
+    }
+  }, [currentSectionId, sections]);
 
   useEffect(() => {
     if (!draftReady || !practice?.id) return;
     const timeout = setTimeout(() => {
-      void saveQuestionnaireDraft(practice.id, answers).then((saved) => {
+      void saveQuestionnaireDraft(
+        practice.id,
+        answers,
+        currentSectionId,
+        answeredKeys,
+        assessmentProfile
+      ).then((saved) => {
         if (!saved) console.warn("questionnaire_draft_secure_store_unavailable");
       });
     }, 300);
     return () => clearTimeout(timeout);
-  }, [answers, draftReady, practice?.id]);
+  }, [answers, answeredKeys, assessmentProfile, currentSectionId, draftReady, practice?.id]);
 
   useEffect(() => {
     recalculate();
@@ -169,54 +206,119 @@ export default function QuestionnaireScreen() {
     }
   }
 
+  function showPreviousSection() {
+    if (showSummary) {
+      setShowSummary(false);
+      setCurrentSectionId(sections[sections.length - 1]?.id);
+      return;
+    }
+    if (currentIndex > 0) setCurrentSectionId(sections[currentIndex - 1].id);
+  }
+
+  function showNextSection() {
+    if (currentIndex < sections.length - 1) {
+      setCurrentSectionId(sections[currentIndex + 1].id);
+      return;
+    }
+    setShowSummary(true);
+  }
+
+  const incompleteCount = sections.filter(
+    (section) => questionnaireSectionStatus(section, answeredKeys) !== "complete"
+  ).length;
+
   return (
     <Screen>
-      <Text style={styles.title}>5-Minuten-Fragebogen</Text>
+      <Text style={styles.title}>Sicherheitsfragebogen</Text>
       <Text style={styles.copy}>
         Kurze Fragen zu Schutzmaßnahmen und Nachweisen. Es werden keine Patientendaten, keine Dateien und keine Inhalte
         gelesen.
       </Text>
-      <View style={styles.list}>
-        {QUESTIONNAIRE_SECTIONS.filter(
-          (section) => !section.profile_scope || section.profile_scope.includes(assessmentProfile)
-        ).map((section) => (
-          <GlassCard key={section.title}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            <View style={styles.questions}>
-              {section.questions.map((question) => (
-                <View key={question.key} style={styles.questionBlock}>
-                  <Text style={styles.question}>{question.label}</Text>
-                  <InfoHint question={question} />
-                  <View
-                    accessibilityLabel={question.label}
-                    accessibilityRole="radiogroup"
-                    style={styles.toggle}
-                  >
-                    {ANSWER_OPTIONS.map(({ value, label }) => {
-                      const active = answers[question.key] === value;
-                      return (
-                        <Pressable
-                          accessibilityLabel={label}
-                          accessibilityRole="radio"
-                          accessibilityState={{ checked: active }}
-                          key={String(value)}
-                          onPress={() => setAnswer(question.key, value)}
-                          style={[styles.option, active ? styles.optionActive : null]}
-                          testID={`questionnaire-answer-${question.key}-${
-                            value === true ? "yes" : value === false ? "no" : "unknown"
-                          }`}
-                        >
-                          <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>{label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ))}
-            </View>
-          </GlassCard>
-        ))}
+      <View style={styles.progressHeader}>
+        <Text style={styles.progressText}>
+          {showSummary ? "Übersicht" : `${currentIndex + 1} von ${sections.length} · ${currentSection?.title ?? ""}`}
+        </Text>
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${showSummary ? 100 : ((currentIndex + 1) / Math.max(1, sections.length)) * 100}%` }
+            ]}
+          />
+        </View>
       </View>
+      {showSummary ? (
+        <GlassCard style={styles.wizardCard}>
+          <Text style={styles.sectionTitle}>Abschlussübersicht</Text>
+          <Text style={styles.summaryCopy}>
+            Prüfen Sie die Gruppen vor dem Absenden. „Weiß ich nicht“ ist eine gültige Antwort und bleibt in der
+            Bewertung als unbekannte Evidenz sichtbar.
+          </Text>
+          {incompleteCount > 0 ? (
+            <View style={styles.coverageWarning} testID="questionnaire-coverage-warning">
+              <Text style={styles.coverageWarningText}>
+                {incompleteCount} {incompleteCount === 1 ? "Gruppe ist" : "Gruppen sind"} noch nicht vollständig
+                bearbeitet. Das reduziert die Aussagekraft, wird aber nicht als bestätigte Schwachstelle gewertet.
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.summaryList}>
+            {sections.map((section) => {
+              const status = questionnaireSectionStatus(section, answeredKeys);
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  key={section.id}
+                  onPress={() => {
+                    setCurrentSectionId(section.id);
+                    setShowSummary(false);
+                  }}
+                  style={styles.summaryRow}
+                  testID={`questionnaire-summary-${section.id}`}
+                >
+                  <View style={styles.summaryText}>
+                    <Text style={styles.summaryTitle}>{section.title}</Text>
+                    <Text style={styles.summaryStatus}>{sectionStatusLabel(status)}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.electric} />
+                </Pressable>
+              );
+            })}
+          </View>
+        </GlassCard>
+      ) : currentSection ? (
+        <GlassCard style={styles.wizardCard}>
+          <Text style={styles.sectionTitle}>{currentSection.title}</Text>
+          <View style={styles.questions}>
+            {currentSection.questions.map((question) => (
+              <View key={question.key} style={styles.questionBlock}>
+                <Text style={styles.question}>{question.label}</Text>
+                <InfoHint question={question} />
+                <View accessibilityLabel={question.label} accessibilityRole="radiogroup" style={styles.toggle}>
+                  {ANSWER_OPTIONS.map(({ value, label }) => {
+                    const active = answeredKeys.includes(question.key) && answers[question.key] === value;
+                    return (
+                      <Pressable
+                        accessibilityLabel={label}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: active }}
+                        key={String(value)}
+                        onPress={() => setAnswer(question.key, value)}
+                        style={[styles.option, active ? styles.optionActive : null]}
+                        testID={`questionnaire-answer-${question.key}-${
+                          value === true ? "yes" : value === false ? "no" : "unknown"
+                        }`}
+                      >
+                        <Text style={[styles.optionText, active ? styles.optionTextActive : null]}>{label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </View>
+        </GlassCard>
+      ) : null}
       {saveError ? (
         <View
           accessibilityLiveRegion="assertive"
@@ -227,15 +329,39 @@ export default function QuestionnaireScreen() {
           <Text style={styles.errorText}>{saveError}</Text>
         </View>
       ) : null}
-      <AnimatedButton
-        disabled={saving}
-        icon={saving ? <ActivityIndicator color={colors.ink} /> : undefined}
-        label={saving ? "Fragebogen wird gespeichert..." : "Weiter zum WLAN-Scan"}
-        onPress={handleCompleteQuestionnaire}
-        testID="questionnaire-submit"
-      />
+      <View style={styles.navigation}>
+        {(showSummary || currentIndex > 0) ? (
+          <AnimatedButton
+            label="Zurück"
+            onPress={showPreviousSection}
+            variant="ghost"
+            testID="questionnaire-back"
+          />
+        ) : null}
+        {showSummary ? (
+          <AnimatedButton
+            disabled={saving}
+            icon={saving ? <ActivityIndicator color={colors.ink} /> : undefined}
+            label={saving ? "Fragebogen wird gespeichert..." : "Weiter zum WLAN-Scan"}
+            onPress={handleCompleteQuestionnaire}
+            testID="questionnaire-submit"
+          />
+        ) : (
+          <AnimatedButton
+            label={currentIndex === sections.length - 1 ? "Zur Übersicht" : "Weiter"}
+            onPress={showNextSection}
+            testID="questionnaire-next"
+          />
+        )}
+      </View>
     </Screen>
   );
+}
+
+function sectionStatusLabel(status: QuestionnaireSectionStatus) {
+  if (status === "complete") return "Vollständig";
+  if (status === "partial") return "Teilweise";
+  return "Nicht begonnen";
 }
 
 function InfoHint({ question }: { question: QuestionnaireQuestion }) {
@@ -276,9 +402,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 8
   },
-  list: {
-    gap: 14,
-    marginVertical: 22
+  progressHeader: {
+    marginTop: 20
+  },
+  progressText: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  progressTrack: {
+    backgroundColor: colors.glassStrong,
+    borderRadius: 999,
+    height: 7,
+    marginTop: 10,
+    overflow: "hidden"
+  },
+  progressFill: {
+    backgroundColor: colors.electric,
+    borderRadius: 999,
+    height: 7
+  },
+  wizardCard: {
+    marginVertical: 20
   },
   sectionTitle: {
     color: colors.electric,
@@ -332,6 +477,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18
+  },
+  navigation: {
+    gap: 10,
+    marginBottom: 20
+  },
+  summaryCopy: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 12
+  },
+  coverageWarning: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.34)",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 14,
+    padding: 12
+  },
+  coverageWarningText: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 19
+  },
+  summaryList: {
+    marginTop: 14
+  },
+  summaryRow: {
+    alignItems: "center",
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 58,
+    paddingVertical: 10
+  },
+  summaryText: {
+    flex: 1
+  },
+  summaryTitle: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  summaryStatus: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4
   },
   toggle: {
     flexDirection: "row",

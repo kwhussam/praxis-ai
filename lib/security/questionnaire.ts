@@ -81,10 +81,13 @@ export type QuestionnaireQuestion = {
 };
 
 export type QuestionnaireSection = {
+  id: string;
   title: string;
   profile_scope?: AssessmentProfile[];
   questions: QuestionnaireQuestion[];
 };
+
+export type QuestionnaireSectionStatus = "unknown" | "partial" | "complete";
 
 export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
   mfa: null,
@@ -161,6 +164,7 @@ export const DEFAULT_QUESTIONNAIRE_ANSWERS: QuestionnaireAnswers = {
 
 export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
+    id: "access_mfa",
     title: "MFA",
     questions: [
       { key: "mfa", label: "Ist MFA für alle kritischen Konten aktiviert?" },
@@ -174,6 +178,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "backup_restore",
     title: "Backups und Restore-Tests",
     questions: [
       { key: "backups", label: "Werden Praxisdaten täglich automatisiert gesichert?" },
@@ -188,6 +193,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "patch_management",
     title: "Patchmanagement",
     questions: [
       { key: "patching", label: "Gibt es einen festen Patchprozess für Server, Clients und Praxissoftware?" },
@@ -200,6 +206,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "privacy_documentation",
     title: "DSGVO-Dokumentation",
     questions: [
       { key: "privacyDocuments", label: "Sind AVV, TOMs, Verarbeitungsverzeichnis und Löschkonzept vorhanden?" },
@@ -213,6 +220,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "security_responsibilities",
     title: "Verantwortlichkeiten",
     questions: [
       { key: "securityOwnerAssigned", label: "Ist eine verantwortliche Person für IT-Sicherheit und Datenschutz benannt?" },
@@ -220,6 +228,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "network_structure",
     title: "Netzstruktur",
     questions: [
       { key: "networkStructureDocumented", label: "Ist dokumentiert, welche VLANs oder getrennten WLANs für Praxisgeräte, Gäste, Server, Drucker, IoT und Medizingeräte existieren?" },
@@ -233,6 +242,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "dns_operations",
     title: "DNS-Betrieb",
     questions: [
       { key: "dnsResolverDocumented", label: "Ist dokumentiert, welcher DNS-Resolver verwendet wird, z. B. Router, Dienstleister, Schutz-DNS oder interner Server?" },
@@ -243,6 +253,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "dhcp_security",
     title: "DHCP-Sicherheit",
     questions: [
       { key: "dhcpAuthorizedServerDocumented", label: "Ist der autorisierte DHCP-Server dokumentiert?" },
@@ -252,6 +263,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "router_evidence",
     title: "Router-Nachweis",
     questions: [
       { key: "routerManufacturerDocumented", label: "Ist der Router-Hersteller dokumentiert?" },
@@ -269,6 +281,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "ipv6_security",
     title: "IPv6-Sicherheit",
     questions: [
       { key: "ipv6UsedIntentionally", label: "Wird IPv6 bewusst genutzt und ist der Zweck dokumentiert?" },
@@ -277,6 +290,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "health_medical_devices",
     title: "Medizinische Großgeräte",
     profile_scope: ["health"],
     questions: [
@@ -285,6 +299,7 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   },
   {
+    id: "general_basics",
     title: "Weitere Basisfragen",
     questions: [
       { key: "staffTraining", label: "Gab es in den letzten 12 Monaten Awareness-Schulung?" },
@@ -292,6 +307,23 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
     ]
   }
 ];
+
+export function questionnaireSectionsForProfile(profile: AssessmentProfile): QuestionnaireSection[] {
+  return QUESTIONNAIRE_SECTIONS.filter(
+    (section) => !section.profile_scope || section.profile_scope.includes(profile)
+  );
+}
+
+export function questionnaireSectionStatus(
+  section: QuestionnaireSection,
+  answeredKeys: readonly QuestionnaireAnswerKey[]
+): QuestionnaireSectionStatus {
+  const answered = new Set(answeredKeys);
+  const count = section.questions.filter((question) => answered.has(question.key)).length;
+  if (count === 0) return "unknown";
+  if (count === section.questions.length) return "complete";
+  return "partial";
+}
 
 export function questionnaireAnswersToCheckData(answers: Partial<Record<string, QuestionnaireAnswerValue>>): CheckData {
   const mfaKeys: QuestionnaireAnswerKey[] = ["mfa", "mfaEvidence", "mfaEmail", "mfaAdminAccounts", "mfaRemoteMaintenance"];

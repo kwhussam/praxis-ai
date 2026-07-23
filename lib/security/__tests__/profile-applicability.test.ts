@@ -5,7 +5,9 @@ import {
 } from "@/lib/security/scoring";
 import {
   QUESTIONNAIRE_SECTIONS,
-  questionnaireAnswersToCheckData
+  questionnaireAnswersToCheckData,
+  questionnaireSectionsForProfile,
+  questionnaireSectionStatus
 } from "@/lib/security/questionnaire";
 
 const VERIFIED_GENERAL: CheckData = {
@@ -121,5 +123,27 @@ describe("W4 profile applicability", () => {
     expect(healthSection?.profile_scope).toEqual(["health"]);
     expect(data.has_medical_large_devices).toBe(true);
     expect(data.medical_large_devices_segmented).toBe(false);
+  });
+
+  it("verwendet stabile Section-IDs und filtert das Health-Modul profilabhängig", () => {
+    const general = questionnaireSectionsForProfile("general");
+    const health = questionnaireSectionsForProfile("health");
+
+    expect(new Set(QUESTIONNAIRE_SECTIONS.map((section) => section.id)).size).toBe(
+      QUESTIONNAIRE_SECTIONS.length
+    );
+    expect(general.some((section) => section.id === "health_medical_devices")).toBe(false);
+    expect(health.some((section) => section.id === "health_medical_devices")).toBe(true);
+  });
+
+  it("trennt nicht begonnen, teilweise und vollständig – auch bei bewusstem Weiß-ich-nicht", () => {
+    const section = QUESTIONNAIRE_SECTIONS.find((candidate) => candidate.id === "security_responsibilities");
+    if (!section) throw new Error("missing_test_section");
+
+    expect(questionnaireSectionStatus(section, [])).toBe("unknown");
+    expect(questionnaireSectionStatus(section, ["securityOwnerAssigned"])).toBe("partial");
+    expect(
+      questionnaireSectionStatus(section, ["securityOwnerAssigned", "responsibilityDocumented"])
+    ).toBe("complete");
   });
 });

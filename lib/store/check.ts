@@ -20,9 +20,10 @@ type CheckState = {
   currentScoreReport: ScoreReport;
   assessmentProfile: AssessmentProfile;
   answers: QuestionnaireAnswers;
+  answeredKeys: QuestionnaireAnswerKey[];
   setAssessmentProfile: (profile: AssessmentProfile) => void;
   setAnswer: (key: QuestionnaireAnswerKey, value: QuestionnaireAnswerValue) => void;
-  replaceAnswers: (answers: QuestionnaireAnswers) => void;
+  replaceAnswers: (answers: QuestionnaireAnswers, answeredKeys?: QuestionnaireAnswerKey[]) => void;
   recalculate: (input?: Partial<ScoreInput>) => void;
 };
 
@@ -33,15 +34,17 @@ export const useCheckStore = create<CheckState>((set, get) => ({
   currentScoreReport: initialScoreReport,
   assessmentProfile: "general",
   answers: DEFAULT_QUESTIONNAIRE_ANSWERS,
+  answeredKeys: [],
   setAssessmentProfile: (assessmentProfile) => {
     const report = calculateScore(checkDataFromAnswers(get().answers, { assessmentProfile }));
     set({ assessmentProfile, currentScore: report.score, currentScoreReport: report });
   },
   setAnswer: (key, value) =>
     set((state) => ({
-      answers: { ...state.answers, [key]: value }
+      answers: { ...state.answers, [key]: value },
+      answeredKeys: state.answeredKeys.includes(key) ? state.answeredKeys : [...state.answeredKeys, key]
     })),
-  replaceAnswers: (answers) => set({ answers }),
+  replaceAnswers: (answers, answeredKeys = []) => set({ answers, answeredKeys }),
   recalculate: (input) => {
     const answers = get().answers;
     const assessmentProfile = input?.assessmentProfile ?? get().assessmentProfile;

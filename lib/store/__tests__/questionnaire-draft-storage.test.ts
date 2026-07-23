@@ -1,5 +1,6 @@
 const mockValues = new Map<string, string>();
 let mockAvailable = true;
+let mockManifestDelays: number[] = [];
 
 declare const jest: {
   mock(moduleName: string, factory: () => unknown): void;
@@ -11,6 +12,10 @@ jest.mock("expo-secure-store", () => ({
   isAvailableAsync: async () => mockAvailable,
   getItemAsync: async (key: string) => mockValues.get(key) ?? null,
   setItemAsync: async (key: string, value: string) => {
+    if (key.endsWith(".manifest")) {
+      const delay = mockManifestDelays.shift() ?? 0;
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    }
     mockValues.set(key, value);
   },
   deleteItemAsync: async (key: string) => {
@@ -29,15 +34,18 @@ describe("questionnaireDraftStorage", () => {
   beforeEach(() => {
     mockValues.clear();
     mockAvailable = true;
+    mockManifestDelays = [];
   });
 
   it("round-trips a practice-bound draft through SecureStore chunks", async () => {
     const answers = { ...DEFAULT_QUESTIONNAIRE_ANSWERS, mfaEmail: true };
-    expect(await saveQuestionnaireDraft("practice-a", answers, "access_mfa")).toBe(true);
+    expect(await saveQuestionnaireDraft("practice-a", answers, "access_mfa", ["mfaEmail"], "health")).toBe(true);
 
     const draft = await loadQuestionnaireDraft("practice-a");
     expect(draft?.answers.mfaEmail).toBe(true);
     expect(draft?.sectionId).toBe("access_mfa");
+    expect(draft?.answeredKeys).toEqual(["mfaEmail"]);
+    expect(draft?.assessmentProfile).toBe("health");
     expect(Array.from(mockValues.keys()).some((key) => key.includes("manifest"))).toBe(true);
   });
 
@@ -54,5 +62,68 @@ describe("questionnaireDraftStorage", () => {
 
     expect(await loadQuestionnaireDraft("practice-a")).toBeNull();
     expect((await loadQuestionnaireDraft("practice-b"))?.answers.mfa).toBe(false);
+  });
+
+  it("serialisiert schnelle Autosaves, sodass der neueste Entwurf gewinnt", async () => {
+    mockManifestDelays = [25, 0];
+    const first = saveQuestionnaireDraft(
+      "practice-a",
+      { ...DEFAULT_QUESTIONNAIRE_ANSWERS, mfa: true },
+      "access_mfa",
+      ["mfa"]
+    );
+    const second = saveQuestionnaireDraft(
+      "practice-a",
+      { ...DEFAULT_QUESTIONNAIRE_ANSWERS, mfa: false },
+      "backup_restore",
+      ["mfa"]
+    );
+
+    await Promise.all([first, second]);
+    const draft = await loadQuestionnaireDraft("practice-a");
+    expect(draft?.answers.mfa).toBe(false);
+    expect(draft?.sectionId).toBe("backup_restore");
+  });
+
+  it("bereinigt registrierte verwaiste Generationen beim nächsten Speichern", async () => {
+    await saveQuestionnaireDraft("practice-a", DEFAULT_QUESTIONNAIRE_ANSWERS);
+    const registryKey = Array.from(mockValues.keys()).find((key) => key.endsWith(".generations"));
+    expect(registryKey).toBeDefined();
+    const registry = JSON.parse(mockValues.get(registryKey ?? "") ?? "{}") as {
+      version: number;
+      generations: Array<{ version: number; generation: string; chunkCount: number }>;
+    };
+    registry.generations.push({ version: 1, generation: "orphan-generation", chunkCount: 2 });
+    mockValues.set(registryKey ?? "", JSON.stringify(registry));
+    const keyPrefix = (registryKey ?? "").replace(/\.generations$/, "");
+    mockValues.set(`${keyPrefix}.orphan-generation.0`, "orphan-a");
+    mockValues.set(`${keyPrefix}.orphan-generation.1`, "orphan-b");
+
+    await saveQuestionnaireDraft("practice-a", DEFAULT_QUESTIONNAIRE_ANSWERS);
+
+    expect(mockValues.has(`${keyPrefix}.orphan-generation.0`)).toBe(false);
+    expect(mockValues.has(`${keyPrefix}.orphan-generation.1`)).toBe(false);
+    const cleaned = JSON.parse(mockValues.get(registryKey ?? "") ?? "{}") as {
+      generations: Array<{ generation: string }>;
+    };
+    expect(cleaned.generations).toHaveLength(1);
+    expect(cleaned.generations[0].generation).not.toBe("orphan-generation");
+  });
+
+  it("reiht das Löschen hinter ein laufendes Autosave ein und hinterlässt keinen Draft", async () => {
+    mockManifestDelays = [20];
+    const saving = saveQuestionnaireDraft(
+      "practice-a",
+      { ...DEFAULT_QUESTIONNAIRE_ANSWERS, mfa: true },
+      "access_mfa",
+      ["mfa"]
+    );
+    const deleting = deleteQuestionnaireDraft("practice-a");
+
+    await Promise.all([saving, deleting]);
+    expect(await loadQuestionnaireDraft("practice-a")).toBeNull();
+    expect(
+      Array.from(mockValues.keys()).filter((key) => key.includes("practice-a"))
+    ).toEqual([]);
   });
 });
