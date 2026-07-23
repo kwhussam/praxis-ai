@@ -65,7 +65,7 @@ export function assessNetworkSegmentation(input: {
 
   const penalty = Math.min(100, riskyCoLocation.length * 24 + Math.max(0, Array.from(new Set(sharedSegments)).length - 1) * 8);
   const score = Math.max(0, 100 - penalty);
-  const status = score >= 80 ? "good" : score >= 55 ? "partial" : riskyCoLocation.length > 0 ? "weak" : "unknown";
+  const status = score >= 75 ? "good" : score >= 50 ? "partial" : riskyCoLocation.length > 0 ? "weak" : "unknown";
   const observedSegments = multiSegment?.observedSegments ?? [];
 
   return {

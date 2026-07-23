@@ -69,8 +69,6 @@ export function AmpelKomponente({ status, size = 16, style }: AmpelKomponentePro
   );
 }
 
-export const TrafficLight = AmpelKomponente;
-
 function normalizeStatus(status: AmpelStatus) {
   if (status === "critical") return "red";
   if (status === "warning" || status === "info") return "yellow";

@@ -60,3 +60,16 @@ export const riskColors: Record<RiskTone, string> = {
   safe: colors.safe,
   info: colors.electric
 };
+
+// MAINT-01: single canonical score→tone mapping. Uses the documented Ampel bands
+// (green >= 75, yellow >= 50, red < 50 — see CLAUDE.md/docs/SCORING.md and decideAmpel),
+// replacing the ~7 copies that had drifted to 80/55 and disagreed with the dashboard Ampel.
+export function toneForScore(score: number): Exclude<RiskTone, "info"> {
+  if (score >= 75) return "safe";
+  if (score >= 50) return "warning";
+  return "critical";
+}
+
+export function colorForScore(score: number): string {
+  return riskColors[toneForScore(score)];
+}

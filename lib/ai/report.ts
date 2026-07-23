@@ -1,7 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import type { ExternalCheckResult } from "@/lib/security/external";
 import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
-import type { SecurityFinding } from "@/lib/security/scoring";
 import type { WlanScanResult } from "@/lib/security/wlan";
 
 export type OverallRisk = "critical" | "high" | "medium" | "low";
@@ -75,20 +74,6 @@ export type Report = {
   monthly_monitoring_recommendation: boolean;
 };
 
-export type AiReportRequest = {
-  practiceName: string;
-  domain?: string;
-  score: number;
-  findings: SecurityFinding[];
-};
-
-export type AiReportContent = {
-  executiveSummary: string;
-  riskNarrative: string;
-  immediateActions: string[];
-  complianceNotes: string[];
-};
-
 export type GeneratedReport = {
   reportId: string;
   report: Report;
@@ -127,38 +112,6 @@ async function requestGeneratedReport(data: CheckData) {
     body: data,
     timeoutMs: 60_000
   });
-}
-
-export async function generateAiReport(input: AiReportRequest): Promise<AiReportContent> {
-  const report = await generateReport({
-    practiceName: input.practiceName,
-    domain: input.domain,
-    score: input.score,
-    questionnaire: {},
-    external: {
-      domain: input.domain ?? "",
-      timestamp: new Date().toISOString(),
-      checks: null,
-      overall_score: input.score,
-      critical_count: input.findings.filter((finding) => finding.severity === "critical").length,
-      warning_count: input.findings.filter((finding) => finding.severity === "warning").length,
-      findings: input.findings,
-      checkedAt: new Date().toISOString(),
-      scoreImpact: input.score - 100,
-      providers: {},
-      provider_statuses: {}
-    } as unknown as ExternalCheckResult
-  });
-
-  return {
-    executiveSummary: report.executive_summary,
-    riskNarrative: report.top_risks.map((risk) => risk.plain_language).join("\n"),
-    immediateActions: report.top_risks.map((risk) => risk.action),
-    complianceNotes: [
-      report.dsgvo_compliance.liability_risk,
-      ...report.dsgvo_compliance.missing_documents
-    ].filter(Boolean)
-  };
 }
 
 export function validateReport(value: unknown): Report {

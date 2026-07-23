@@ -1,4 +1,3 @@
-import { riskColors, type RiskTone } from "@/constants/colors";
 
 export const MONITORING_SCHEDULE = {
   ssl_check: "0 */6 * * *",
@@ -91,12 +90,6 @@ export const categoryLabels: Record<string, string> = {
   leaks: "Datenleck-Hinweise"
 };
 
-export function toneForScore(score: number): RiskTone {
-  if (score >= 80) return "safe";
-  if (score >= 55) return "warning";
-  return "critical";
-}
-
-export function colorForScore(score: number) {
-  return riskColors[toneForScore(score)];
-}
+// MAINT-01: re-export the canonical score→tone/color helpers so monitoring consumers keep the
+// same import surface while sharing one 75/50 implementation.
+export { toneForScore, colorForScore } from "@/constants/colors";

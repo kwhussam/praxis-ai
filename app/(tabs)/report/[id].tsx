@@ -9,7 +9,7 @@ import { ReportFindings } from "@/components/modules/ReportFindings";
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
-import { colors } from "@/constants/colors";
+import { colors, colorForScore } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
 import { loadReportById, ReportNotFoundError, type LoadedReport } from "@/lib/ai/report-service";
@@ -200,12 +200,6 @@ function categoryRadar(report: Report) {
 }
 
 function categoryBars(report: Report) {
-  const colorForScore = (score: number) => {
-    if (score >= 80) return colors.safe;
-    if (score >= 55) return colors.warning;
-    return colors.critical;
-  };
-
   return categoryRadar(report).map((item) => ({
     ...item,
     color: colorForScore(item.value)

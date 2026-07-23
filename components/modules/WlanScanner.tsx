@@ -11,7 +11,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { ScanAnimation, type ScanNode } from "@/components/ui/ScanAnimation";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { VulnerabilityCard } from "@/components/ui/VulnerabilityCard";
-import { colors, riskColors, type RiskTone } from "@/constants/colors";
+import { colors, riskColors, toneForScore, type RiskTone } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
 import { useInventoryStore } from "@/lib/store/inventory";
 import { useCheckStore } from "@/lib/store/check";
@@ -265,7 +265,7 @@ export function WlanScanner() {
         <View style={styles.iconBubble}>
           <Ionicons name="radio" size={23} color={colors.electric} />
         </View>
-        <AmpelBadge tone={result ? scoreTone(result.riskScore) : "info"} label={stateLabel(state, result)} pulsing={state === "scanning"} />
+        <AmpelBadge tone={result ? toneForScore(result.riskScore) : "info"} label={stateLabel(state, result)} pulsing={state === "scanning"} />
       </View>
 
       <Text style={styles.title}>WLAN-Sicherheitscheck</Text>
@@ -762,11 +762,6 @@ function statusLabel(finding: NetworkSecurityFinding) {
   return "Unbekannt";
 }
 
-function scoreTone(score: number): RiskTone {
-  if (score >= 80) return "safe";
-  if (score >= 55) return "warning";
-  return "critical";
-}
 
 function vulnerabilityCategory(vulnerability: Vulnerability) {
   const text = `${vulnerability.title} ${vulnerability.description}`.toLowerCase();

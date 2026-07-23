@@ -1,5 +1,5 @@
 import type { Report } from "@/lib/ai/report";
-import type { RiskTone } from "@/constants/colors";
+import { toneForScore, type RiskTone } from "@/constants/colors";
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 import type { RuleEvaluation, ScoreReport } from "@/lib/security/scoring";
 
@@ -77,7 +77,7 @@ const FINDING_ACTIONS: Record<string, string> = {
 };
 
 export function guidanceFromScore(score: number, actions?: string[]): PracticeGuidance {
-  const tone = toneFromScore(score);
+  const tone = toneForScore(score);
   const defaults = SCORE_ACTIONS[tone];
 
   return {
@@ -144,11 +144,6 @@ export function guidanceFromMonitoring(score: number, criticalCount: number): Pr
   return guidanceFromScore(score, actions);
 }
 
-function toneFromScore(score: number): Exclude<RiskTone, "info"> {
-  if (score >= 80) return "safe";
-  if (score >= 55) return "warning";
-  return "critical";
-}
 
 function firstThree(primary: string[] | undefined, fallback = FALLBACK_ACTIONS) {
   const unique = [...new Set([...(primary ?? []), ...fallback].map((item) => item.trim()).filter(Boolean))];

@@ -1439,8 +1439,9 @@ function scanMethodology(context: ScanContext) {
 }
 
 function riskLevelFromScore(score: number) {
-  if (score >= 80) return "low";
-  if (score >= 55) return "medium";
+  // MAINT-01: aligned to the canonical Ampel bands (75/50) used by toneForScore.
+  if (score >= 75) return "low";
+  if (score >= 50) return "medium";
   return "high";
 }
 

@@ -1,10 +1,7 @@
 import type {
   DeviceClassification,
-  DhcpConsistencyAssessment,
-  DnsResolverAssessment,
   GatewaySecurityProbeResult,
   HttpAdminProbeResult,
-  Ipv6NetworkInfo,
   Ipv6SecurityAnswers,
   NetworkSecurityFinding,
   ProbeConfidence,
@@ -67,15 +64,6 @@ export function calculateSecurityFindingScore(findings: NetworkSecurityFinding[]
     .reduce((sum, finding) => sum + Math.abs(finding.scoreImpact), 0);
 
   return penalty > 0 ? Math.max(0, Math.min(100, 100 - penalty)) : null;
-}
-
-export function networkContextFindings(input: {
-  ipv6: Ipv6NetworkInfo;
-  dnsResolvers: DnsResolverAssessment[];
-  dhcpConsistency: DhcpConsistencyAssessment;
-  ipv6Answers?: Ipv6SecurityAnswers;
-}) {
-  return [assessIpv6(input.ipv6, input.ipv6Answers), ...assessDnsResolvers(input.dnsResolvers), dhcpConsistencyFinding(input.dhcpConsistency)];
 }
 
 function wifiEncryptionFinding(details: WifiSecurityDetails): NetworkSecurityFinding {
