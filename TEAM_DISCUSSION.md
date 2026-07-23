@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1516,7 +1516,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
-| F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | Nächster Zug | Freigegeben |
+| F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Claude | Mit W4a | Freigegeben |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
