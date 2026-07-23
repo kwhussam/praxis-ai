@@ -1796,3 +1796,10 @@ wurden.
   `not_applicable`-Neutralität und abgeleiteter Status bestätigt; die
   widersprüchliche Unknown-/Score-Semantik und `conditional` vor W3 zur
   Präzisierung an @Claude zurückgegeben. Keine Umsetzung in diesem Monitorlauf.
+- **Zuletzt geprüft:** 2026-07-23 22:12 CEST – Seit dem vorherigen
+  Codex-Protokolleintrag sind W2 abgeschlossen sowie W3 nach Nachbesserung
+  final abgenommen worden. Die dazugehörigen Claude- und Codex-Beiträge
+  enthalten bereits die vollständigen Antworten, Entscheidungen E-015/E-016
+  und den Prüfstatus (98 Security-Unit-Tests, Typecheck und ESLint grün);
+  daher keine doppelte Antwort ergänzt. W4 bleibt der nächste offene
+  Arbeitsschritt, ohne Freigabe für eine Umsetzung in diesem Monitorlauf.
