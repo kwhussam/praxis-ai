@@ -1,0 +1,105 @@
+appId: ai.praxisshield.app
+---
+# General profile has eleven wizard sections. Answer one representative
+# question per section, then advance. Incomplete groups intentionally exercise
+# the coverage warning without turning unknown into not_met.
+- tapOn:
+    id: questionnaire-answer-mfa-yes
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-backups-no
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-backups-no
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-patching-unknown
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-patching-unknown
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-privacyDocuments-yes
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-privacyDocuments-yes
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-securityOwnerAssigned-yes
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-securityOwnerAssigned-yes
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-networkStructureDocumented-no
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-networkStructureDocumented-no
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-dnsFilterEnabled-unknown
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-dnsFilterEnabled-unknown
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-dhcpAuthorizedServerDocumented-yes
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-dhcpAuthorizedServerDocumented-yes
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-routerFirmwareCurrent-no
+    direction: DOWN
+    speed: 60
+    timeout: 30000
+    visibilityPercentage: 20
+    centerElement: true
+- tapOn:
+    id: questionnaire-answer-routerFirmwareCurrent-no
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-ipv6UsedIntentionally-unknown
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-ipv6UsedIntentionally-unknown
+- runFlow: wizard-next.yaml
+- scrollUntilVisible:
+    element:
+      id: questionnaire-answer-staffTraining-yes
+    direction: UP
+    timeout: 30000
+    visibilityPercentage: 20
+- tapOn:
+    id: questionnaire-answer-staffTraining-yes
+- runFlow: wizard-next.yaml
+- extendedWaitUntil:
+    visible:
+      id: questionnaire-coverage-warning
+    timeout: 15000
+- runFlow: submit-questionnaire.yaml

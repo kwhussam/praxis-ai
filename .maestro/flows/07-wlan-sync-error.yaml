@@ -10,7 +10,7 @@ tags:
       EMAIL: owner-b@example.test
       PASSWORD: "${TEST_PASSWORD}"
 - runFlow: ../subflows/open-questionnaire.yaml
-- runFlow: ../subflows/submit-questionnaire.yaml
+- runFlow: ../subflows/complete-questionnaire.yaml
 - runFlow: ../subflows/prepare-wlan-scan.yaml
 - runScript:
     file: ../scripts/set-practice-owner.js

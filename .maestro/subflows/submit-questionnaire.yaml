@@ -4,9 +4,10 @@ appId: ai.praxisshield.app
     element:
       id: questionnaire-submit
     direction: DOWN
-    speed: 90
+    speed: 60
     timeout: 120000
     visibilityPercentage: 20
+    centerElement: true
 - tapOn:
     id: questionnaire-submit
 - extendedWaitUntil:

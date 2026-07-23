@@ -10,7 +10,7 @@ tags:
       EMAIL: owner-a@example.test
       PASSWORD: "${TEST_PASSWORD}"
 - runFlow: ../subflows/open-questionnaire.yaml
-- runFlow: ../subflows/submit-questionnaire.yaml
+- runFlow: ../subflows/complete-questionnaire.yaml
 - runFlow: ../subflows/prepare-wlan-scan.yaml
 - tapOn:
     id: wlan-start

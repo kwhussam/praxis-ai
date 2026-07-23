@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -114,6 +114,8 @@ export default function QuestionnaireScreen() {
   const [draftReady, setDraftReady] = useState(false);
   const [currentSectionId, setCurrentSectionId] = useState<string>();
   const [showSummary, setShowSummary] = useState(false);
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const submittedRef = useRef(false);
   const sections = useMemo(
     () => questionnaireSectionsForProfile(assessmentProfile),
     [assessmentProfile]
@@ -156,7 +158,10 @@ export default function QuestionnaireScreen() {
 
   useEffect(() => {
     if (!draftReady || !practice?.id) return;
-    const timeout = setTimeout(() => {
+    if (submittedRef.current) return;
+    autosaveTimeoutRef.current = setTimeout(() => {
+      autosaveTimeoutRef.current = undefined;
+      if (submittedRef.current) return;
       void saveQuestionnaireDraft(
         practice.id,
         answers,
@@ -167,7 +172,10 @@ export default function QuestionnaireScreen() {
         if (!saved) console.warn("questionnaire_draft_secure_store_unavailable");
       });
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => {
+      if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = undefined;
+    };
   }, [answers, answeredKeys, assessmentProfile, currentSectionId, draftReady, practice?.id]);
 
   useEffect(() => {
@@ -185,6 +193,18 @@ export default function QuestionnaireScreen() {
 
     try {
       setSaving(true);
+      submittedRef.current = true;
+      if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = undefined;
+      // Flush the newest UI state before the request. On success, delete is
+      // queued behind this save; on failure, the complete retryable draft stays.
+      await saveQuestionnaireDraft(
+        practice.id,
+        answers,
+        currentSectionId,
+        answeredKeys,
+        assessmentProfile
+      );
       recalculate();
       await apiRequest("/api/check/questionnaire", {
         method: "POST",
@@ -197,6 +217,7 @@ export default function QuestionnaireScreen() {
       await deleteQuestionnaireDraft(practice.id);
       router.push("/(tabs)/check/wlan-scan");
     } catch (error) {
+      submittedRef.current = false;
       console.error("questionnaire_save_failed", error);
       const message = `Fragebogen konnte nicht gespeichert werden: ${errorMessage(error)}`;
       setSaveError(message);

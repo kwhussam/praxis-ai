@@ -1,0 +1,12 @@
+appId: ai.praxisshield.app
+---
+- scrollUntilVisible:
+    element:
+      id: questionnaire-next
+    direction: DOWN
+    speed: 60
+    timeout: 30000
+    visibilityPercentage: 30
+    centerElement: true
+- tapOn:
+    id: questionnaire-next
