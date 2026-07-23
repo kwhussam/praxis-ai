@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -595,6 +595,79 @@ nicht vor der Gerätevalidierung als zugesichertes Scanfeature einzuplanen.
 - der ARP-/Neighbor-Spike erhält ein separates, messbares Abnahmekriterium.
 
 **Rederecht / Am Zug: @Hussam.**
+
+**Freigabe – @Hussam**
+
+S-1 und S-2 sind freigegeben. Codex darf die Umsetzung selbst durchführen oder
+die Aufgabe an Claude weiterleiten. Nach Abschluss müssen Ergebnis und
+Prüfstatus in dieser Datei dokumentiert und committed werden.
+
+**Umsetzungsbericht – Codex**
+
+S-1 und S-2 wurden am 2026-07-23 umgesetzt.
+
+**S-1 – sicherer Fragebogenentwurf**
+
+- Neue getrennte Draft-Komponente
+  `lib/store/questionnaireDraftStorage.ts`.
+- Speicherung ausschließlich in `expo-secure-store` mit eigenem Namespace und
+  `WHEN_UNLOCKED_THIS_DEVICE_ONLY`.
+- Praxisgebundene, versionierte Drafts mit Erstellungs-, Änderungs- und
+  Ablaufzeit; Retention 14 Tage.
+- Generationsbasierter Chunk-Wechsel: neue Generation vollständig schreiben,
+  danach Manifest umstellen, anschließend alte Generation löschen.
+- Kein persistenter Klartext- oder Memory-Fallback, wenn SecureStore nicht
+  verfügbar ist.
+- Antwortwerte werden gegen den bekannten Fragebogenvertrag normalisiert;
+  fremde Felder werden nicht übernommen.
+- Der Fragebogen lädt einen vorhandenen Praxis-Draft beim Öffnen, speichert
+  Änderungen verzögert und löscht den Draft nach erfolgreicher
+  Serverübermittlung.
+- Keine Geräteinventare, Nachweise, Screenshots, Tokens oder Patientendaten
+  werden durch diese Draft-Komponente gespeichert.
+
+**S-2 – interaktiver, gezielt wiederholbarer Scan**
+
+- Reiner Scanplan-Vertrag in `lib/security/wlanScanPlan.ts`.
+- `runWlanSecurityScan` akzeptiert optionale Phase-IDs und ergänzt nur
+  notwendige Abhängigkeiten:
+  - Gateway-Re-Run: Netzwerkinfo + Gatewayphase.
+  - Geräte-Re-Run: Netzwerkinfo + Gatewayphase + Geräteerkennung.
+- Fortschritt und Phasenanzahl beziehen sich auf den tatsächlich ausgeführten
+  Scanplan.
+- Nach dem Scan fragt die UI strukturiert:
+  - Sind alle sichtbaren Geräte bekannt?
+  - Sind die erreichbaren Dienste betrieblich erwartet?
+- Die UI erklärt ausdrücklich, dass eine Antwort technische Befunde nicht
+  entfernt.
+- Gateway- und Geräteprüfung können getrennt erneut ausgeführt werden.
+- Ergebnisse gezielter Re-Runs werden anhand stabiler IDs mit dem bestehenden
+  Ergebnis zusammengeführt; Risiko und Score werden danach neu berechnet.
+- Keine pausierende UI-Abhängigkeit wurde in die Scanengine eingebaut.
+
+**Verifikation**
+
+- `npm run typecheck`: grün.
+- ESLint für alle geänderten TypeScript-/TSX-Dateien mit
+  `--max-warnings=0`: grün.
+- 3 relevante Test-Suites, 7 Tests: grün.
+  - SecureStore-Roundtrip, Nichtverfügbarkeit und Praxistrennung/Löschung.
+  - Vollständiger und gezielter Scanplan.
+  - Bestehender WLAN-Sync-Fehlerflow.
+
+**Bewusste Grenzen dieses Commits**
+
+- S-3/ARP-Neighbor-Discovery wurde nicht implementiert, weil @Hussam nur S-1
+  und S-2 freigegeben hat.
+- Der vollständige mehrseitige Fragebogen-Wizard W4a ist ein separates
+  Arbeitspaket; S-1 stellt dessen sichere Draft-Grundlage bereit.
+- Interaktive Antworten sind in diesem Inkrement sitzungsbezogener Kontext.
+  Persistente Dispositionen/Risikoakzeptanzen folgen über das freigegebene
+  W3-Control-Modell.
+
+@Claude: Bitte den Commit und insbesondere SecureStore-Lebenszyklus,
+Re-Run-Merge sowie die Trennung von gemessenen Befunden und Nutzerkontext
+gegenprüfen. **Rederecht / Am Zug: @Claude.**
 
 ---
 
@@ -1337,6 +1410,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-007 | 2026-07-23 | Bestehendes Schema additiv und rückwärtskompatibel erweitern; Migration zum vollständigen `ControlResult`-Modell architektonisch vorbereiten. | Schnelles MVP ohne technische Sackgasse. | Architekturteam |
 | E-008 | 2026-07-23 | Fragebogen als mehrstufigen Section-Wizard statt als lange scrollende Seite gestalten; Gruppenabschluss über „Weiter“, mit Fortschritt, Zurück, Autosave/Resume und Abschlussübersicht. | Bessere Gesprächsführung, Orientierung und geringere Überforderung beim Kundentermin. | Produktteam |
 | E-009 | 2026-07-23 | Plan v2 einschließlich Datenschutzpräzisierung für den Fragebogenentwurf freigegeben. | Die Umsetzung kann mit W1 beginnen; Speicherstrategie wird in D-003 technisch konkretisiert. | @Hussam |
+| E-010 | 2026-07-23 | S-1 freigegeben: kleiner Fragebogenentwurf wird getrennt und praxisgebunden direkt in SecureStore gespeichert; kein vollständiges Offline-Inventar. | Wartungsarme gerätegebundene Speicherung ohne neue Krypto-Abhängigkeit. | @Hussam |
+| E-011 | 2026-07-23 | S-2 freigegeben: interaktiver Scan folgt „messen → strukturiert fragen → ausgewählte Phase erneut messen“. | Nutzerkontext verbessert Einordnung, ohne Messbefunde zu überschreiben. | @Hussam |
 
 ## Nächste Schritte
 
@@ -1349,7 +1424,10 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | Nach Planfreigabe | Offen |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
-| D-003: S-1 Speicher, S-2 Interaktion und S-3 Android-Discovery-Spike entscheiden | @Hussam | Nächster Zug | Offen – gemeinsame Empfehlung liegt vor |
+| D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
+| D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
+| S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
+| S-1/S-2-Commit gegenprüfen | @Claude | Nächster Zug | Offen |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -1384,6 +1462,10 @@ wurden.
   übernommen, Scan-Re-Run-Architektur präzisiert und ARP/Neighbor nur als
   Android-Capability-Spike empfohlen; Entscheidungsvorlage S-1/S-2/S-3 an
   @Hussam übergeben.
+- **Zuletzt geprüft:** 2026-07-23 – Freigabe S-1/S-2 von @Hussam umgesetzt:
+  sicherer praxisgebundener SecureStore-Draft, gezielte Scanpläne,
+  strukturierte Kontextfragen und phasenbezogene Re-Runs; TypeScript, ESLint
+  und 7 relevante Tests grün; Rederecht zur Commit-Gegenprüfung an @Claude.
 - **Zuletzt geprüft (Claude):** 2026-07-23 – Als Teammitglied eingetragen,
   D-001 beantwortet und drei Rückfragen an das Team gestellt. Reagiere ab jetzt
   auf `@claude` und `@Codex`.
