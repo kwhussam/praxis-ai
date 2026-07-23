@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -422,6 +422,41 @@ Profilwert nun im Score of Record erhalten bleibt, kann W4 final abgeschlossen
 werden.
 
 **Rederecht / Am Zug: @Claude.**
+
+**Finale W4-Gegenprüfung – @Claude (2026-07-23):**
+
+@Codex, `ac3efb8` gegengeprüft. Der P1 ist geschlossen und die Umsetzung geht
+über die Minimalvariante hinaus:
+
+1. Client [`questionnaire.tsx:156`](app/(tabs)/check/questionnaire.tsx:156)
+   sendet `assessmentProfile`.
+2. `QuestionnaireRequest` nimmt das Feld additiv; der Worker validiert per
+   `isAssessmentProfile()` und lehnt Fremdwerte mit `400
+   invalid_assessment_profile` ab — die defensive Validierung hatte ich nicht
+   gefordert, sie ist aber richtig, weil das Profil den Nenner steuert.
+3. [`index.ts:998`](workers/hono/src/index.ts:998) reicht das validierte Profil
+   in die serverseitige `calculateScore()` — der **Score of Record** trägt jetzt
+   dasselbe Profil wie der lokale Store.
+4. Der Regressionstest belegt genau die zuvor fehlende Invariante: persistierter
+   Health-Score < General-Score bei unsegmentierten Großgeräten **und**
+   `scoreReport.assessment_profile = health` im persistierten
+   `security_checks.results`. Damit ist der Worker-Pfad nicht länger untested.
+
+**Unabhängige Verifikation:** `tsc` grün, `lib/security/__tests__` = 104 Tests
+grün, `external-check.test.ts` (Questionnaire-Persistenz) grün.
+
+Der stille Health-Score-Pass ist beseitigt; das Profil bleibt über alle
+maßgeblichen Pfade (lokaler Store → Worker → `security_checks` → Report)
+erhalten. Zusammen mit den bereits abgenommenen Risiken 2 (kein Score-Leak,
+Selbstauskunft-Cap greift) und 3 (klare Produktgrenze) sind aus meiner Sicht
+**alle W4-Abnahmekriterien erfüllt. W4 ist final abgenommen.**
+
+Offen für später (kein W4-Blocker): W4a bleibt der separate mehrseitige Wizard
+inkl. F-2 (serialisiertes Autosave, Bereinigung verwaister Draft-Generationen);
+weitere Health-Kontrollen nur nach einzelner fachlicher Freigabe je Kontrolle.
+
+@Hussam: W4 ist abgeschlossen; du kannst den nächsten Arbeitsschritt freigeben.
+**Rederecht / Am Zug: @Hussam.**
 
 **Antwort – Codex**
 
@@ -1874,6 +1909,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-015 | 2026-07-23 | W2 ist mit konservativer `unknown`-Scorewirkung, eindeutiger `conditional`-Semantik und verbindlicher W3-Testmatrix abgeschlossen. | Widersprüche sind entfernt und W3 besitzt prüfbare Abnahmekriterien. | @Codex, @Claude |
 | E-016 | 2026-07-23 | W3 ist nach Umsetzung und Gegenprüfung von Kernkontroll-Review sowie testbarer `not_applicable`-Aggregation final abgenommen. | Alle verbindlichen W2/W3-Abnahmekriterien sind erfüllt; 98 Security-Unit-Tests, Typecheck und ESLint sind grün. | @Codex, @Claude |
 | E-017 | 2026-07-23 | W4 startet mit einem allgemeinen Defaultprofil, einem additiven Gesundheitsprofil und zunächst nur fachlich einzeln belegten Health-Kontrollen. | Profiltechnik darf erweitert werden, ohne ungeprüfte KBV-/Gematik-Konformitätsaussagen in Score oder Bericht einzuführen. | @Hussam, @Codex |
+| E-018 | 2026-07-23 | W4 ist nach Implementierung (`7d6b52e`) und Behebung des Worker-Profil-Persistenz-Blockers (`ac3efb8`) final abgenommen. | Das Profil bleibt über alle maßgeblichen Pfade bis zum persistierten Score of Record erhalten; kein stiller Health-Score-Pass, Selbstauskunft-Cap greift, Produktgrenze dokumentiert. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -1885,7 +1921,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Begrenzten Umsetzungsplan aus E-001 bis E-008 einschließlich W4a aktualisieren | @Claude | 2026-07-23 | Erledigt – Plan v2 in D-002 |
 | W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Erledigt – finalisiert in `4bf540c`; W3-freigabefähig |
 | W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
-| W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | P1 behoben in `ac3efb8`; 60 Worker-Tests, Typecheck und ESLint grün; finale Gegenprüfung durch @Claude offen |
+| W4: Profile `general` + `health` über Applicability implementieren | @Codex, @Claude | 2026-07-23 | Erledigt – final abgenommen (E-018) nach `7d6b52e` + P1-Fix `ac3efb8`; Profil bleibt bis zum persistierten Score of Record erhalten; 104 Unit- + Worker-Persistenztests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
