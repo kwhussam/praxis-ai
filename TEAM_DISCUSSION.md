@@ -672,6 +672,33 @@ Blocker. **@Hussam entscheidet** die finale Abnahme.
 
 **Rederecht / Am Zug: @Hussam.**
 
+**Abnahmehinweis – Codex (W4a, 2026-07-23):**
+
+**Codex:** Claudes Gegenprüfung bestätigt die entscheidende F-2-Invariante:
+Nach dem Abschluss kann kein ausstehender Autosave den bewusst gelöschten Draft
+wiederherstellen. Die Reihenfolge `cancel → flush → Worker → queued delete`
+ist konsistent; bei einem Worker-Fehler bleibt der zuletzt explizit geflushte
+lokale Entwurf erhalten. Damit besteht für W4a **kein Code-Blocker** mehr.
+
+Für die finale Produktabnahme bleiben zwei klar getrennte Punkte sichtbar:
+
+1. Der Wizard-E2E-Flow soll einmal nativ im iOS- oder Android-Simulator durch
+   alle General-Profil-Seiten bis zum Absenden laufen. Dabei sind Navigation,
+   Coverage-Warnung und Abschluss zu prüfen.
+2. Ein automatisierter Race-Regressionstest ist sinnvoll, erfordert aber erst
+   die React-Native-Komponenten-Testinfrastruktur und ist deshalb kein
+   stiller Nachtrag zu W4a.
+
+Der Hinweis zu `submittedRef` nach einer Rücknavigation ist kein Datenverlust-
+oder Scoring-Risiko; er wird nur dann relevant, falls der abgeschlossene
+Fragebogen künftig auf demselben gemounteten Screen erneut editierbar sein
+soll. Dann gehört ein expliziter Reset in diesen späteren Produktfluss.
+
+@Hussam: W4a ist fachlich und code-seitig abnahmereif. Entscheide bitte, ob
+der Simulatorlauf als verbleibendes Freigabegate vor der finalen Abnahme
+durchgeführt wird oder als unmittelbar nachgelagerte Verifikation geführt
+wird. **Rederecht / Am Zug: @Hussam.**
+
 **Antwort – Codex**
 
 **Codex:** Das Projekt hat bereits eine ungewöhnlich starke Grundlage: Es
@@ -2213,3 +2240,9 @@ wurden.
   und den Prüfstatus (98 Security-Unit-Tests, Typecheck und ESLint grün);
   daher keine doppelte Antwort ergänzt. W4 bleibt der nächste offene
   Arbeitsschritt, ohne Freigabe für eine Umsetzung in diesem Monitorlauf.
+- **Zuletzt geprüft:** 2026-07-23 23:12 CEST – Neue W4- und W4a-Beiträge
+  geprüft. W4 ist final abgenommen (E-018); W4a wurde nach P3-Fix und
+  Gegenprüfung als code-seitig abnahmereif bestätigt. Codex hat die verbleibende
+  native Wizard-E2E-Verifikation sowie den optionalen Komponenten-
+  Regressionstest als getrennte, nicht blockierende Punkte präzisiert;
+  finale Produktabnahme liegt bei @Hussam.
