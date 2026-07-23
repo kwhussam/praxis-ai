@@ -1,13 +1,42 @@
 import {
+  aggregateRuleResults,
   calculateScore,
   controlApplicabilityReviewReasons,
+  coreControlReviewReasons,
   deriveControlStatus,
+  deriveReportReviewStatus,
   isCountedInScore,
   type Applicability,
   type CheckData,
+  type EvidenceCoverage,
   type EvidenceSource,
-  type RuleEvaluation
+  type RuleEvaluation,
+  type SecurityCategory
 } from "@/lib/security/scoring";
+
+// Gemeinsame Fabrik für synthetische RuleEvaluations (für Ebenen, die W3 noch nicht produktiv erreicht).
+function makeRule(over: Partial<RuleEvaluation>): RuleEvaluation {
+  return {
+    rule_id: "MFA_ENABLED",
+    category: "access_control",
+    points_earned: 0,
+    points_before_evidence_cap: 0,
+    points_max: 15,
+    passed: false,
+    finding: "",
+    evidence: "",
+    evidence_coverage: { source: "self_reported", kind: "claim", score: 45, confidence: 45, label: "", detail: "" },
+    evidence_weight_cap_applied: false,
+    review_status: "ok",
+    review_reasons: [],
+    risk_flags: [],
+    ...over
+  };
+}
+
+function cov(source: EvidenceSource, score: number): EvidenceCoverage {
+  return { source, kind: "technical_evidence", score, confidence: score, label: "", detail: "" };
+}
 
 // W3-Abnahmekriterium (docs/CONTROL_RESULT_MODEL.md §5.1): die verbindliche Testmatrix.
 // Die reinen Ableitungsfunktionen (deriveControlStatus / controlApplicabilityReviewReasons /
@@ -89,39 +118,120 @@ describe("controlApplicabilityReviewReasons – §4.2/§4.3 Pflichtgrund", () =>
 });
 
 describe("isCountedInScore – §4.2 Nenner-Ausschluss identisch", () => {
-  const base = (over: Partial<RuleEvaluation>): RuleEvaluation => ({
-    rule_id: "MFA_ENABLED",
-    category: "access_control",
-    points_earned: 0,
-    points_before_evidence_cap: 0,
-    points_max: 15,
-    passed: false,
-    finding: "",
-    evidence: "",
-    evidence_coverage: { source: "self_reported", kind: "claim", score: 45, confidence: 45, label: "", detail: "" },
-    evidence_weight_cap_applied: false,
-    review_status: "ok",
-    review_reasons: [],
-    risk_flags: [],
-    ...over
-  });
-
   it("applicable, unknown und conditional bleiben im Score", () => {
-    expect(isCountedInScore(base({ applicability: "applicable", status: "met" }))).toBe(true);
-    expect(isCountedInScore(base({ applicability: "applicable", status: "unknown" }))).toBe(true);
-    expect(isCountedInScore(base({ applicability: "conditional", status: "unknown" }))).toBe(true);
+    expect(isCountedInScore(makeRule({ applicability: "applicable", status: "met" }))).toBe(true);
+    expect(isCountedInScore(makeRule({ applicability: "applicable", status: "unknown" }))).toBe(true);
+    expect(isCountedInScore(makeRule({ applicability: "conditional", status: "unknown" }))).toBe(true);
   });
 
   it("not_applicable wird ausgeschlossen – über applicability oder status", () => {
-    expect(isCountedInScore(base({ applicability: "not_applicable", status: "not_applicable" }))).toBe(false);
-    expect(isCountedInScore(base({ applicability: "applicable", status: "not_applicable" }))).toBe(false);
+    expect(isCountedInScore(makeRule({ applicability: "not_applicable", status: "not_applicable" }))).toBe(false);
+    expect(isCountedInScore(makeRule({ applicability: "applicable", status: "not_applicable" }))).toBe(false);
   });
 
   it("alte Payloads ohne neue Felder werden weiter gezählt (Rückwärtskompatibilität)", () => {
-    const legacy = base({});
+    const legacy = makeRule({});
     delete legacy.status;
     delete legacy.applicability;
     expect(isCountedInScore(legacy)).toBe(true);
+  });
+});
+
+describe("coreControlReviewReasons – §5.1 P1: Kernkontrolle ohne verfügbare Evidenz", () => {
+  it("Kernkontrolle + unavailable ⇒ Review-Grund (Regel-Ebene)", () => {
+    expect(
+      coreControlReviewReasons({ ruleId: "MFA_ENABLED", status: "unknown", source: "unavailable" })
+    ).toHaveLength(1);
+    expect(
+      coreControlReviewReasons({ ruleId: "BACKUP_TESTED", status: "unknown", source: "unavailable" })
+    ).toHaveLength(1);
+  });
+
+  it("Kernkontrolle + not_checked ⇒ kein Review (bereits über Green-Hard-Requirement blockiert)", () => {
+    expect(
+      coreControlReviewReasons({ ruleId: "MFA_ENABLED", status: "unknown", source: "not_checked" })
+    ).toHaveLength(0);
+  });
+
+  it("Nicht-Kernkontrolle + unavailable ⇒ kein Review", () => {
+    expect(
+      coreControlReviewReasons({ ruleId: "WLAN_ENCRYPTION", status: "unknown", source: "unavailable" })
+    ).toHaveLength(0);
+  });
+
+  it("Kernkontrolle mit vorhandener Evidenz ⇒ kein Review", () => {
+    expect(coreControlReviewReasons({ ruleId: "MFA_ENABLED", status: "met", source: "measured" })).toHaveLength(0);
+  });
+});
+
+describe("deriveReportReviewStatus – §5.1 P1: Report-Ebene propagiert Regel-Review", () => {
+  it("eine Regel mit review_required ⇒ Report review_required", () => {
+    expect(deriveReportReviewStatus([], [makeRule({ review_status: "review_required" })])).toBe("review_required");
+  });
+
+  it("Evidenzwiderspruch ⇒ Report review_required", () => {
+    expect(
+      deriveReportReviewStatus(
+        [{ code: "evidence_conflict_dmarc", severity: "warning", message: "" }],
+        [makeRule({ review_status: "ok" })]
+      )
+    ).toBe("review_required");
+  });
+
+  it("alles ok ⇒ Report ok", () => {
+    expect(deriveReportReviewStatus([], [makeRule({ review_status: "ok" })])).toBe("ok");
+  });
+});
+
+describe("aggregateRuleResults – §5.1 P2: not_applicable auf allen Aggregationsebenen", () => {
+  it("entfernt dieselbe Kontrolle aus total_points, max_points, Kategorie-Max UND Coverage", () => {
+    const applicable = makeRule({
+      rule_id: "MFA_ENABLED",
+      category: "access_control",
+      points_earned: 10,
+      points_max: 15,
+      status: "met",
+      applicability: "applicable",
+      evidence_coverage: cov("measured", 100)
+    });
+    const notApplicable = makeRule({
+      rule_id: "STAFF_TRAINING",
+      category: "access_control",
+      points_earned: 7,
+      points_max: 7,
+      status: "not_applicable",
+      applicability: "not_applicable",
+      // Ein hoher Coverage-Wert hier würde die Coverage verfälschen, WENN not_applicable fälschlich zählt.
+      evidence_coverage: cov("self_reported", 45)
+    });
+
+    const withNa = aggregateRuleResults([applicable, notApplicable]);
+    const withoutNa = aggregateRuleResults([applicable]);
+
+    expect(withNa.total_points).toBe(withoutNa.total_points);
+    expect(withNa.max_points).toBe(withoutNa.max_points);
+    expect(withNa.total_points).toBe(10);
+    expect(withNa.max_points).toBe(15);
+    expect(withNa.scores_by_category.access_control).toBe(withoutNa.scores_by_category.access_control);
+    expect(withNa.evidence_coverage_score).toBe(withoutNa.evidence_coverage_score);
+    expect(withNa.evidence_coverage_score).toBe(100); // nur die anwendbare, gemessene Kontrolle zählt
+  });
+
+  it("Kategorie, in der alle Kontrollen not_applicable sind, ergibt 0 – Consumer müssen den Status prüfen, nicht als 0% lesen", () => {
+    const allNa: SecurityCategory = "dsgvo";
+    const na = makeRule({
+      rule_id: "STAFF_TRAINING",
+      category: allNa,
+      points_earned: 0,
+      points_max: 8,
+      status: "not_applicable",
+      applicability: "not_applicable"
+    });
+
+    const aggregate = aggregateRuleResults([na]);
+    expect(aggregate.scores_by_category[allNa]).toBe(0);
+    expect(aggregate.max_points).toBe(0);
+    expect(aggregate.score).toBe(0);
   });
 });
 

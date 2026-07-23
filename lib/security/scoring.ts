@@ -1,6 +1,9 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 
+// W3-Audit-Hinweis (Codex): Sobald W4 erstmals produktiv `not_applicable` emittiert und dadurch
+// Scores ändert, MUSS diese Version erhöht werden – sonst sind alte und neue Scoresemantik unter
+// derselben Version nicht reproduzierbar unterscheidbar.
 export const SCORING_VERSION = "2.0.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
@@ -189,6 +192,9 @@ const GREEN_HARD_REQUIREMENTS: Array<{
     message: "E-Mail-Schutz muss technisch geprüft sein, mindestens DMARC quarantine/reject."
   }
 ];
+
+// W3 (P1): Kernkontrollen sind die Green-Hard-Requirements. Für sie gilt eine strengere Review-Regel.
+export const CORE_CONTROL_RULE_IDS: ScoringRuleId[] = GREEN_HARD_REQUIREMENTS.map((requirement) => requirement.ruleId);
 
 export const SCORING_RULES: ScoringRule[] = [
   {
@@ -438,43 +444,68 @@ export const SCORING_RULES: ScoringRule[] = [
 
 export function calculateScore(data: CheckData): ScoreReport {
   const ruleResults = SCORING_RULES.map((rule) => rule.evaluate(data));
-  // not_applicable-Kontrollen aus Zähler und Nenner ausschließen; unknown/conditional bleiben drin (§4.2).
-  const countedResults = ruleResults.filter(isCountedInScore);
-  const totalPoints = countedResults.reduce((sum, result) => sum + result.points_earned, 0);
-  const maxPoints = countedResults.reduce((sum, result) => sum + result.points_max, 0);
-  const score = maxPoints === 0 ? 0 : Math.round((totalPoints / maxPoints) * 100);
-  const scoresByCategory = groupByCategory(ruleResults);
-  const evidenceConfidence = groupEvidenceCoverage(ruleResults);
+  const aggregate = aggregateRuleResults(ruleResults);
   const reviewReasons = detectReviewReasons(data, ruleResults);
-  const reviewStatus: ReviewStatus =
-    reviewReasons.some((reason) => reason.code.startsWith("evidence_conflict_")) ||
-    ruleResults.some((result) => result.review_status === "review_required")
-      ? "review_required"
-      : "ok";
+  const reviewStatus = deriveReportReviewStatus(reviewReasons, ruleResults);
   const ampelDecision = decideAmpel({
-    score,
-    scoresByCategory,
-    evidenceConfidence,
+    score: aggregate.score,
+    scoresByCategory: aggregate.scores_by_category,
+    evidenceConfidence: aggregate.evidence_coverage_score,
     reviewStatus,
     reviewReasons,
     ruleResults
   });
 
   return {
-    score,
+    score: aggregate.score,
     scoring_version: SCORING_VERSION,
     calculated_at: new Date().toISOString(),
     ampel: ampelDecision.ampel,
     ampel_reasons: ampelDecision.reasons,
-    evidence_confidence: evidenceConfidence,
+    evidence_confidence: aggregate.evidence_coverage_score,
     rule_results: ruleResults,
-    scores_by_category: scoresByCategory,
-    evidence_coverage_score: evidenceConfidence,
+    scores_by_category: aggregate.scores_by_category,
+    evidence_coverage_score: aggregate.evidence_coverage_score,
     category_minimums: CATEGORY_MINIMUM_SCORES,
     review_status: reviewStatus,
-    total_points: totalPoints,
-    max_points: maxPoints
+    total_points: aggregate.total_points,
+    max_points: aggregate.max_points
   };
+}
+
+// W3 (P2): eine pure, testbare Aggregation über Regel-, Kategorie- und Gesamtebene.
+// not_applicable wird über isCountedInScore identisch aus total/max/Kategorie-Max und Coverage
+// entfernt (groupByCategory/groupEvidenceCoverage filtern mit derselben Regel). unknown/conditional
+// bleiben im Nenner und senken damit den konservativen Gesamtscore (§4.2/§4.4).
+export function aggregateRuleResults(results: RuleEvaluation[]): {
+  total_points: number;
+  max_points: number;
+  score: number;
+  scores_by_category: Record<SecurityCategory, number>;
+  evidence_coverage_score: number;
+} {
+  const counted = results.filter(isCountedInScore);
+  const totalPoints = counted.reduce((sum, result) => sum + result.points_earned, 0);
+  const maxPoints = counted.reduce((sum, result) => sum + result.points_max, 0);
+  return {
+    total_points: totalPoints,
+    max_points: maxPoints,
+    score: maxPoints === 0 ? 0 : Math.round((totalPoints / maxPoints) * 100),
+    scores_by_category: groupByCategory(results),
+    evidence_coverage_score: groupEvidenceCoverage(results)
+  };
+}
+
+// W3: Report-Review = mind. ein Evidenzwiderspruch ODER mind. eine Regel mit review_required
+// (z. B. Kernkontrolle ohne verfügbare Evidenz, §5.1 P1).
+export function deriveReportReviewStatus(
+  reviewReasons: AmpelDecisionReason[],
+  ruleResults: RuleEvaluation[]
+): ReviewStatus {
+  return reviewReasons.some((reason) => reason.code.startsWith("evidence_conflict_")) ||
+    ruleResults.some((result) => result.review_status === "review_required")
+    ? "review_required"
+    : "ok";
 }
 
 export function calculateShieldScore(input: ScoreInput) {
@@ -546,6 +577,23 @@ export function controlApplicabilityReviewReasons(input: {
   return [];
 }
 
+// W3 (P1): Eine Kernkontrolle, deren Evidenz nicht verfügbar ist (Messung versucht, aber nicht
+// auslesbar), muss review_required auslösen – auf Regel- und dadurch auf Report-Ebene
+// (docs/CONTROL_RESULT_MODEL.md §5.1, Zeile „Evidenz nicht verfügbar"). `not_checked` (noch nicht
+// erhoben) ist bewusst ausgenommen: es senkt nur Coverage und wird für Kernregeln bereits durch die
+// Green-Hard-Requirements von Grün ausgeschlossen.
+export function coreControlReviewReasons(input: {
+  ruleId: ScoringRuleId;
+  status: ControlStatus;
+  source: EvidenceSource;
+}): string[] {
+  const isCore = CORE_CONTROL_RULE_IDS.includes(input.ruleId);
+  if (isCore && input.status === "unknown" && input.source === "unavailable") {
+    return [`Kernkontrolle ${input.ruleId}: Evidenz nicht verfügbar – manuelle Prüfung erforderlich.`];
+  }
+  return [];
+}
+
 // W3: not_applicable-Kontrollen werden aus Zähler UND Nenner entfernt – identisch für Score,
 // Kategorie-Maxima und Coverage (§4.2, Abnahmekriterium 2). unknown/conditional bleiben im Nenner.
 export function isCountedInScore(result: RuleEvaluation): boolean {
@@ -590,7 +638,13 @@ function buildResult(input: {
     applicability,
     applicability_reason: input.applicabilityReason
   });
-  const reviewReasons = [...capReason, ...applicabilityReasons];
+  const coreReasons = coreControlReviewReasons({
+    ruleId: input.ruleId,
+    status,
+    source: input.evidenceCoverage.source
+  });
+  const reviewReasons = [...capReason, ...applicabilityReasons, ...coreReasons];
+  const reviewRequired = applicabilityReasons.length > 0 || coreReasons.length > 0;
   const recommendation = missingEvidence || !input.passed || capApplied ? input.recommendation : undefined;
 
   return {
@@ -604,7 +658,7 @@ function buildResult(input: {
     evidence: input.evidence,
     evidence_coverage: input.evidenceCoverage,
     evidence_weight_cap_applied: capApplied,
-    review_status: applicabilityReasons.length > 0 ? "review_required" : "ok",
+    review_status: reviewRequired ? "review_required" : "ok",
     review_reasons: reviewReasons,
     risk_flags: input.riskFlags ?? [],
     recommendation,
