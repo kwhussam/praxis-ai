@@ -49,6 +49,29 @@ convention alone — only new/changed surface area adopts `/api/v1/*`.
 5. Findings are stored in `security_checks`; reports link to the check through `reports.check_id`.
 6. Monitoring writes events into `monitoring_events`; Supabase Realtime can stream them into the Monitoring tab.
 
+## Data Loading: Dashboard vs. Monitoring tab (PERF-06)
+
+The Dashboard tab and the Monitoring tab intentionally use two different initial-load paths:
+
+- **Dashboard tab** reads through the Worker's aggregated `/dashboard` endpoint (service-role
+  aggregation of six result sets in one handler). It has no realtime requirement, so a single
+  server-aggregated snapshot per load is the right shape.
+- **Monitoring tab** loads its initial data through the client-side, RLS-scoped Supabase client
+  (`lib/monitoring/service.ts` → `loadMonitoringDashboard`) instead of the Worker. This is
+  deliberate: the Monitoring tab layers a live Supabase Realtime subscription
+  (`subscribeToMonitoringRealtime`) over the same `monitoring_snapshots`/`monitoring_events`
+  tables. Loading the initial page over the same RLS-authorized client that owns the Realtime
+  channel keeps one consistent authorization model and one data shape (`DashboardData`) for both
+  the initial page and the streamed deltas. Routing the first load through the Worker would create
+  a second, divergent auth path (service role) for data that the Realtime layer then mutates
+  in place.
+
+This duplication of load paths was reviewed (PERF-06) and kept — documented here rather than
+consolidated — because collapsing onto the Worker endpoint would either lose the single-auth-model
+property or require re-implementing the Realtime overlay on top of a server-aggregated payload. If
+a shared cache/consolidation is pursued later, the Realtime overlay must remain the source of truth
+for post-load mutations.
+
 ## Security Model
 
 - No third-party API key is bundled into the app.

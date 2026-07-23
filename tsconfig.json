@@ -9,7 +9,6 @@
       ]
     },
     "types": [
-      "nativewind/types",
       "@cloudflare/workers-types"
     ]
   },
@@ -17,7 +16,6 @@
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "nativewind-env.d.ts",
     "expo-env.d.ts"
   ]
 }

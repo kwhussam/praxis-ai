@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import {
   Activity,
@@ -65,7 +66,6 @@ export default function MonitoringScreen() {
   const [dashboard, setDashboard] = useState<DashboardData>(() =>
     AppConfig.isDemoMode && practiceId.startsWith("demo-") ? buildDemoDashboard(practiceId) : buildEmptyDashboard(practiceId)
   );
-  const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [filter, setFilter] = useState<AlertFilter>("all");
@@ -74,32 +74,39 @@ export default function MonitoringScreen() {
   const [emailDraft, setEmailDraft] = useState("");
   const [leakConsentAccepted, setLeakConsentAccepted] = useState(false);
 
+  // PERF-05: the initial monitoring load runs through React Query (cache/dedup on remount +
+  // bounded retry). The Realtime subscription and manual scans still layer their deltas onto local
+  // `dashboard` state (see PERF-06 in docs/ARCHITECTURE.md), so query data is synced into that
+  // local state on arrival rather than consumed directly.
+  const {
+    data: loadedDashboard,
+    isPending,
+    isError,
+    error: loadError
+  } = useQuery({
+    queryKey: ["monitoring", practiceId],
+    queryFn: () => loadMonitoringDashboard(practiceId),
+    enabled: Boolean(practiceId),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 2
+  });
+  const loading = Boolean(practiceId) && isPending;
+
   useEffect(() => {
     ensurePracticeInventory(practice);
   }, [ensurePracticeInventory, practice]);
 
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
+    if (loadedDashboard) setDashboard(loadedDashboard);
+  }, [loadedDashboard]);
 
-    loadMonitoringDashboard(practiceId)
-      .then((data) => {
-        if (mounted) setDashboard(data);
-      })
-      .catch((loadError) => {
-        if (mounted) {
-          setNotice(loadError instanceof Error ? loadError.message : "Monitoring-Daten konnten nicht geladen werden.");
-          setDashboard(buildEmptyDashboard(practiceId));
-        }
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [practiceId]);
+  useEffect(() => {
+    if (isError) {
+      setNotice(loadError instanceof Error ? loadError.message : "Monitoring-Daten konnten nicht geladen werden.");
+      setDashboard(buildEmptyDashboard(practiceId));
+    }
+  }, [isError, loadError, practiceId]);
 
   useEffect(() => {
     return subscribeToMonitoringRealtime(practiceId, {

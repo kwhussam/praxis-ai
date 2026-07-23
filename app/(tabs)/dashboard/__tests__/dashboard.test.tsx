@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import renderer, { act, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 
@@ -7,6 +8,8 @@ import type { ScoreReport } from "@/lib/security/scoring";
 type MockFunction = {
   (...args: unknown[]): unknown;
   mockResolvedValue(value: unknown): MockFunction;
+  mockClear(): void;
+  mock: { calls: unknown[][] };
 };
 
 declare const jest: {
@@ -15,6 +18,24 @@ declare const jest: {
 };
 
 var mockLoadDashboardData = jest.fn();
+
+function renderDashboard(client: QueryClient): ReactTestRenderer {
+  return renderer.create(
+    React.createElement(QueryClientProvider, { client }, React.createElement(DashboardScreen))
+  );
+}
+
+function newQueryClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+}
+
+async function flushQuery(): Promise<void> {
+  // React Query settles the query + notifies subscribers over several microtasks plus a
+  // scheduler tick; flush both microtask and macrotask queues so the resolved state is committed.
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+}
 
 jest.mock("react-native", () => {
   const React = require("react");
@@ -103,12 +124,14 @@ import DashboardScreen from "../index";
 
 describe("DashboardScreen", () => {
   it("zeigt ohne echte Checks den Keine-Daten-Zustand statt Demo-Werte", async () => {
+    mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(emptyDashboard());
+    const client = newQueryClient();
     let tree: ReactTestRenderer;
 
     await act(async () => {
-      tree = renderer.create(<DashboardScreen />);
-      await Promise.resolve();
+      tree = renderDashboard(client);
+      await flushQuery();
     });
 
     const text = allText(tree!.root);
@@ -120,12 +143,14 @@ describe("DashboardScreen", () => {
   });
 
   it("zeigt nach einem Fragebogen-Abschluss den echten Score und keine Demo-History", async () => {
+    mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
+    const client = newQueryClient();
     let tree: ReactTestRenderer;
 
     await act(async () => {
-      tree = renderer.create(<DashboardScreen />);
-      await Promise.resolve();
+      tree = renderDashboard(client);
+      await flushQuery();
     });
 
     const text = allText(tree!.root);
@@ -136,6 +161,24 @@ describe("DashboardScreen", () => {
     expect(text.includes("Mo:62")).toBe(false);
     expect(text.includes("Di:66")).toBe(false);
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
+  });
+
+  // PERF-05: a fast unmount+remount against the same QueryClient must not re-fetch — the cached
+  // (fresh, within staleTime) result is reused, so loadDashboardData is called exactly once.
+  it("löst bei schnellem Remount keinen zweiten Netzwerk-Call aus", async () => {
+    mockLoadDashboardData.mockClear();
+    mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
+    const client = newQueryClient();
+
+    await act(async () => {
+      const first = renderDashboard(client);
+      await flushQuery();
+      (first as unknown as { unmount(): void }).unmount();
+      renderDashboard(client);
+      await flushQuery();
+    });
+
+    expect(mockLoadDashboardData.mock.calls.length).toBe(1);
   });
 });
 

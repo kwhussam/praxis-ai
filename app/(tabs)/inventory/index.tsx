@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { Building2, CalendarCheck, Globe, Mail, Network, Package, Plus, Server, Smartphone, Trash2 } from "lucide-react-native";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -203,349 +203,423 @@ export default function InventoryScreen() {
     Alert.alert("WLAN-Konfiguration", "Manuelle Router-/WLAN-Konfiguration gespeichert.");
   }
 
-  return (
-    <Screen>
-      <View style={styles.header}>
+  // PERF-12/RN-10: the three inventory lists (known devices, access points, items) are
+  // virtualized through a single FlatList driving the whole screen. Static form/header sections
+  // are modeled as "node" rows and the list entries as typed rows, so there is no plain
+  // ScrollView wrapping VirtualizedLists (which would disable windowing). All form state lives
+  // in the parent, so items unmounting while scrolled off-screen preserve their values.
+  // Built inline each render (not memoized): the row list depends on every form field and all
+  // three data collections, so it would recompute every render anyway — and the static "node"
+  // blocks close over the screen's event handlers, which a useMemo dependency array cannot track
+  // cleanly. Assembling the array is cheap; only the FlatList rows are virtualized.
+  const listData: InventoryRowModel[] = (() => {
+    const rows: InventoryRowModel[] = [];
+
+    rows.push({
+      kind: "node",
+      key: "intro",
+      node: (
         <View>
-          <Text style={styles.kicker}>Praxis-Inventar</Text>
-          <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
-        </View>
-        <View style={styles.headerIcon}>
-          <Package color={colors.electric} size={24} />
-        </View>
-      </View>
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.kicker}>Praxis-Inventar</Text>
+              <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
+            </View>
+            <View style={styles.headerIcon}>
+              <Package color={colors.electric} size={24} />
+            </View>
+          </View>
 
-      <View style={styles.metrics}>
-        <Metric label="Einträge" value={summary.total} />
-        <Metric label="Kritisch" value={summary.critical} tone="critical" />
-        <Metric label="Bekannte Geräte" value={knownDeviceSummary.total} />
-        <Metric label="Überfällig" value={knownDeviceSummary.stale} tone="critical" />
-        <Metric label="Access Points" value={accessPointSummary.total} />
-      </View>
+          <View style={styles.metrics}>
+            <Metric label="Einträge" value={summary.total} />
+            <Metric label="Kritisch" value={summary.critical} tone="critical" />
+            <Metric label="Bekannte Geräte" value={knownDeviceSummary.total} />
+            <Metric label="Überfällig" value={knownDeviceSummary.stale} tone="critical" />
+            <Metric label="Access Points" value={accessPointSummary.total} />
+          </View>
 
-      <View style={styles.filters}>
-        <FilterChip label="Alle" active={filter === "all"} onPress={() => setFilter("all")} />
-        {INVENTORY_CATEGORIES.map((category) => (
-          <FilterChip
-            key={category.type}
-            label={`${category.pluralLabel} ${summary.byType[category.type]}`}
-            active={filter === category.type}
-            onPress={() => setFilter(category.type)}
-          />
-        ))}
-      </View>
+          <View style={styles.filters}>
+            <FilterChip label="Alle" active={filter === "all"} onPress={() => setFilter("all")} />
+            {INVENTORY_CATEGORIES.map((category) => (
+              <FilterChip
+                key={category.type}
+                label={`${category.pluralLabel} ${summary.byType[category.type]}`}
+                active={filter === category.type}
+                onPress={() => setFilter(category.type)}
+              />
+            ))}
+          </View>
 
-      <GlassCard style={styles.card}>
-        <Text style={styles.sectionTitle}>Neuer Eintrag</Text>
-        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kategorie des neuen Eintrags">
-          {INVENTORY_CATEGORIES.map((category) => (
-            <Pressable
-              key={category.type}
-              onPress={() => setDraftType(category.type)}
-              style={[styles.segment, draftType === category.type ? styles.segmentActive : null]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: draftType === category.type }}
-              accessibilityLabel={category.label}
-            >
-              <Text style={[styles.segmentText, draftType === category.type ? styles.segmentTextActive : null]}>
-                {category.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+          <GlassCard style={styles.card}>
+            <Text style={styles.sectionTitle}>Neuer Eintrag</Text>
+            <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kategorie des neuen Eintrags">
+              {INVENTORY_CATEGORIES.map((category) => (
+                <Pressable
+                  key={category.type}
+                  onPress={() => setDraftType(category.type)}
+                  style={[styles.segment, draftType === category.type ? styles.segmentActive : null]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: draftType === category.type }}
+                  accessibilityLabel={category.label}
+                >
+                  <Text style={[styles.segmentText, draftType === category.type ? styles.segmentTextActive : null]}>
+                    {category.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder={`${inventoryCategoryLabel(draftType)} erfassen`}
-          placeholderTextColor={colors.muted}
-          accessibilityLabel={`${inventoryCategoryLabel(draftType)} erfassen`}
-          style={styles.input}
-        />
-        <TextInput
-          value={detail}
-          onChangeText={setDetail}
-          placeholder="Details, Adresse, Zweck oder Standort"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Details, Adresse, Zweck oder Standort"
-          style={styles.input}
-        />
-        <TextInput
-          value={owner}
-          onChangeText={setOwner}
-          placeholder="Verantwortlich oder Dienstleister"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Verantwortlich oder Dienstleister"
-          style={styles.input}
-        />
-
-        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des neuen Eintrags">
-          {INVENTORY_CRITICALITIES.map((criticality) => (
-            <Pressable
-              key={criticality.value}
-              onPress={() => setDraftCriticality(criticality.value)}
-              style={[styles.segment, draftCriticality === criticality.value ? styles.segmentActive : null]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: draftCriticality === criticality.value }}
-              accessibilityLabel={criticality.label}
-            >
-              <Text style={[styles.segmentText, draftCriticality === criticality.value ? styles.segmentTextActive : null]}>
-                {criticality.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <AnimatedButton label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} />
-      </GlassCard>
-
-      <GlassCard style={styles.card}>
-        <Text style={styles.sectionTitle}>Known Devices</Text>
-        <Text style={styles.sectionCopy}>Freigegebene Geräte mit letzter Bestätigung für Netzwerk- und Asset-Abgleich.</Text>
-
-        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Gerätetyp">
-          {KNOWN_DEVICE_TYPES.map((type) => (
-            <Pressable
-              key={type.value}
-              onPress={() => setDeviceType(type.value)}
-              style={[styles.segment, deviceType === type.value ? styles.segmentActive : null]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: deviceType === type.value }}
-              accessibilityLabel={type.label}
-            >
-              <Text style={[styles.segmentText, deviceType === type.value ? styles.segmentTextActive : null]}>
-                {type.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <TextInput
-          value={macAddress}
-          onChangeText={setMacAddress}
-          placeholder="MAC-Adresse, z. B. AA:BB:CC:DD:EE:FF"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="MAC-Adresse"
-          autoCapitalize="characters"
-          style={styles.input}
-        />
-        <TextInput
-          value={hostname}
-          onChangeText={setHostname}
-          placeholder="Hostname"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Hostname"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-        <TextInput
-          value={location}
-          onChangeText={setLocation}
-          placeholder="Standort, z. B. Empfang oder Behandlungsraum 2"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Standort"
-          style={styles.input}
-        />
-        <TextInput
-          value={deviceOwner}
-          onChangeText={setDeviceOwner}
-          placeholder="Besitzer oder Verantwortlicher"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Besitzer oder Verantwortlicher"
-          style={styles.input}
-        />
-        <TextInput
-          value={lastConfirmedAt}
-          onChangeText={setLastConfirmedAt}
-          placeholder="Letzte Bestätigung, JJJJ-MM-TT"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Letzte Bestätigung, Datum im Format Jahr-Monat-Tag"
-          style={styles.input}
-        />
-
-        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des Geräts">
-          {INVENTORY_CRITICALITIES.map((criticality) => (
-            <Pressable
-              key={criticality.value}
-              onPress={() => setDeviceCriticality(criticality.value)}
-              style={[styles.segment, deviceCriticality === criticality.value ? styles.segmentActive : null]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: deviceCriticality === criticality.value }}
-              accessibilityLabel={criticality.label}
-            >
-              <Text style={[styles.segmentText, deviceCriticality === criticality.value ? styles.segmentTextActive : null]}>
-                {criticality.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <AnimatedButton label="Known Device hinzufügen" onPress={handleAddKnownDevice} icon={<Plus color={colors.ink} size={18} />} />
-      </GlassCard>
-
-      <View style={styles.listHeader}>
-        <Text style={styles.sectionTitle}>Known-Device-Liste</Text>
-        <Text style={styles.count}>{sortedKnownDevices.length}</Text>
-      </View>
-
-      <View style={styles.list}>
-        {sortedKnownDevices.length === 0 ? (
-          <GlassCard>
-            <Text style={styles.emptyTitle}>Keine bekannten Geräte</Text>
-          </GlassCard>
-        ) : (
-          sortedKnownDevices.map((device) => (
-            <KnownDeviceRow
-              key={device.id}
-              device={device}
-              onConfirm={() => handleConfirmKnownDevice(device)}
-              onRemove={() => handleRemoveKnownDevice(device)}
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder={`${inventoryCategoryLabel(draftType)} erfassen`}
+              placeholderTextColor={colors.muted}
+              accessibilityLabel={`${inventoryCategoryLabel(draftType)} erfassen`}
+              style={styles.input}
             />
-          ))
-        )}
-      </View>
-
-      <GlassCard style={styles.card}>
-        <Text style={styles.sectionTitle}>Access-Point-Inventar</Text>
-        <Text style={styles.sectionCopy}>Offizielle Access Points als Referenz für Rogue-AP-Erkennung per BSSID-Abgleich.</Text>
-
-        <TextInput
-          value={apSsid}
-          onChangeText={setApSsid}
-          placeholder="SSID"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="SSID"
-          style={styles.input}
-        />
-        <TextInput
-          value={apBssid}
-          onChangeText={setApBssid}
-          placeholder="BSSID, z. B. AA:BB:CC:DD:EE:FF"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="BSSID"
-          autoCapitalize="characters"
-          style={styles.input}
-        />
-        <TextInput
-          value={apLocation}
-          onChangeText={setApLocation}
-          placeholder="Standort"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Standort"
-          style={styles.input}
-        />
-        <TextInput
-          value={apVendor}
-          onChangeText={setApVendor}
-          placeholder="Hersteller"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Hersteller"
-          style={styles.input}
-        />
-        <TextInput
-          value={apChannel}
-          onChangeText={setApChannel}
-          placeholder="Kanal"
-          placeholderTextColor={colors.muted}
-          accessibilityLabel="Kanal"
-          keyboardType="number-pad"
-          style={styles.input}
-        />
-
-        <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Erwartete Verschlüsselung">
-          {ACCESS_POINT_ENCRYPTIONS.map((encryption) => (
-            <Pressable
-              key={encryption.value}
-              onPress={() => setApExpectedEncryption(encryption.value)}
-              style={[styles.segment, apExpectedEncryption === encryption.value ? styles.segmentActive : null]}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: apExpectedEncryption === encryption.value }}
-              accessibilityLabel={encryption.label}
-            >
-              <Text style={[styles.segmentText, apExpectedEncryption === encryption.value ? styles.segmentTextActive : null]}>
-                {encryption.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <AnimatedButton label="Access Point hinzufügen" onPress={handleAddAccessPoint} icon={<Plus color={colors.ink} size={18} />} />
-      </GlassCard>
-
-      <View style={styles.listHeader}>
-        <Text style={styles.sectionTitle}>Offizielle Access Points</Text>
-        <Text style={styles.count}>{sortedAccessPoints.length}</Text>
-      </View>
-
-      <View style={styles.list}>
-        {sortedAccessPoints.length === 0 ? (
-          <GlassCard>
-            <Text style={styles.emptyTitle}>Keine Access Points erfasst</Text>
-          </GlassCard>
-        ) : (
-          sortedAccessPoints.map((accessPoint) => (
-            <AccessPointRow
-              key={accessPoint.id}
-              accessPoint={accessPoint}
-              onRemove={() => practice && removeAccessPoint(practice.id, accessPoint.id)}
+            <TextInput
+              value={detail}
+              onChangeText={setDetail}
+              placeholder="Details, Adresse, Zweck oder Standort"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Details, Adresse, Zweck oder Standort"
+              style={styles.input}
             />
-          ))
-        )}
-      </View>
+            <TextInput
+              value={owner}
+              onChangeText={setOwner}
+              placeholder="Verantwortlich oder Dienstleister"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Verantwortlich oder Dienstleister"
+              style={styles.input}
+            />
 
-      <GlassCard style={styles.card}>
-        <Text style={styles.sectionTitle}>Router-/WLAN-Konfiguration</Text>
-        <Text style={styles.sectionCopy}>Manuelle Abfrage, wenn Routerdaten technisch nicht sicher auslesbar sind.</Text>
-        <ConfigToggle
-          label="WPA2-AES aktiv"
-          value={routerConfig.wpa2Aes}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Aes: value }))}
-        />
-        <ConfigToggle
-          label="WPA2/WPA3 Mixed Mode aktiv"
-          value={routerConfig.wpa2Wpa3MixedMode}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Wpa3MixedMode: value }))}
-        />
-        <ConfigToggle
-          label="WPA3 aktiv"
-          value={routerConfig.wpa3}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, wpa3: value }))}
-        />
-        <ConfigToggle
-          label="TKIP aktiviert"
-          value={routerConfig.tkip}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, tkip: value }))}
-        />
-        <ConfigToggle
-          label="Offenes WLAN aktiviert"
-          value={routerConfig.openWifi}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, openWifi: value }))}
-        />
-        <ConfigToggle
-          label="WPS aktiviert"
-          value={routerConfig.wps}
-          onChange={(value) => setRouterConfig((current) => ({ ...current, wps: value }))}
-        />
-        <AnimatedButton label="Konfiguration speichern" onPress={handleSaveRouterConfig} variant="ghost" />
-      </GlassCard>
+            <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des neuen Eintrags">
+              {INVENTORY_CRITICALITIES.map((criticality) => (
+                <Pressable
+                  key={criticality.value}
+                  onPress={() => setDraftCriticality(criticality.value)}
+                  style={[styles.segment, draftCriticality === criticality.value ? styles.segmentActive : null]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: draftCriticality === criticality.value }}
+                  accessibilityLabel={criticality.label}
+                >
+                  <Text style={[styles.segmentText, draftCriticality === criticality.value ? styles.segmentTextActive : null]}>
+                    {criticality.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
-      <View style={styles.listHeader}>
-        <Text style={styles.sectionTitle}>{filter === "all" ? "Inventar" : inventoryCategoryPluralLabel(filter)}</Text>
-        <Text style={styles.count}>{visibleItems.length}</Text>
-      </View>
-
-      <View style={styles.list}>
-        {visibleItems.length === 0 ? (
-          <GlassCard>
-            <Text style={styles.emptyTitle}>Keine Einträge</Text>
+            <AnimatedButton label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} />
           </GlassCard>
-        ) : (
-          visibleItems.map((item) => <InventoryRow key={item.id} item={item} onRemove={() => handleRemove(item)} />)
-        )}
-      </View>
+
+          <GlassCard style={styles.card}>
+            <Text style={styles.sectionTitle}>Known Devices</Text>
+            <Text style={styles.sectionCopy}>Freigegebene Geräte mit letzter Bestätigung für Netzwerk- und Asset-Abgleich.</Text>
+
+            <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Gerätetyp">
+              {KNOWN_DEVICE_TYPES.map((type) => (
+                <Pressable
+                  key={type.value}
+                  onPress={() => setDeviceType(type.value)}
+                  style={[styles.segment, deviceType === type.value ? styles.segmentActive : null]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: deviceType === type.value }}
+                  accessibilityLabel={type.label}
+                >
+                  <Text style={[styles.segmentText, deviceType === type.value ? styles.segmentTextActive : null]}>
+                    {type.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <TextInput
+              value={macAddress}
+              onChangeText={setMacAddress}
+              placeholder="MAC-Adresse, z. B. AA:BB:CC:DD:EE:FF"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="MAC-Adresse"
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+            <TextInput
+              value={hostname}
+              onChangeText={setHostname}
+              placeholder="Hostname"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Hostname"
+              autoCapitalize="none"
+              style={styles.input}
+            />
+            <TextInput
+              value={location}
+              onChangeText={setLocation}
+              placeholder="Standort, z. B. Empfang oder Behandlungsraum 2"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Standort"
+              style={styles.input}
+            />
+            <TextInput
+              value={deviceOwner}
+              onChangeText={setDeviceOwner}
+              placeholder="Besitzer oder Verantwortlicher"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Besitzer oder Verantwortlicher"
+              style={styles.input}
+            />
+            <TextInput
+              value={lastConfirmedAt}
+              onChangeText={setLastConfirmedAt}
+              placeholder="Letzte Bestätigung, JJJJ-MM-TT"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Letzte Bestätigung, Datum im Format Jahr-Monat-Tag"
+              style={styles.input}
+            />
+
+            <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Kritikalität des Geräts">
+              {INVENTORY_CRITICALITIES.map((criticality) => (
+                <Pressable
+                  key={criticality.value}
+                  onPress={() => setDeviceCriticality(criticality.value)}
+                  style={[styles.segment, deviceCriticality === criticality.value ? styles.segmentActive : null]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: deviceCriticality === criticality.value }}
+                  accessibilityLabel={criticality.label}
+                >
+                  <Text style={[styles.segmentText, deviceCriticality === criticality.value ? styles.segmentTextActive : null]}>
+                    {criticality.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <AnimatedButton label="Known Device hinzufügen" onPress={handleAddKnownDevice} icon={<Plus color={colors.ink} size={18} />} />
+          </GlassCard>
+
+          <View style={styles.listHeader}>
+            <Text style={styles.sectionTitle}>Known-Device-Liste</Text>
+            <Text style={styles.count}>{sortedKnownDevices.length}</Text>
+          </View>
+        </View>
+      )
+    });
+
+    if (sortedKnownDevices.length === 0) {
+      rows.push({ kind: "empty", key: "known-empty", label: "Keine bekannten Geräte" });
+    } else {
+      for (const device of sortedKnownDevices) rows.push({ kind: "knownDevice", key: `known-${device.id}`, device });
+    }
+
+    rows.push({
+      kind: "node",
+      key: "ap-form",
+      node: (
+        <View>
+          <GlassCard style={styles.card}>
+            <Text style={styles.sectionTitle}>Access-Point-Inventar</Text>
+            <Text style={styles.sectionCopy}>Offizielle Access Points als Referenz für Rogue-AP-Erkennung per BSSID-Abgleich.</Text>
+
+            <TextInput
+              value={apSsid}
+              onChangeText={setApSsid}
+              placeholder="SSID"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="SSID"
+              style={styles.input}
+            />
+            <TextInput
+              value={apBssid}
+              onChangeText={setApBssid}
+              placeholder="BSSID, z. B. AA:BB:CC:DD:EE:FF"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="BSSID"
+              autoCapitalize="characters"
+              style={styles.input}
+            />
+            <TextInput
+              value={apLocation}
+              onChangeText={setApLocation}
+              placeholder="Standort"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Standort"
+              style={styles.input}
+            />
+            <TextInput
+              value={apVendor}
+              onChangeText={setApVendor}
+              placeholder="Hersteller"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Hersteller"
+              style={styles.input}
+            />
+            <TextInput
+              value={apChannel}
+              onChangeText={setApChannel}
+              placeholder="Kanal"
+              placeholderTextColor={colors.muted}
+              accessibilityLabel="Kanal"
+              keyboardType="number-pad"
+              style={styles.input}
+            />
+
+            <View style={styles.segmentWrap} accessibilityRole="radiogroup" accessibilityLabel="Erwartete Verschlüsselung">
+              {ACCESS_POINT_ENCRYPTIONS.map((encryption) => (
+                <Pressable
+                  key={encryption.value}
+                  onPress={() => setApExpectedEncryption(encryption.value)}
+                  style={[styles.segment, apExpectedEncryption === encryption.value ? styles.segmentActive : null]}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: apExpectedEncryption === encryption.value }}
+                  accessibilityLabel={encryption.label}
+                >
+                  <Text style={[styles.segmentText, apExpectedEncryption === encryption.value ? styles.segmentTextActive : null]}>
+                    {encryption.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <AnimatedButton label="Access Point hinzufügen" onPress={handleAddAccessPoint} icon={<Plus color={colors.ink} size={18} />} />
+          </GlassCard>
+
+          <View style={styles.listHeader}>
+            <Text style={styles.sectionTitle}>Offizielle Access Points</Text>
+            <Text style={styles.count}>{sortedAccessPoints.length}</Text>
+          </View>
+        </View>
+      )
+    });
+
+    if (sortedAccessPoints.length === 0) {
+      rows.push({ kind: "empty", key: "ap-empty", label: "Keine Access Points erfasst" });
+    } else {
+      for (const accessPoint of sortedAccessPoints) rows.push({ kind: "accessPoint", key: `ap-${accessPoint.id}`, accessPoint });
+    }
+
+    rows.push({
+      kind: "node",
+      key: "router-config",
+      node: (
+        <View>
+          <GlassCard style={styles.card}>
+            <Text style={styles.sectionTitle}>Router-/WLAN-Konfiguration</Text>
+            <Text style={styles.sectionCopy}>Manuelle Abfrage, wenn Routerdaten technisch nicht sicher auslesbar sind.</Text>
+            <ConfigToggle
+              label="WPA2-AES aktiv"
+              value={routerConfig.wpa2Aes}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Aes: value }))}
+            />
+            <ConfigToggle
+              label="WPA2/WPA3 Mixed Mode aktiv"
+              value={routerConfig.wpa2Wpa3MixedMode}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, wpa2Wpa3MixedMode: value }))}
+            />
+            <ConfigToggle
+              label="WPA3 aktiv"
+              value={routerConfig.wpa3}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, wpa3: value }))}
+            />
+            <ConfigToggle
+              label="TKIP aktiviert"
+              value={routerConfig.tkip}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, tkip: value }))}
+            />
+            <ConfigToggle
+              label="Offenes WLAN aktiviert"
+              value={routerConfig.openWifi}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, openWifi: value }))}
+            />
+            <ConfigToggle
+              label="WPS aktiviert"
+              value={routerConfig.wps}
+              onChange={(value) => setRouterConfig((current) => ({ ...current, wps: value }))}
+            />
+            <AnimatedButton label="Konfiguration speichern" onPress={handleSaveRouterConfig} variant="ghost" />
+          </GlassCard>
+
+          <View style={styles.listHeader}>
+            <Text style={styles.sectionTitle}>{filter === "all" ? "Inventar" : inventoryCategoryPluralLabel(filter)}</Text>
+            <Text style={styles.count}>{visibleItems.length}</Text>
+          </View>
+        </View>
+      )
+    });
+
+    if (visibleItems.length === 0) {
+      rows.push({ kind: "empty", key: "inventory-empty", label: "Keine Einträge" });
+    } else {
+      for (const item of visibleItems) rows.push({ kind: "inventory", key: `item-${item.id}`, item });
+    }
+
+    return rows;
+  })();
+
+  const renderRow = useMemo<ListRenderItem<InventoryRowModel>>(
+    () => ({ item: row }) => {
+      switch (row.kind) {
+        case "node":
+          return row.node;
+        case "empty":
+          return (
+            <View style={styles.listRow}>
+              <GlassCard>
+                <Text style={styles.emptyTitle}>{row.label}</Text>
+              </GlassCard>
+            </View>
+          );
+        case "knownDevice":
+          return (
+            <View style={styles.listRow}>
+              <KnownDeviceRow
+                device={row.device}
+                onConfirm={() => handleConfirmKnownDevice(row.device)}
+                onRemove={() => handleRemoveKnownDevice(row.device)}
+              />
+            </View>
+          );
+        case "accessPoint":
+          return (
+            <View style={styles.listRow}>
+              <AccessPointRow
+                accessPoint={row.accessPoint}
+                onRemove={() => practice && removeAccessPoint(practice.id, row.accessPoint.id)}
+              />
+            </View>
+          );
+        case "inventory":
+          return (
+            <View style={styles.listRow}>
+              <InventoryRow item={row.item} onRemove={() => handleRemove(row.item)} />
+            </View>
+          );
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [practice]
+  );
+
+  return (
+    <Screen scroll={false}>
+      <FlatList
+        data={listData}
+        keyExtractor={(row) => row.key}
+        renderItem={renderRow}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.listContent}
+      />
     </Screen>
   );
 }
+
+type InventoryRowModel =
+  | { kind: "node"; key: string; node: ReactElement }
+  | { kind: "empty"; key: string; label: string }
+  | { kind: "knownDevice"; key: string; device: KnownDevice }
+  | { kind: "accessPoint"; key: string; accessPoint: AccessPoint }
+  | { kind: "inventory"; key: string; item: InventoryItem };
 
 function Metric({ label, value, tone = "info" }: { label: string; value: number; tone?: "critical" | "info" }) {
   return (
@@ -884,8 +958,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "900"
   },
-  list: {
-    gap: 12
+  listContent: {
+    flexGrow: 1
+  },
+  listRow: {
+    marginBottom: 12
   },
   emptyTitle: {
     color: colors.muted,

@@ -33,6 +33,16 @@ export class MonitoringFetchError extends Error {
   }
 }
 
+// PERF-06: the Monitoring tab deliberately loads its initial data through this client-side,
+// RLS-scoped Supabase path instead of the Worker's aggregated /dashboard endpoint. Reason:
+// the Monitoring tab layers a live Supabase Realtime subscription (subscribeToMonitoringRealtime)
+// on top of the same monitoring_snapshots/monitoring_events tables. Reading the initial page over
+// the same RLS-authorized client that owns the Realtime channel keeps one consistent
+// authorization model and data shape (DashboardData) for both the initial load and the streamed
+// deltas — routing the first load through the Worker (service-role aggregation) would introduce a
+// second, divergent auth path for data the Realtime layer then mutates in place. The Worker
+// dashboard endpoint stays the source for the (non-realtime) Dashboard tab. Documented rather than
+// consolidated per the PERF-06 decision; see docs/ARCHITECTURE.md.
 export async function loadMonitoringDashboard(practiceId: string): Promise<DashboardData> {
   assertDemoPracticeAccess(practiceId);
 

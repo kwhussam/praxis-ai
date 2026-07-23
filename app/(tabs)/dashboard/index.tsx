@@ -1,6 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Settings } from "lucide-react-native";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
@@ -17,48 +18,31 @@ import { useSessionStore } from "@/lib/store/session";
 
 export default function DashboardScreen() {
   const practice = useSessionStore((state) => state.practice);
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const practiceId = practice?.id ?? null;
+  // PERF-05: dashboard data now flows through React Query instead of a manual useEffect fetch.
+  // Caching by [dashboard, practiceId] dedupes rapid remounts/tab-switches (no duplicate network
+  // call within staleTime) and adds bounded retry for transient failures.
+  const {
+    data: dashboard = null,
+    isPending,
+    isError,
+    error
+  } = useQuery({
+    queryKey: ["dashboard", practiceId],
+    queryFn: () => loadDashboardData(practiceId as string),
+    enabled: Boolean(practiceId),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 2
+  });
+  // With enabled=false (no practice), React Query stays "pending"; treat that as not-loading.
+  const loading = Boolean(practiceId) && isPending;
+  const loadError = isError ? errorMessage(error) : null;
   const plan = PLANS[practice?.plan ?? "free"];
   const scoreReport = dashboard?.latest.questionnaire?.scoreReport ?? null;
   const guidance = scoreReport ? guidanceFromScoreReport(scoreReport) : null;
   const primaryScore = dashboard ? primaryScoreFromDashboard(dashboard) : null;
   const historyData = useMemo(() => (dashboard ? dashboard.history.map(historyPointToChartPoint) : []), [dashboard]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      if (!practice?.id) {
-        setDashboard(null);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setLoadError(null);
-
-      try {
-        const nextDashboard = await loadDashboardData(practice.id);
-        if (!cancelled) setDashboard(nextDashboard);
-      } catch (error) {
-        console.error("dashboard_load_failed", error);
-        if (!cancelled) {
-          setDashboard(null);
-          setLoadError(errorMessage(error));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [practice?.id]);
 
   return (
     <Screen>

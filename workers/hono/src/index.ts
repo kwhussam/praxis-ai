@@ -2262,16 +2262,18 @@ async function handleMonitoringStatus(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, practiceId, "monitoring_status", "viewer");
   if (access instanceof Response) return access;
 
-  const snapshots = await supabaseRest<unknown[]>(
-    c.env,
-    `/rest/v1/monitoring_snapshots?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&order=checked_at.desc&limit=1`,
-    { method: "GET" }
-  );
-  const events = await supabaseRest<unknown[]>(
-    c.env,
-    `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&resolved_at=is.null&order=created_at.desc&limit=20`,
-    { method: "GET" }
-  );
+  const [snapshots, events] = await Promise.all([
+    supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/monitoring_snapshots?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&order=checked_at.desc&limit=1`,
+      { method: "GET" }
+    ),
+    supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/monitoring_events?select=*&practice_id=eq.${encodeURIComponent(access.practice.id)}&resolved_at=is.null&order=created_at.desc&limit=20`,
+      { method: "GET" }
+    )
+  ]);
 
   await auditPracticeAccess(c, access, "read", "monitoring_status");
 
