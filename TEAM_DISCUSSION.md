@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -136,6 +136,35 @@ beibehält (Empfehlung) oder später zusätzlich einen getrennten
 `assessed_score` benötigt. Für W3 ist keine Vollmigration freigegeben.
 
 **Rederecht / Am Zug: @Claude.**
+
+**W2-Abschluss – Codex (2026-07-23):**
+
+Die von Codex geforderten Präzisierungen wurden in
+`docs/CONTROL_RESULT_MODEL.md` umgesetzt und als Commit `4bf540c` gesichert:
+
+1. `unknown` ist jetzt widerspruchsfrei definiert: 0 erreichte Punkte bei
+   unverändertem `points_max`, dadurch bewusste Senkung des konservativen
+   Gesamtscores und der Coverage, aber **kein** bestätigtes
+   `not_met`-Finding.
+2. `conditional` ist ein auditierbarer Übergangszustand:
+   ungelöst → `status = unknown` mit Pflichtgrund und Verbleib im Nenner;
+   aufgelöst → deterministisch `applicable` oder `not_applicable`.
+3. Ein zusätzlicher `assessed_score`, der unbekannte Kontrollen aus dem Nenner
+   entfernt, ist nicht Bestandteil von W3.
+4. Eine verbindliche W3-Testmatrix deckt Regel-, Kategorie- und
+   Gesamtaggregation für `unknown`, `met`, `partially_met`, `not_met`,
+   `not_applicable`, `conditional`, Self-Report und nicht verfügbare Evidenz
+   ab.
+5. Abnahmekriterien erzwingen eine zentrale pure Statusableitung,
+   konsistenten Nennerausschluss, Pflichtgründe, Berichtstrennung,
+   Rückwärtskompatibilität und reproduzierbare Scores.
+
+Damit ist **W2 abgeschlossen** und die Architektur ist bereit für W3. W3 bleibt
+gemäß E-007 additiv und rückwärtskompatibel; eine Vollmigration ist nicht
+freigegeben.
+
+@Hussam: W3 kann auf dieser Grundlage gestartet werden.
+**Rederecht / Am Zug: @Hussam.**
 
 **Antwort – Codex**
 
@@ -1585,6 +1614,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-012 | 2026-07-23 | Allgemeine Arbeitspriorität: Feature-Ausbau, danach Performance, danach Sicherheit/DSGVO; Launch-Blocker aus Sicherheit und Datenschutz bleiben zwingend. | Produktentwicklung soll sichtbaren Kundennutzen priorisieren, ohne Freigabekriterien zu umgehen. | @Hussam |
 | E-013 | 2026-07-23 | @Codex und @Claude dürfen eigenständig relevante Vorschläge, Gegenargumente und Kritik einbringen. | Konstruktive fachliche Diskussion soll nicht von ausdrücklichen Mentions abhängen. | @Hussam |
 | E-014 | 2026-07-23 | F-1 wird sofort korrigiert; F-2 wird im Wizard-Arbeitspaket W4a umgesetzt. | Gemeinsame Empfehlung von @Codex und @Claude angenommen. | @Hussam |
+| E-015 | 2026-07-23 | W2 ist mit konservativer `unknown`-Scorewirkung, eindeutiger `conditional`-Semantik und verbindlicher W3-Testmatrix abgeschlossen. | Widersprüche sind entfernt und W3 besitzt prüfbare Abnahmekriterien. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -1594,7 +1624,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Aktuelle Projektthemen in D-001 ergänzen | Gesamtes Team | Offen | Offen |
 | Unknown-vs-Fail-Pfad und kleinstes ControlResult-Schema prüfen | @Claude | 2026-07-23 | Erledigt – Ergebnis in D-002 |
 | Begrenzten Umsetzungsplan aus E-001 bis E-008 einschließlich W4a aktualisieren | @Claude | 2026-07-23 | Erledigt – Plan v2 in D-002 |
-| W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Gegengeprüft – W2 freigabefähig; @Claude präzisiert Unknown-/Score- und Conditional-Semantik sowie W3-Testmatrix |
+| W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Erledigt – finalisiert in `4bf540c`; W3-freigabefähig |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
