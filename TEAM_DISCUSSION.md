@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -668,6 +668,64 @@ S-1 und S-2 wurden am 2026-07-23 umgesetzt.
 @Claude: Bitte den Commit und insbesondere SecureStore-Lebenszyklus,
 Re-Run-Merge sowie die Trennung von gemessenen Befunden und Nutzerkontext
 gegenprüfen. **Rederecht / Am Zug: @Claude.**
+
+**Gegenprüfung – Claude (Commit `24211a4`, statische Review):**
+
+**Gesamturteil: freigabefähig.** Die Umsetzung entspricht E-010/E-011 und ist
+sauber verteidigt. Zwei Follow-ups, beide **keine** Launch-Blocker.
+
+**1. SecureStore-Lebenszyklus (`questionnaireDraftStorage.ts`) — gut.** Geprüft
+und bestätigt: eigener `keychainService`-Namespace (getrennt von Auth),
+`WHEN_UNLOCKED_THIS_DEVICE_ONLY` (gerätegebunden, kein iCloud-/Cloud-Backup),
+praxisgebunden (`parseDraft` verwirft fremde `practiceId`), Retention 14 Tage +
+Ablaufprüfung beim Laden, kein Klartext-Fallback bei Korruption (Chunk fehlt →
+löschen + null). Besonders stark: `sanitizeAnswers` zwingt jeden Wert auf
+`boolean|null` über die bekannten Keys — es können **keine** Freitexte, Tokens,
+PII oder Geräteinventare in den Draft gelangen (erfüllt E-010 „kein
+vollständiges Offline-Inventar" auf Code-Ebene). Manifest-`chunkCount` auf
+1..128 begrenzt. ✓
+
+**2. Re-Run-Merge (`WlanScanner.tsx` / `wlanScanPlan.ts`) — Kernprinzip
+gehalten.** `resolveScanPhaseIds` erzwingt `network_info` und expandiert
+Vorbedingungen (`device_discovery`→`port_scan`, `traffic_analysis`→
+`port_scan`+`device_discovery`). Die Engine bleibt reine Funktion (`phaseIds`
+als Option), kein pausierender Decision Point — wie empfohlen. `mergeScanResults`
+**mergt statt zu überschreiben** und **rechnet `riskScore` aus den gemergten
+Befunden neu** → E-011 „ohne Messbefunde zu überschreiben" ist eingehalten. ✓
+
+**3. Trennung Messung vs. Nutzerkontext — korrekt.** `interactionContext` ist
+`source: "owner_attested"` getaggt, getrennt gespeichert und überschreibt keine
+gemessenen Findings. Dass es noch nicht in `disposition` einfließt, ist richtig
+so (das ist W3). ✓
+
+**Follow-ups (nicht blockierend):**
+
+- **F-1 (mittel-niedrig): `mergeScanResults` lässt den `findings`-Wrapper
+  veralten.** Durch `...next` spiegelt `result.findings` (die
+  Evidence-Coverage-Wrapper) nach einem gezielten Re-Run nur die
+  wiederholten Phasen, während die gemergten Arrays
+  (`vulnerabilities`/`securityFindings`/`connectedDevices`) vollständig sind.
+  Da `syncWlanScanResultToSupabase` `serializeFindings(result.findings)`
+  synchronisiert, wäre die **synchronisierte/evidenzbewertete** Sicht eines
+  gemergten Ergebnisses nur die Re-Run-Teilmenge — inkonsistent zu Anzeige und
+  neu berechnetem `riskScore`. Fix: `findings`-Wrapper aus den gemergten Arrays
+  neu aufbauen (oder mitmergen). Empfehlung: **jetzt** beheben (Korrektheit der
+  gesyncten Daten), kleiner Change.
+- **F-2 (niedrig): Autosave-Race / verwaiste Chunks.** `saveQuestionnaireDraft`
+  hat kein Debounce/Lock; schnelle Antwort-für-Antwort-Autosaves (W4a) können
+  sich verschränken und Chunks einer nicht-getrackten Generation verwaisen
+  lassen (nur die eine „previous"-Generation wird gelöscht). Nicht
+  draft-zerstörend (Manifest zeigt immer auf eine vollständige Generation), aber
+  leckt SecureStore-Einträge. Empfehlung: **in W4a einfalten** (Autosave-UI
+  gehört ohnehin zu W4a) — Debounce + Prefix-Sweep verwaister Generationen beim
+  Laden.
+
+_Hinweis: Statische Review; ich habe die Tests nicht erneut ausgeführt (Codex
+meldet 7 relevante Tests grün)._
+
+→ Rederecht an **@Hussam**: F-1 jetzt als kleiner Korrektur-Commit beheben, F-2
+in W4a einfalten? Danach ist der nächste offene Hauptpunkt W2 (Ziel-
+`ControlResult`, mit @Codex).
 
 ---
 
@@ -1427,7 +1485,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
-| S-1/S-2-Commit gegenprüfen | @Claude | Nächster Zug | Offen |
+| S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
