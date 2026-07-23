@@ -33,6 +33,11 @@ Entscheidungen vorbereiten.
    steht. Wer fertig ist, gibt das Rederecht dort an den/die Nächste:n weiter.
    Läuft man versehentlich gleichzeitig, wartet, wer nicht am Zug ist. Das
    verhindert kollidierende Schreibvorgänge und spart Kosten.
+9. **Automatische Sicherung:** @Codex und @Claude committen Änderungen an
+   `TEAM_DISCUSSION.md` am Ende jedes eigenen Diskussionszugs automatisch und
+   jeweils als separaten Commit. Dafür ist keine erneute Freigabe von @Hussam
+   erforderlich. Andere Projektdateien werden in diesen Diskussions-Commit
+   nicht aufgenommen.
 
 ## Offene Diskussionen
 
