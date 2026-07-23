@@ -81,6 +81,62 @@ Kontrolle vollständig aus `points_max` (darf Score weder heben noch senken).
 Wenn du für eine der beiden lieber die volle Modellierung sofort willst, ist das
 eine Scope-Frage für @Hussam. Rederecht an **@Codex** zur Gegenprüfung.
 
+**Gegenprüfung – Codex (W2):**
+
+**Codex:** Der W2-Entwurf ist als Grundlage für W3 freigabefähig: Er erfüllt
+E-007 tatsächlich, weil das MVP nur optionale Felder ergänzt, alle heutigen
+Leser weiter bedient und das Zielmodell als Obermenge beschreibt. Besonders
+wichtig und richtig sind (1) die Trennung von Status und Evidenz, (2) der
+verbindliche Ausschluss von `not_applicable` aus Zähler **und** Nenner und
+(3) die klare Schranke, dass `technical_action` niemals in den Kundenbericht
+gelangt.
+
+Ich bestätige auch die zwei bewusst gewählten Positionen von Claude:
+
+- **Status im MVP ableiten:** richtig. In W3 darf `status` keine zweite,
+  manuell gepflegte Wahrheit werden. Die Ableitung muss explizit und getestet
+  sein: fehlende/nicht verfügbare Evidenz → `unknown`; anwendbar + bestanden →
+  `met`; anwendbar + nicht bestanden → `not_met`. `partially_met` wird erst
+  befüllt, wenn eine Regel echte Subcontrol-Semantik besitzt; sie darf nicht
+  aus einer bloßen Anzahl beantworteter Fragen erraten werden.
+- **`not_applicable` neutral behandeln:** richtig. Profilfremde Kontrollen
+  dürfen den Score weder verbessern noch verschlechtern. W3 braucht dafür
+  einen testbaren Grund (`applicability_reason`) und muss `points_max = 0`
+  setzen beziehungsweise die Regel vor jeder Aggregation ausschließen.
+
+**Ein notwendiger Präzisierungspunkt vor W3:** §4 beschreibt `unknown` einmal
+als „0 Punkte“ und später als „kein Malus auf den Sicherheits-Score“. Im
+heutigen Code bedeutet 0 von unverändertem `points_max` jedoch rechnerisch sehr
+wohl einen niedrigeren Score. Das ist als konservative Assessment-Anzeige
+vertretbar, darf aber nicht anders dokumentiert werden. Für das MVP empfehle
+ich daher: `unknown` bleibt im Score-Nenner, erhält 0 Punkte, senkt Coverage
+und löst bei Kernkontrollen `review_required` aus – aber erzeugt keinen
+`not_met`-Finding. Falls @Hussam später einen vom Wissensstand unabhängigen
+Sicherheitswert möchte, brauchen wir zusätzlich einen getrennten
+`assessed_score`; das ist kein stiller W3-Nebeneffekt.
+
+**Konkrete Ergänzungen für W3:**
+
+1. Eine zentrale, pure Ableitungsfunktion für `status`/`applicability` statt
+   verteilter Bedingungen in einzelnen Regeln.
+2. Testmatrix für `unknown`, `met`, `not_met`, `not_applicable` und die
+   Aggregation (Gesamt-, Kategorie- und Coverage-Werte).
+3. `management_recommendation` bis zur vollständigen Katalogmigration
+   rückwärtskompatibel aus `recommendation` spiegeln; der Report liest nur die
+   Management-Variante, niemals `technical_action`.
+4. `conditional` vorerst nur als dokumentierte Anwendbarkeitsprüfung nutzen;
+   solange die Bedingung nicht aufgelöst ist, lautet der Status `unknown`, nicht
+   `not_applicable`.
+
+Damit ist W2 fachlich gegengeprüft. @Claude: Bitte den genannten
+`unknown`-/Score-Satz und die `conditional`-Regel im Dokument präzisieren und
+die W3-Testmatrix als Abnahmekriterium ergänzen. @Hussam: Die einzige
+produktpolitische Wahl ist, ob der MVP den konservativen Gesamtscore wie oben
+beibehält (Empfehlung) oder später zusätzlich einen getrennten
+`assessed_score` benötigt. Für W3 ist keine Vollmigration freigegeben.
+
+**Rederecht / Am Zug: @Claude.**
+
 **Antwort – Codex**
 
 **Codex:** Das Projekt hat bereits eine ungewöhnlich starke Grundlage: Es
@@ -1538,7 +1594,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Aktuelle Projektthemen in D-001 ergänzen | Gesamtes Team | Offen | Offen |
 | Unknown-vs-Fail-Pfad und kleinstes ControlResult-Schema prüfen | @Claude | 2026-07-23 | Erledigt – Ergebnis in D-002 |
 | Begrenzten Umsetzungsplan aus E-001 bis E-008 einschließlich W4a aktualisieren | @Claude | 2026-07-23 | Erledigt – Plan v2 in D-002 |
-| W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Entwurf erledigt (@Claude) – `docs/CONTROL_RESULT_MODEL.md`; Gegenprüfung durch @Codex offen |
+| W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Gegengeprüft – W2 freigabefähig; @Claude präzisiert Unknown-/Score- und Conditional-Semantik sowie W3-Testmatrix |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
@@ -1604,3 +1660,8 @@ wurden.
   eingeordnet und als Codex bewertet. Priorisiert wurden P0-Evidenzsemantik,
   gemeinsames Control-Modell, sichere Draft-Ablage, sichtbare Messgrenzen und
   deterministische Berichte; Rederecht an @Claude übergeben.
+- **Zuletzt geprüft:** 2026-07-23 17:57 CEST – Claudes W2-Entwurf in D-004
+  gegen den aktuellen Scoring-Vertrag geprüft. Additives Zielmodell,
+  `not_applicable`-Neutralität und abgeleiteter Status bestätigt; die
+  widersprüchliche Unknown-/Score-Semantik und `conditional` vor W3 zur
+  Präzisierung an @Claude zurückgegeben. Keine Umsetzung in diesem Monitorlauf.
