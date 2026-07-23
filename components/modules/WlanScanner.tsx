@@ -18,6 +18,7 @@ import { useCheckStore } from "@/lib/store/check";
 import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { guidanceFromNetworkFindings, type PracticeGuidance } from "@/lib/security/practiceGuidance";
 import {
+  calculateWlanRiskScore,
   mapWlanVulnerabilitiesToFindings,
   runWlanSecurityScan,
   SCAN_PHASES,
@@ -27,12 +28,14 @@ import {
   type NetworkSecurityFinding,
   type Vulnerability,
   type WlanScanProgress,
+  type WlanScanPhaseId,
   type WlanScanResult
 } from "@/lib/security/wlan";
 import { NETWORK_SEGMENTS } from "@/lib/security/segmentationAssessment";
 import { useSessionStore } from "@/lib/store/session";
 
 type ScannerState = "consent" | "idle" | "scanning" | "done" | "error";
+type ContextAnswer = "yes" | "no" | "unknown" | null;
 type IoniconName = ComponentProps<typeof Ionicons>["name"];
 
 export function WlanScanner() {
@@ -54,8 +57,10 @@ export function WlanScanner() {
   const [auditAccepted, setAuditAccepted] = useState(false);
   const [ipv6Accepted, setIpv6Accepted] = useState(false);
   const [scanSegment, setScanSegment] = useState<NetworkSegmentId>("practice_wifi");
+  const [allDevicesKnown, setAllDevicesKnown] = useState<ContextAnswer>(null);
+  const [servicesExpected, setServicesExpected] = useState<ContextAnswer>(null);
 
-  const phase = progress ? SCAN_PHASES[progress.phaseIndex] ?? SCAN_PHASES[0] : SCAN_PHASES[0];
+  const phase = progress ? SCAN_PHASES.find((item) => item.id === progress.phaseId) ?? SCAN_PHASES[0] : SCAN_PHASES[0];
   const sortedVulnerabilities = useMemo(() => sortVulnerabilities(result?.vulnerabilities ?? []), [result]);
   const scanDisabled = state === "scanning" || (auditMode && !auditAccepted) || !practiceId;
   const scanNodes = useMemo(() => {
@@ -85,7 +90,7 @@ export function WlanScanner() {
     }
   }, [state, error]);
 
-  async function scan() {
+  async function scan(phaseIds?: WlanScanPhaseId[], interactionContext?: WlanScanResult["interactionContext"]) {
     if (state === "scanning") return;
 
     if (!practiceId) {
@@ -95,7 +100,8 @@ export function WlanScanner() {
     }
 
     setState("scanning");
-    setResult(null);
+    const previousResult = result;
+    if (!phaseIds) setResult(null);
     setError(null);
     setSyncError(null);
     setVisibleDevices([]);
@@ -105,6 +111,8 @@ export function WlanScanner() {
 
       const nextResult = await runWlanSecurityScan({
         phaseDelayMs: 260,
+        phaseIds,
+        interactionContext,
         knownDevices,
         accessPoints,
         scanSegment,
@@ -162,15 +170,16 @@ export function WlanScanner() {
         }
       });
 
-      setResult(nextResult);
-      setVisibleDevices(nextResult.connectedDevices);
+      const effectiveResult = phaseIds && previousResult ? mergeScanResults(previousResult, nextResult) : nextResult;
+      setResult(effectiveResult);
+      setVisibleDevices(effectiveResult.connectedDevices);
       recalculateScore({
-        encryption: nextResult.securityProtocol,
-        wlanFindings: mapWlanVulnerabilitiesToFindings(nextResult.vulnerabilities),
-        wlanSecurityFindings: nextResult.securityFindings
+        encryption: effectiveResult.securityProtocol,
+        wlanFindings: mapWlanVulnerabilitiesToFindings(effectiveResult.vulnerabilities),
+        wlanSecurityFindings: effectiveResult.securityFindings
       });
       setState("done");
-      void syncScanResult(nextResult);
+      void syncScanResult(effectiveResult);
     } catch (scanError) {
       setError(scanErrorMessage(scanError));
       setState("error");
@@ -448,6 +457,16 @@ export function WlanScanner() {
           </View>
 
           <Methodology result={result} />
+          <InteractiveScanReview
+            allDevicesKnown={allDevicesKnown}
+            result={result}
+            servicesExpected={servicesExpected}
+            setAllDevicesKnown={setAllDevicesKnown}
+            setServicesExpected={setServicesExpected}
+            onRerun={(phaseIds, interactionContext) => {
+              void scan(phaseIds, interactionContext);
+            }}
+          />
           <SecurityCheckList findings={result.securityFindings} />
           <DeviceList devices={result.connectedDevices} />
           <VulnerabilityList vulnerabilities={sortedVulnerabilities} />
@@ -467,6 +486,137 @@ export function WlanScanner() {
       ) : null}
     </GlassCard>
   );
+}
+
+function InteractiveScanReview({
+  allDevicesKnown,
+  onRerun,
+  result,
+  servicesExpected,
+  setAllDevicesKnown,
+  setServicesExpected
+}: {
+  allDevicesKnown: ContextAnswer;
+  onRerun: (phaseIds: WlanScanPhaseId[], context: NonNullable<WlanScanResult["interactionContext"]>) => void;
+  result: WlanScanResult;
+  servicesExpected: ContextAnswer;
+  setAllDevicesKnown: (value: ContextAnswer) => void;
+  setServicesExpected: (value: ContextAnswer) => void;
+}) {
+  const unknownDevices = result.connectedDevices.filter((device) => !device.isKnown);
+  const exposedServices = result.connectedDevices.flatMap((device) =>
+    device.openPorts.filter((port) => port.state === "open")
+  );
+  const interactionContext = {
+    allDevicesKnown: contextAnswerToBoolean(allDevicesKnown),
+    servicesExpected: contextAnswerToBoolean(servicesExpected),
+    answeredAt: new Date().toISOString(),
+    source: "owner_attested" as const
+  };
+
+  return (
+    <View style={styles.interactiveBox} testID="wlan-interactive-review">
+      <Text style={styles.sectionTitle}>Ergebnisse gemeinsam einordnen</Text>
+      <Text style={styles.interactiveCopy}>
+        Antworten ergänzen den Kontext. Technisch gemessene Dienste und Geräte bleiben im Bericht sichtbar.
+      </Text>
+      <ContextQuestion
+        label={`Sind alle ${result.connectedDevices.length} sichtbaren Geräte bekannt?`}
+        value={allDevicesKnown}
+        onChange={setAllDevicesKnown}
+      />
+      {allDevicesKnown === "no" || (allDevicesKnown === "unknown" && unknownDevices.length > 0) ? (
+        <Text style={styles.interactiveWarning}>
+          {unknownDevices.length || result.connectedDevices.length} Geräte müssen mit Inhaber oder IT-Dienstleister geprüft werden.
+        </Text>
+      ) : null}
+      <ContextQuestion
+        label={`Sind die ${exposedServices.length} erreichbaren Dienste betrieblich erwartet?`}
+        value={servicesExpected}
+        onChange={setServicesExpected}
+      />
+      {servicesExpected === "yes" ? (
+        <Text style={styles.interactiveWarning}>
+          „Erwartet“ dokumentiert nur den Zweck und entfernt keinen technischen Befund.
+        </Text>
+      ) : null}
+      <View style={styles.interactiveActions}>
+        <AnimatedButton
+          label="Geräte gezielt erneut prüfen"
+          onPress={() => onRerun(["device_discovery"], interactionContext)}
+          variant="ghost"
+          testID="wlan-rerun-devices"
+        />
+        <AnimatedButton
+          label="Gateway gezielt erneut prüfen"
+          onPress={() => onRerun(["port_scan"], interactionContext)}
+          variant="ghost"
+          testID="wlan-rerun-gateway"
+        />
+      </View>
+    </View>
+  );
+}
+
+function contextAnswerToBoolean(value: ContextAnswer) {
+  if (value === "yes") return true;
+  if (value === "no") return false;
+  return null;
+}
+
+function ContextQuestion({
+  label,
+  onChange,
+  value
+}: {
+  label: string;
+  onChange: (value: ContextAnswer) => void;
+  value: ContextAnswer;
+}) {
+  const options: Array<{ label: string; value: Exclude<ContextAnswer, null> }> = [
+    { label: "Ja", value: "yes" },
+    { label: "Nein", value: "no" },
+    { label: "Unklar", value: "unknown" }
+  ];
+  return (
+    <View style={styles.contextReviewQuestion}>
+      <Text style={styles.contextReviewLabel}>{label}</Text>
+      <View accessibilityRole="radiogroup" style={styles.contextReviewOptions}>
+        {options.map((option) => (
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ checked: value === option.value }}
+            key={option.value}
+            onPress={() => onChange(option.value)}
+            style={[styles.contextReviewOption, value === option.value ? styles.contextReviewOptionActive : null]}
+          >
+            <Text style={styles.contextReviewOptionText}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanScanResult {
+  const devices = Array.from(
+    new Map([...previous.connectedDevices, ...next.connectedDevices].map((device) => [device.ipAddress, device])).values()
+  );
+  const vulnerabilities = Array.from(
+    new Map([...previous.vulnerabilities, ...next.vulnerabilities].map((finding) => [finding.id, finding])).values()
+  );
+  const securityFindings = Array.from(
+    new Map([...previous.securityFindings, ...next.securityFindings].map((finding) => [finding.id, finding])).values()
+  );
+  return {
+    ...previous,
+    ...next,
+    connectedDevices: devices,
+    methodology: Array.from(new Set([...previous.methodology, ...next.methodology])),
+    riskScore: calculateWlanRiskScore(vulnerabilities, securityFindings),
+    securityFindings,
+    vulnerabilities
+  };
 }
 
 async function recordWlanScanConsent(practiceId: string, auditConsent: boolean, ipv6Consent: boolean) {
@@ -792,6 +942,57 @@ function deviceIcon(device: DeviceInfo): IoniconName {
 }
 
 const styles = StyleSheet.create({
+  interactiveBox: {
+    backgroundColor: colors.electricSoft,
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 14,
+    padding: 14
+  },
+  interactiveCopy: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18
+  },
+  interactiveWarning: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17
+  },
+  interactiveActions: {
+    gap: 8
+  },
+  contextReviewQuestion: {
+    gap: 8
+  },
+  contextReviewLabel: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  contextReviewOptions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  contextReviewOption: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    padding: 10
+  },
+  contextReviewOptionActive: {
+    backgroundColor: colors.electricSoft,
+    borderColor: colors.electric
+  },
+  contextReviewOptionText: {
+    color: colors.ink,
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
   card: {
     marginBottom: 18
   },

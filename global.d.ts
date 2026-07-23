@@ -27,9 +27,11 @@ declare module "https://deno.land/std@0.224.0/http/server.ts" {
 
 declare module "expo-secure-store" {
   export type SecureStoreOptions = {
+    keychainAccessible?: string;
     keychainService?: string;
   };
 
+  export const WHEN_UNLOCKED_THIS_DEVICE_ONLY: string;
   export function isAvailableAsync(): Promise<boolean>;
   export function getItemAsync(key: string, options?: SecureStoreOptions): Promise<string | null>;
   export function setItemAsync(key: string, value: string, options?: SecureStoreOptions): Promise<void>;

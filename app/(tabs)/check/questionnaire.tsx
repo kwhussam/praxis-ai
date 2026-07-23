@@ -10,6 +10,11 @@ import { colors } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
 import { QUESTIONNAIRE_SECTIONS, type QuestionnaireAnswerValue, type QuestionnaireQuestion } from "@/lib/security/questionnaire";
 import { useCheckStore } from "@/lib/store/check";
+import {
+  deleteQuestionnaireDraft,
+  loadQuestionnaireDraft,
+  saveQuestionnaireDraft
+} from "@/lib/store/questionnaireDraftStorage";
 import { useSessionStore } from "@/lib/store/session";
 
 const ANSWER_OPTIONS: Array<{ value: QuestionnaireAnswerValue; label: string }> = [
@@ -92,10 +97,40 @@ const TERM_EXPLANATIONS: Array<{ terms: string[]; explanation: string }> = [
 export default function QuestionnaireScreen() {
   const answers = useCheckStore((state) => state.answers);
   const setAnswer = useCheckStore((state) => state.setAnswer);
+  const replaceAnswers = useCheckStore((state) => state.replaceAnswers);
   const recalculate = useCheckStore((state) => state.recalculate);
   const practice = useSessionStore((state) => state.practice);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setDraftReady(false);
+    if (!practice?.id) return () => {
+      active = false;
+    };
+    void loadQuestionnaireDraft(practice.id)
+      .then((draft) => {
+        if (active && draft) replaceAnswers(draft.answers);
+      })
+      .finally(() => {
+        if (active) setDraftReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [practice?.id, replaceAnswers]);
+
+  useEffect(() => {
+    if (!draftReady || !practice?.id) return;
+    const timeout = setTimeout(() => {
+      void saveQuestionnaireDraft(practice.id, answers).then((saved) => {
+        if (!saved) console.warn("questionnaire_draft_secure_store_unavailable");
+      });
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [answers, draftReady, practice?.id]);
 
   useEffect(() => {
     recalculate();
@@ -120,6 +155,7 @@ export default function QuestionnaireScreen() {
           questionnaire: answers
         }
       });
+      await deleteQuestionnaireDraft(practice.id);
       router.push("/(tabs)/check/wlan-scan");
     } catch (error) {
       console.error("questionnaire_save_failed", error);

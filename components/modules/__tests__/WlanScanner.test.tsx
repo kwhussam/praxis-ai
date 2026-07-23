@@ -151,7 +151,8 @@ jest.mock("@/lib/security/segmentationAssessment", () => ({
 }));
 
 jest.mock("@/lib/security/wlan", () => ({
-  SCAN_PHASES: [{ label: "Start", checks: ["Router prüfen"] }],
+  SCAN_PHASES: [{ id: "network_info", label: "Start", checks: ["Router prüfen"] }],
+  calculateWlanRiskScore: () => 80,
   mapWlanVulnerabilitiesToFindings: () => [],
   runWlanSecurityScan: (...args: unknown[]) => mockRunWlanSecurityScan(...args),
   syncWlanScanResultToSupabase: (...args: unknown[]) => mockSyncWlanScanResultToSupabase(...args)

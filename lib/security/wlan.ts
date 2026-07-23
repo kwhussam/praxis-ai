@@ -44,6 +44,7 @@ import type {
 } from "@/lib/security/networkProbeTypes";
 import { serviceForPort } from "@/lib/security/servicePortCatalog";
 import { resolveWifiSecurityDetails } from "@/lib/security/wifiCapabilities";
+import { resolveScanPhaseIds, type WlanScanPhaseId } from "@/lib/security/wlanScanPlan";
 import { supabase } from "@/lib/api/supabase";
 
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
@@ -141,7 +142,15 @@ export interface WlanScanResult {
     securityChecks: WlanFinding<NetworkSecurityFinding[]>;
   };
   methodology: string[];
+  interactionContext?: WlanInteractionContext;
 }
+
+export type WlanInteractionContext = {
+  allDevicesKnown?: boolean | null;
+  servicesExpected?: boolean | null;
+  answeredAt: string;
+  source: "owner_attested";
+};
 
 export type WlanScanProgress = {
   phaseId: string;
@@ -233,6 +242,8 @@ export const SCAN_PHASES = [
     ]
   }
 ] as const;
+
+export type { WlanScanPhaseId } from "@/lib/security/wlanScanPlan";
 
 export const PLATFORM_LIMITATIONS = {
   ios: [
@@ -369,9 +380,11 @@ type ScanContext = {
   subnetScan: SubnetScanSummary;
 };
 
-type WlanSecurityScanOptions = {
+export type WlanSecurityScanOptions = {
   onProgress?: (progress: WlanScanProgress) => void;
   phaseDelayMs?: number;
+  phaseIds?: WlanScanPhaseId[];
+  interactionContext?: WlanInteractionContext;
   knownDevices?: KnownDevice[];
   accessPoints?: AccessPoint[];
   scanSegment?: NetworkSegmentId;
@@ -425,13 +438,14 @@ type WlanSecurityScanOptions = {
 
 export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Promise<WlanScanResult> {
   const delayMs = options?.phaseDelayMs ?? 420;
+  const scanPlan = resolveScanPlan(options?.phaseIds);
   let context: ScanContext | null = null;
 
-  for (let phaseIndex = 0; phaseIndex < SCAN_PHASES.length; phaseIndex += 1) {
-    const phase = SCAN_PHASES[phaseIndex];
+  for (let phaseIndex = 0; phaseIndex < scanPlan.length; phaseIndex += 1) {
+    const phase = scanPlan[phaseIndex];
 
     for (let checkIndex = 0; checkIndex < phase.checks.length; checkIndex += 1) {
-      emitProgress(options?.onProgress, phaseIndex, checkIndex, context);
+      emitProgress(options?.onProgress, scanPlan, phaseIndex, checkIndex, context);
       await sleep(delayMs);
     }
 
@@ -527,7 +541,8 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     subnetScan: context.subnetScan,
     timestamp: new Date(),
     findings: buildFindings(context),
-    methodology: [...scanMethodology(context), ...getPlatformLimitations()]
+    methodology: [...scanMethodology(context), ...getPlatformLimitations()],
+    interactionContext: options?.interactionContext
   };
 
   persistWlanScanResultLocally(result);
@@ -578,6 +593,7 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       findings: serializeFindings(result.findings),
       securityFindings: result.securityFindings,
       methodology: result.methodology,
+      interactionContext: result.interactionContext,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
     },
@@ -897,24 +913,30 @@ async function runIpv6ReachabilityChecks(info: GatewaySecurityProbeResult["ipv6"
 
 function emitProgress(
   onProgress: ((progress: WlanScanProgress) => void) | undefined,
+  scanPlan: readonly (typeof SCAN_PHASES)[number][],
   phaseIndex: number,
   checkIndex: number,
   context: ScanContext | null
 ) {
   if (!onProgress) return;
-  const phase = SCAN_PHASES[phaseIndex];
-  const completedChecks = SCAN_PHASES.slice(0, phaseIndex).reduce((sum, item) => sum + item.checks.length, 0);
-  const totalChecks = SCAN_PHASES.reduce((sum, item) => sum + item.checks.length, 0);
+  const phase = scanPlan[phaseIndex];
+  const completedChecks = scanPlan.slice(0, phaseIndex).reduce((sum, item) => sum + item.checks.length, 0);
+  const totalChecks = scanPlan.reduce((sum, item) => sum + item.checks.length, 0);
 
   onProgress({
     phaseId: phase.id,
     phaseIndex,
-    phaseCount: SCAN_PHASES.length,
+    phaseCount: scanPlan.length,
     check: phase.checks[checkIndex],
     progress: Math.min(0.98, (completedChecks + checkIndex + 1) / totalChecks),
     discoveredDevices: context?.devices ?? [],
     vulnerabilities: dedupeVulnerabilities(context?.vulnerabilities ?? [])
   });
+}
+
+export function resolveScanPlan(requested?: WlanScanPhaseId[]) {
+  const selected = new Set(resolveScanPhaseIds(requested));
+  return SCAN_PHASES.filter((phase) => selected.has(phase.id));
 }
 
 async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSegmentId): Promise<ScanContext> {
