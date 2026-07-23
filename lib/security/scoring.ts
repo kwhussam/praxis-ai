@@ -21,6 +21,12 @@ export type ScoringRuleId =
   | "ACTIVE_FINDINGS"
   | "NETWORK_SECURITY_PROBES";
 
+// W3: additives Control-Result-Vokabular (siehe docs/CONTROL_RESULT_MODEL.md §2/§4).
+// Diese Typen erweitern das Modell, ersetzen aber nichts Bestehendes.
+export type Applicability = "applicable" | "not_applicable" | "conditional";
+export type ControlStatus = "met" | "partially_met" | "not_met" | "unknown" | "not_applicable";
+export type Disposition = "open" | "remediated" | "risk_accepted" | "compensating";
+
 export type AmpelDecisionReason = {
   code: string;
   severity: "info" | "warning" | "critical";
@@ -83,6 +89,20 @@ export interface RuleEvaluation {
   review_reasons: string[];
   risk_flags: string[];
   recommendation?: string;
+
+  // --- W3: additive Control-Result-Felder (alle optional; fehlend = bisheriges Verhalten) ---
+  // Werden zentral aus dem vorhandenen Zustand abgeleitet, nicht doppelt gepflegt (§2/§4).
+  status?: ControlStatus;
+  applicability?: Applicability;
+  applicability_reason?: string;
+  control_ids?: string[];
+  observed_at?: string;
+  expires_at?: string;
+  disposition?: Disposition;
+  // management_recommendation läuft parallel zu recommendation, bis alle Regeln migriert sind (§2, Phase 3).
+  management_recommendation?: string;
+  // technical_action ist INTERN und wird in keinem Kundenbericht-Serializer ausgegeben; in W3 unbefüllt.
+  technical_action?: string;
 }
 
 export interface EvidenceCoverage {
@@ -418,8 +438,10 @@ export const SCORING_RULES: ScoringRule[] = [
 
 export function calculateScore(data: CheckData): ScoreReport {
   const ruleResults = SCORING_RULES.map((rule) => rule.evaluate(data));
-  const totalPoints = ruleResults.reduce((sum, result) => sum + result.points_earned, 0);
-  const maxPoints = ruleResults.reduce((sum, result) => sum + result.points_max, 0);
+  // not_applicable-Kontrollen aus Zähler und Nenner ausschließen; unknown/conditional bleiben drin (§4.2).
+  const countedResults = ruleResults.filter(isCountedInScore);
+  const totalPoints = countedResults.reduce((sum, result) => sum + result.points_earned, 0);
+  const maxPoints = countedResults.reduce((sum, result) => sum + result.points_max, 0);
   const score = maxPoints === 0 ? 0 : Math.round((totalPoints / maxPoints) * 100);
   const scoresByCategory = groupByCategory(ruleResults);
   const evidenceConfidence = groupEvidenceCoverage(ruleResults);
@@ -474,7 +496,7 @@ function groupByCategory(results: RuleEvaluation[]): Record<SecurityCategory, nu
 
   return Object.fromEntries(
     categories.map((category) => {
-      const categoryResults = results.filter((result) => result.category === category);
+      const categoryResults = results.filter((result) => result.category === category && isCountedInScore(result));
       const earned = categoryResults.reduce((sum, result) => sum + result.points_earned, 0);
       const max = categoryResults.reduce((sum, result) => sum + result.points_max, 0);
       return [category, max === 0 ? 0 : Math.round((earned / max) * 100)];
@@ -483,14 +505,51 @@ function groupByCategory(results: RuleEvaluation[]): Record<SecurityCategory, nu
 }
 
 function groupEvidenceCoverage(results: RuleEvaluation[]) {
-  const maxPoints = results.reduce((sum, result) => sum + result.points_max, 0);
+  // Coverage über dieselbe Menge wie der Score: not_applicable ausgeschlossen (§4.4).
+  const counted = results.filter(isCountedInScore);
+  const maxPoints = counted.reduce((sum, result) => sum + result.points_max, 0);
   if (maxPoints === 0) return 0;
 
-  const weightedCoverage = results.reduce(
+  const weightedCoverage = counted.reduce(
     (sum, result) => sum + result.evidence_coverage.score * result.points_max,
     0
   );
   return Math.round(weightedCoverage / maxPoints);
+}
+
+// W3: eine zentrale, pure Ableitung für `status` – Regeln pflegen keine zweite Wahrheit (§4, Abnahmekriterium 1).
+// - not_applicable ⟺ applicability = not_applicable
+// - unknown ⟺ Evidenz fehlt (not_checked/unavailable) ODER Anwendbarkeit noch ungeklärt (conditional)
+// - sonst met/not_met aus `passed`
+// `partially_met` wird hier bewusst NIE abgeleitet: es setzt echte Subcontrol-Semantik voraus
+// und darf nicht aus der Anzahl beantworteter Fragen erraten werden (§4/§5.1).
+export function deriveControlStatus(input: {
+  passed: boolean;
+  source: EvidenceSource;
+  applicability: Applicability;
+}): ControlStatus {
+  if (input.applicability === "not_applicable") return "not_applicable";
+  if (input.source === "not_checked" || input.source === "unavailable") return "unknown";
+  if (input.applicability === "conditional") return "unknown";
+  return input.passed ? "met" : "not_met";
+}
+
+// W3: not_applicable/conditional ohne dokumentierten Grund sind ungültig und lösen Review aus (§4.2/§4.3, Abnahmekriterium 3).
+export function controlApplicabilityReviewReasons(input: {
+  applicability: Applicability;
+  applicability_reason?: string;
+}): string[] {
+  const needsReason = input.applicability === "not_applicable" || input.applicability === "conditional";
+  if (needsReason && !input.applicability_reason?.trim()) {
+    return [`Applicability=${input.applicability} erfordert einen dokumentierten Grund (applicability_reason).`];
+  }
+  return [];
+}
+
+// W3: not_applicable-Kontrollen werden aus Zähler UND Nenner entfernt – identisch für Score,
+// Kategorie-Maxima und Coverage (§4.2, Abnahmekriterium 2). unknown/conditional bleiben im Nenner.
+export function isCountedInScore(result: RuleEvaluation): boolean {
+  return result.applicability !== "not_applicable" && result.status !== "not_applicable";
 }
 
 function buildResult(input: {
@@ -505,6 +564,9 @@ function buildResult(input: {
   evidenceCoverage: EvidenceCoverage;
   recommendation: string;
   riskFlags?: string[];
+  applicability?: Applicability;
+  applicabilityReason?: string;
+  controlIds?: string[];
 }): RuleEvaluation {
   const missingEvidence = input.evidenceCoverage.source === "not_checked" || input.evidenceCoverage.source === "unavailable";
   const rawPoints = missingEvidence ? 0 : Math.max(0, Math.min(input.max, input.earned));
@@ -513,9 +575,23 @@ function buildResult(input: {
       ? Math.min(rawPoints, input.max * SELF_REPORTED_POINT_CAP_RATIO)
       : rawPoints;
   const capApplied = cappedPoints < rawPoints;
-  const reviewReasons = capApplied
+  const capReason = capApplied
     ? [`Selbstauskunft wird als Claim behandelt und auf ${SELF_REPORTED_POINT_CAP_RATIO * 100}% der Regelpunkte begrenzt.`]
     : [];
+
+  const effectivePassed = missingEvidence ? false : input.passed;
+  const applicability: Applicability = input.applicability ?? "applicable";
+  const status = deriveControlStatus({
+    passed: effectivePassed,
+    source: input.evidenceCoverage.source,
+    applicability
+  });
+  const applicabilityReasons = controlApplicabilityReviewReasons({
+    applicability,
+    applicability_reason: input.applicabilityReason
+  });
+  const reviewReasons = [...capReason, ...applicabilityReasons];
+  const recommendation = missingEvidence || !input.passed || capApplied ? input.recommendation : undefined;
 
   return {
     rule_id: input.ruleId,
@@ -523,15 +599,23 @@ function buildResult(input: {
     points_earned: cappedPoints,
     points_before_evidence_cap: rawPoints,
     points_max: input.max,
-    passed: missingEvidence ? false : input.passed,
+    passed: effectivePassed,
     finding: input.finding,
     evidence: input.evidence,
     evidence_coverage: input.evidenceCoverage,
     evidence_weight_cap_applied: capApplied,
-    review_status: "ok",
+    review_status: applicabilityReasons.length > 0 ? "review_required" : "ok",
     review_reasons: reviewReasons,
     risk_flags: input.riskFlags ?? [],
-    recommendation: missingEvidence || !input.passed || capApplied ? input.recommendation : undefined
+    recommendation,
+    // W3: additive, abgeleitete Control-Result-Felder.
+    status,
+    applicability,
+    applicability_reason: input.applicabilityReason,
+    control_ids: input.controlIds,
+    disposition: "open",
+    // Spiegelt recommendation rückwärtskompatibel; der Kundenbericht liest nur diese Variante (§2/Abnahmekriterium 4).
+    management_recommendation: recommendation
   };
 }
 
