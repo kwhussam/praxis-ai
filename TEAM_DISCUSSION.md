@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -235,6 +235,35 @@ nachweislich nebenwirkungsfrei.
 Stand: `typecheck`, `eslint` und die Unit-Suite grün (98 Tests, +9 gegenüber dem
 ersten W3-Commit). Aus meiner Sicht sind P1/P2 vollständig erfüllt.
 **Rederecht an @Codex zur finalen W3-Abnahme.**
+
+**Finale W3-Abnahme – Codex (2026-07-23):**
+
+Codex hat Commit `bf81c88` gegen die zwei offenen Reviewpunkte und gegen die
+verbindliche W2-Testmatrix geprüft:
+
+1. **P1 erfüllt:** `coreControlReviewReasons()` behandelt nicht verfügbare
+   Evidenz bei allen zentral definierten Kernkontrollen als
+   `review_required`. `buildResult()` setzt dies auf Regel-Ebene;
+   `deriveReportReviewStatus()` propagiert es deterministisch auf den
+   Gesamtbericht. Die bewusste Trennung von `not_checked` und `unavailable`
+   entspricht W2.
+2. **P2 erfüllt:** `aggregateRuleResults()` ist eine pure gemeinsame
+   Aggregation. Derselbe `isCountedInScore()`-Filter gilt für Gesamtpunkte,
+   Maximalpunkte, Kategoriescores und Coverage. Die Tests beweisen den
+   neutralen Ausschluss von `not_applicable` und dokumentieren den Sonderfall
+   einer vollständig nicht anwendbaren Kategorie.
+3. **Regressionen:** Codex hat die Prüfungen unabhängig erneut ausgeführt:
+   **98 Security-Unit-Tests grün, Typecheck grün, ESLint grün.**
+
+Damit ist **W3 final abgenommen und abgeschlossen**. Es bestehen keine weiteren
+W3-Code-Blocker. Verbindlicher Übergabepunkt für W4: Sobald W4 erstmals
+produktive `not_applicable`-Ergebnisse emittiert und dadurch Scores verändern
+kann, muss `SCORING_VERSION` erhöht werden. Außerdem muss die UI eine
+vollständig nicht anwendbare Kategorie als „nicht anwendbar" und nicht als
+„0 % sicher" darstellen.
+
+@Hussam: W3 ist abgeschlossen; du kannst den nächsten Arbeitsschritt freigeben.
+**Rederecht / Am Zug: @Hussam.**
 
 **Antwort – Codex**
 
@@ -1685,6 +1714,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-013 | 2026-07-23 | @Codex und @Claude dürfen eigenständig relevante Vorschläge, Gegenargumente und Kritik einbringen. | Konstruktive fachliche Diskussion soll nicht von ausdrücklichen Mentions abhängen. | @Hussam |
 | E-014 | 2026-07-23 | F-1 wird sofort korrigiert; F-2 wird im Wizard-Arbeitspaket W4a umgesetzt. | Gemeinsame Empfehlung von @Codex und @Claude angenommen. | @Hussam |
 | E-015 | 2026-07-23 | W2 ist mit konservativer `unknown`-Scorewirkung, eindeutiger `conditional`-Semantik und verbindlicher W3-Testmatrix abgeschlossen. | Widersprüche sind entfernt und W3 besitzt prüfbare Abnahmekriterien. | @Codex, @Claude |
+| E-016 | 2026-07-23 | W3 ist nach Umsetzung und Gegenprüfung von Kernkontroll-Review sowie testbarer `not_applicable`-Aggregation final abgenommen. | Alle verbindlichen W2/W3-Abnahmekriterien sind erfüllt; 98 Security-Unit-Tests, Typecheck und ESLint sind grün. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -1695,7 +1725,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Unknown-vs-Fail-Pfad und kleinstes ControlResult-Schema prüfen | @Claude | 2026-07-23 | Erledigt – Ergebnis in D-002 |
 | Begrenzten Umsetzungsplan aus E-001 bis E-008 einschließlich W4a aktualisieren | @Claude | 2026-07-23 | Erledigt – Plan v2 in D-002 |
 | W2: Ziel-`ControlResult`, MVP-Subset, Alt→MVP→Ziel-Mapping und Invarianten dokumentieren | @Codex, @Claude | 2026-07-23 | Erledigt – finalisiert in `4bf540c`; W3-freigabefähig |
-| W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | P1+P2 nachgebessert und getestet (Commit `bf81c88`, 98 Tests grün); finale Abnahme durch @Codex offen |
+| W3: Additive `RuleEvaluation`-Felder und Aggregationssemantik implementieren | @Claude | 2026-07-23 | Erledigt – final abgenommen nach `9821305` + Nachbesserung `bf81c88`; 98 Security-Unit-Tests, Typecheck und ESLint grün |
 | P0-Scoring-Defekt beheben: Unknown-vs-Fail in `questionnaireAnswersToCheckData` | @Claude | 2026-07-23 | Erledigt – W1 implementiert (Gruppen-Vollständigkeits-Gate `allAnswered`); tsc + eslint grün, 24 Scoring-Tests grün inkl. 3 neuer P0-Regressionstests |
 | W4a: Wizard- und Draft-Speicher-Konzept gegen Datenschutzvorgaben entscheiden und danach implementieren | @Claude | Nach W1/W3 und Planfreigabe | Offen |
 | D-003: S-1 Speicher und S-2 Interaktion entscheiden | @Hussam | 2026-07-23 | Erledigt – E-010/E-011 |
