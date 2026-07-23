@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -732,6 +732,18 @@ meldet 7 relevante Tests grün)._
 in W4a einfalten? Danach ist der nächste offene Hauptpunkt W2 (Ziel-
 `ControlResult`, mit @Codex).
 
+**Entscheidung – @Hussam**
+
+Da @Codex und @Claude dieselbe Einordnung empfehlen, stimme ich zu:
+
+- **F-1 wird jetzt** als kleiner Korrektur-Commit behoben, damit gemergte
+  Re-Run-Ergebnisse und synchronisierte Evidence-Wrapper konsistent bleiben.
+- **F-2 wird in W4a** umgesetzt: Autosave-Debounce, Schreibserialisierung und
+  Bereinigung verwaister SecureStore-Generationen.
+
+**Rederecht / Am Zug: @Claude** für F-1. Danach folgt der separate
+Diskussions-Commit gemäß Teamregel 9.
+
 ---
 
 ### D-002 – Aktueller Stand: Stärken, Schwächen, Verbesserungen
@@ -1436,6 +1448,16 @@ an und wo wünscht ihr euch gemeinsames Brainstorming?
   3. **Arbeitsweise:** Soll ich hier eigenständig Vorschläge + Gegenargumente
      posten, oder erst auf ausdrückliches `@claude` reagieren?
 
+- **Hussam – Antworten auf Claudes Fragen 2 und 3:**
+
+  2. **Priorität als Nächstes:** zuerst Feature-Ausbau, danach Performance,
+     danach Sicherheit/DSGVO. Bereits identifizierte Sicherheits- und
+     Datenschutz-Launch-Blocker bleiben unabhängig von dieser allgemeinen
+     Reihenfolge verpflichtend.
+  3. **Arbeitsweise:** @Claude und @Codex dürfen eigenständig Vorschläge,
+     Gegenargumente und notwendige Kritik posten, wenn sie fachlich relevant
+     sind. Eine vorherige ausdrückliche Erwähnung ist nicht erforderlich.
+
 ---
 
 ### Vorlage für einen neuen Beitrag
@@ -1475,6 +1497,9 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-009 | 2026-07-23 | Plan v2 einschließlich Datenschutzpräzisierung für den Fragebogenentwurf freigegeben. | Die Umsetzung kann mit W1 beginnen; Speicherstrategie wird in D-003 technisch konkretisiert. | @Hussam |
 | E-010 | 2026-07-23 | S-1 freigegeben: kleiner Fragebogenentwurf wird getrennt und praxisgebunden direkt in SecureStore gespeichert; kein vollständiges Offline-Inventar. | Wartungsarme gerätegebundene Speicherung ohne neue Krypto-Abhängigkeit. | @Hussam |
 | E-011 | 2026-07-23 | S-2 freigegeben: interaktiver Scan folgt „messen → strukturiert fragen → ausgewählte Phase erneut messen“. | Nutzerkontext verbessert Einordnung, ohne Messbefunde zu überschreiben. | @Hussam |
+| E-012 | 2026-07-23 | Allgemeine Arbeitspriorität: Feature-Ausbau, danach Performance, danach Sicherheit/DSGVO; Launch-Blocker aus Sicherheit und Datenschutz bleiben zwingend. | Produktentwicklung soll sichtbaren Kundennutzen priorisieren, ohne Freigabekriterien zu umgehen. | @Hussam |
+| E-013 | 2026-07-23 | @Codex und @Claude dürfen eigenständig relevante Vorschläge, Gegenargumente und Kritik einbringen. | Konstruktive fachliche Diskussion soll nicht von ausdrücklichen Mentions abhängen. | @Hussam |
+| E-014 | 2026-07-23 | F-1 wird sofort korrigiert; F-2 wird im Wizard-Arbeitspaket W4a umgesetzt. | Gemeinsame Empfehlung von @Codex und @Claude angenommen. | @Hussam |
 
 ## Nächste Schritte
 
@@ -1491,6 +1516,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | D-003: S-3 Android-Discovery-Spike entscheiden | @Hussam | Offen | Nicht freigegeben / nicht implementiert |
 | S-1 und S-2 implementieren und verifizieren | @Codex | 2026-07-23 | Erledigt – Implementierungsbericht in D-003 |
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
+| F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | Nächster Zug | Freigegeben |
+| F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Claude | Mit W4a | Freigegeben |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -1529,6 +1556,9 @@ wurden.
   sicherer praxisgebundener SecureStore-Draft, gezielte Scanpläne,
   strukturierte Kontextfragen und phasenbezogene Re-Runs; TypeScript, ESLint
   und 7 relevante Tests grün; Rederecht zur Commit-Gegenprüfung an @Claude.
+- **Zuletzt geprüft:** 2026-07-23 – @Hussams Prioritäten und autonome
+  Diskussionsfreigabe als E-012/E-013 dokumentiert; gemeinsame F-1/F-2-
+  Empfehlung als E-014 freigegeben; Rederecht für F-1 an @Claude übergeben.
 - **Zuletzt geprüft (Claude):** 2026-07-23 – Als Teammitglied eingetragen,
   D-001 beantwortet und drei Rückfragen an das Team gestellt. Reagiere ab jetzt
   auf `@claude` und `@Codex`.
