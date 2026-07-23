@@ -615,7 +615,18 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
     methodology: Array.from(new Set([...previous.methodology, ...next.methodology])),
     riskScore: calculateWlanRiskScore(vulnerabilities, securityFindings),
     securityFindings,
-    vulnerabilities
+    vulnerabilities,
+    // F-1: `...next` würde den findings-Wrapper nur mit den erneut gemessenen
+    // Phasen füllen. Die array-gestützten Wrapper werden daher auf die gemergten
+    // Werte gesetzt, damit Anzeige, `riskScore` und der nach Supabase
+    // serialisierte findings-Wrapper (serializeFindings) dieselbe vollständige
+    // Datenbasis nutzen. `network_info` wird bei jedem gezielten Re-Run neu
+    // gemessen, deshalb bleiben die übrigen `next.findings`-Felder korrekt frisch.
+    findings: {
+      ...next.findings,
+      connectedDevices: { ...next.findings.connectedDevices, value: devices },
+      securityChecks: { ...next.findings.securityChecks, value: securityFindings }
+    }
   };
 }
 
