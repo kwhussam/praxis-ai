@@ -2,7 +2,11 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-types";
 
-import { calculateScore, SCORING_VERSION as SECURITY_SCORING_VERSION } from "@/lib/security/scoring";
+import {
+  calculateScore,
+  SCORING_VERSION as SECURITY_SCORING_VERSION,
+  type AssessmentProfile
+} from "@/lib/security/scoring";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { addDays, type DeletionReport } from "./privacy";
 
@@ -62,6 +66,7 @@ type MonitoringRunRequest = {
 type QuestionnaireRequest = {
   practiceId?: string;
   questionnaire?: Record<string, QuestionnaireAnswerValue>;
+  assessmentProfile?: AssessmentProfile;
   clientSyncId?: string;
 };
 
@@ -984,8 +989,16 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, payload.practiceId, "questionnaire_check", "manager");
   if (access instanceof Response) return access;
 
+  if (payload.assessmentProfile !== undefined && !isAssessmentProfile(payload.assessmentProfile)) {
+    return c.json({ error: "invalid_assessment_profile" }, 400);
+  }
+
   const questionnaire = payload.questionnaire ?? {};
-  const scoreReport = calculateScore(questionnaireAnswersToCheckData(questionnaire));
+  const assessmentProfile = payload.assessmentProfile ?? "general";
+  const scoreReport = calculateScore({
+    ...questionnaireAnswersToCheckData(questionnaire),
+    assessment_profile: assessmentProfile
+  });
   const findings = questionnaireFindings(questionnaire);
   const results = {
     questionnaire,
@@ -1019,6 +1032,10 @@ async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
     findings,
     checkedAt: new Date().toISOString()
   });
+}
+
+function isAssessmentProfile(value: unknown): value is AssessmentProfile {
+  return value === "general" || value === "health";
 }
 
 async function handleDashboard(c: Context<{ Bindings: Env }>) {

@@ -2041,9 +2041,18 @@ describe("POST /api/check/questionnaire", () => {
       securityOwnerAssigned: true,
       responsibilityDocumented: true,
       staffTraining: true,
-      dmarc: false
+      dmarc: false,
+      hasMedicalLargeDevices: true,
+      medicalLargeDevicesSegmented: false
     };
-    const expectedScoreReport = calculateScore(questionnaireAnswersToCheckData(questionnaire));
+    const expectedScoreReport = calculateScore({
+      ...questionnaireAnswersToCheckData(questionnaire),
+      assessment_profile: "health"
+    });
+    const generalScoreReport = calculateScore({
+      ...questionnaireAnswersToCheckData(questionnaire),
+      assessment_profile: "general"
+    });
     const securityChecksRows: Array<Record<string, unknown>> = [];
     let canAccessRequest: Record<string, unknown> | null = null;
 
@@ -2085,6 +2094,7 @@ describe("POST /api/check/questionnaire", () => {
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
             practiceId,
+            assessmentProfile: "health",
             questionnaire
           })
         }),
@@ -2093,9 +2103,15 @@ describe("POST /api/check/questionnaire", () => {
       );
 
       expect(res.status).toBe(200);
-      const result = await res.json() as { score: number; scoreReport: { score: number }; checkId: string };
+      const result = await res.json() as {
+        score: number;
+        scoreReport: { score: number; assessment_profile?: string };
+        checkId: string;
+      };
       expect(result.score).toBe(expectedScoreReport.score);
       expect(result.scoreReport.score).toBe(expectedScoreReport.score);
+      expect(result.score).toBeLessThan(generalScoreReport.score);
+      expect(result.scoreReport.assessment_profile).toBe("health");
       expect(canAccessRequest).toEqual({
         p_user_id: userId,
         p_practice_id: practiceId,
@@ -2113,6 +2129,7 @@ describe("POST /api/check/questionnaire", () => {
         questionnaire,
         scoreReport: {
           score: expectedScoreReport.score,
+          assessment_profile: "health",
           scoring_version: expectedScoreReport.scoring_version,
           scores_by_category: expectedScoreReport.scores_by_category
         }

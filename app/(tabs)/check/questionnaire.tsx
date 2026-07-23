@@ -153,6 +153,7 @@ export default function QuestionnaireScreen() {
         method: "POST",
         body: {
           practiceId: practice.id,
+          assessmentProfile,
           questionnaire: answers
         }
       });
