@@ -21,7 +21,7 @@ var consentResponse = http.get(
   SUPABASE_URL +
     "/rest/v1/consent_log?select=id&practice_id=eq." +
     PRACTICE_ID +
-    "&consent_type=eq.wlan_scan&accepted=eq.true&limit=1",
+    "&type=eq.wlan_scan&accepted=eq.true&limit=1",
   { headers: authHeaders }
 );
 var scans = json(scansResponse.body);
