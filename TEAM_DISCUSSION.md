@@ -635,6 +635,31 @@ seine Hälfte des Vertrags. @Hussam entscheidet Reihenfolge und Freigabe.
 Vorbedingungen beantworten, dann an @Codex zur Gegenprüfung oder direkt „zur
 Umsetzung frei“.)
 
+**Entscheidung – @Hussam (2026-07-24)**
+
+@Hussam bestätigt den W4e-Scope grundsätzlich:
+
+- Der Worker-Endpunkt wird erst zusammen mit beziehungsweise nach der
+  grundlegenden Admin-Authentifizierung und dem Berechtigungsmodell des
+  Web-Backoffice umgesetzt. Es gibt keinen vorgezogenen Support-Endpunkt mit
+  provisorischer Autorisierung.
+- Für Reset-Vorgänge ist eine eigene append-only Audit-Tabelle mit RLS
+  verpflichtend. Strukturierte Worker-Logs allein reichen nicht.
+- Vor der W4e-Implementierung wird die tatsächliche Supabase-/GoTrue-OTP-TTL
+  geprüft und ihre mögliche projektweite Wirkung auf andere Auth-Flows
+  dokumentiert.
+- Bis diese Vorbedingungen erfüllt sind, wird W4e nicht implementiert.
+- Als nächstes wird W4b-2, die Erklärungshierarchie des Fragebogens,
+  umgesetzt.
+
+**Codex – Ausführung:** Entscheidung angenommen. W4b-2 wird datengetrieben
+umgesetzt: einmalige Fragebogen-Einleitung, stabiler Hinweis je Themenblock als
+Katalog-Metadatum und nur noch gezielte Hilfen an Fragen, bei denen ein
+Fachbegriff oder Nachweisbeispiel dies wirklich erfordert. Scoring,
+Antwortschlüssel und Bewertungssemantik bleiben unverändert.
+
+**Rederecht / Am Zug: @Codex während der W4b-2-Umsetzung.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -2775,6 +2800,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-018 | 2026-07-23 | W4 ist nach Implementierung (`7d6b52e`) und Behebung des Worker-Profil-Persistenz-Blockers (`ac3efb8`) final abgenommen. | Das Profil bleibt über alle maßgeblichen Pfade bis zum persistierten Score of Record erhalten; kein stiller Health-Score-Pass, Selbstauskunft-Cap greift, Produktgrenze dokumentiert. | @Codex, @Claude |
 | E-019 | 2026-07-23 | W4a ist nach bestandenem nativen iOS-Simulatorlauf final abgenommen; zusätzliche React-Native-Komponententest-Infrastruktur folgt später. | Der Wizard durchlief alle 11 Gruppen bis zur persistierten Speicherung und zum WLAN-Scan; die Coverage-Warnung war sichtbar. | @Hussam, @Codex |
 | E-020 | 2026-07-24 | W4c wird als eigenständiges Passwort-Reset-Paket geführt und ist code-seitig abgeschlossen. | Die vollständige Recovery-Kette ist implementiert und getestet; die Supabase-Redirect-URL-Konfiguration bleibt ein externes Release-Gate. | @Hussam, @Claude, @Codex |
+| E-021 | 2026-07-24 | W4e wird erst mit belastbarer Admin-Authentifizierung und Berechtigungsmodell umgesetzt; Reset-Audits benötigen eine append-only Tabelle mit RLS, und die projektweite OTP-TTL-Wirkung wird vorher geprüft. Bis dahin beginnt W4b-2. | Kein sicherheitskritischer Support-Endpunkt mit provisorischer Authz oder unzureichenden Logs; klare Reihenfolge zwischen Backoffice-Fundament und Admin-Reset. | @Hussam |
 
 ## Nächste Schritte
 
@@ -2797,7 +2823,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
-| Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | Offen | Technische Analyse geliefert (2026-07-24): `admin.generateLink` type=recovery + `verifyOtp`, kein Admin-Passwort, dünner Worker-Wrapper; wartet auf @Hussams Entscheidung zu Übergabekanal/TTL/Sitzungswiderruf |
+| Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
+| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten freigeben oder priorisieren | @Hussam | Offen | Wartet auf Produktfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
@@ -2930,3 +2957,8 @@ wurden.
   (OTP-TTL-Prüfung, Admin-Berechtigungsmodell/Backoffice-Reihenfolge,
   Audit-Ablage). Keine Code-Änderung – wartet auf @Hussams Freigabe/Routing.
   Rederecht bei @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat den W4e-Vertrag mit
+  verbindlichen Vorbedingungen bestätigt (E-021): Umsetzung erst nach
+  Admin-Authz-Fundament, append-only RLS-Audit statt reiner Worker-Logs und
+  vorherige Prüfung der projektweiten OTP-TTL-Wirkung. W4b-2 ist als nächster
+  Arbeitsschritt freigegeben und von Codex begonnen.
