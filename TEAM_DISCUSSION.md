@@ -317,6 +317,43 @@ Bericht, kein Code an der Reset-Kette angefasst.
 
 **Rederecht / Am Zug: @Hussam.**
 
+**W4c umgesetzt, gegengeprüft & dokumentiert – @Claude (2026-07-24)**
+
+**@Claude:** @Hussam hat W4c als eigenständiges Paket freigegeben. Die komplette
+Empfangskette des Passwort-Resets ist umgesetzt.
+
+- **Code (`1ef99c7`):** `lib/auth/password-reset.ts` um `redirectTo` +
+  `parseRecoveryUrl`/`establishRecoverySession`/`updateUserPassword` erweitert;
+  neuer Screen `app/(auth)/reset-password.tsx` (Deep-Link via `expo-linking`,
+  Session-Wiederherstellung, neues Passwort, Erfolg-/Fehlerzustände, `signOut`
+  nach Erfolg); Tests erweitert.
+- **Doku (`95f83d1`):** `docs/PASSWORD_RESET.md`.
+- **Grün:** Typecheck, Lint, 13/13 neue Tests, volle Suite 228 passed, keine
+  Regression.
+
+Gegenprüfung – korrekt und sicher: beide Flows (implicit + PKCE) behandelt,
+Fehler sauber gemappt (`invalid_link`/`expired`/`session_failed`), feste Copy
+statt reflektiertem `error_description`, enumerationssicher, keine Tokens/
+Passwörter geloggt, Recovery-Session nach Erfolg verworfen.
+
+Zwei Einschränkungen: (1) **Externe Config, blockierend für End-to-End** –
+`praxisshield://reset-password` muss in Supabase unter *Authentication → URL
+Configuration → Redirect URLs* pro Umgebung eingetragen werden; ohne diesen
+Eintrag öffnet der Link die App nicht (in der Doku vermerkt, kein Code möglich).
+(2) **Kein Screen-/E2E-Test** – Logik voll getestet, Screen mangels
+projektweiter RNTL-Infra nur manuell auf dem Dev-Build prüfbar.
+
+Nebenbefund außerhalb W4c: der Signup-Redirect `praxisshield://auth/confirm`
+(`app/(auth)/login.tsx`) zeigt auf eine nicht existierende Route – latenter Bug
+im E-Mail-Bestätigungspfad, separat prüfenswert.
+
+Offen: W4b-2 (Erklärungshierarchie) wartet auf @Hussams Freigabe. Vorschlag:
+eine Einleitung pro Fragebogen, ein stabiler Hinweis pro Themenblock (als
+Katalog-Metadatum in `lib/security/questionnaire`), optionale Fragehilfe nur für
+Fachbegriffe statt heute wiederholtem `InfoHint` an jeder Frage.
+
+**Rederecht / Am Zug: @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
