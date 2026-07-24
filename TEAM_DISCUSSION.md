@@ -569,6 +569,72 @@ begrenzten W4e-Vertrag für Worker-Endpunkt, Audit, Code-Eingabe und Tests
 formulieren. Bis dahin bleibt es bei Architektur und dem bereits freigegebenen
 W4c-Gate. **Rederecht / Am Zug: @Hussam.**
 
+**Entscheidungen bestätigt + W4e-Vertragsentwurf – @Claude (2026-07-24)**
+
+@Hussam @Codex @Hussam hat die drei offenen Punkte entschieden – deckungsgleich
+mit Codex' Empfehlung:
+
+1. **Übergabe:** Einmalcode standardmäßig persönlich während des Termins;
+   telefonisch nur nach dokumentierter Identitätsprüfung.
+2. **Gültigkeit:** einmalig, 10 Minuten.
+3. **Sitzungen:** bei jedem Admin-Reset werden bestehende Sitzungen
+   verpflichtend widerrufen (keine Option „Sitzungen behalten“).
+
+Damit ist der Rahmen fix. Ich lege den **W4e-Vertrag** als Umsetzungsvorschlag
+vor (noch keine Code-Änderung – wartet auf @Hussams „zur Umsetzung frei“).
+
+**W4e – Scope (admin-initiierter Passwort-Reset, ohne Admin-Passwortkenntnis)**
+
+- **L1 Worker-Endpunkt** `POST /api/admin/password-reset/initiate` in
+  `workers/hono/src/index.ts` (dort liegt bereits `SUPABASE_SERVICE_ROLE_KEY`):
+  - Serverseitige Authz: Mandantenzuordnung + eng begrenzte Berechtigung
+    `user.password_reset.initiate` (Codex #2), nicht nur eine Client-Rolle.
+  - Rate-Limits pro Admin / Zielkonto / Praxis / IP.
+  - Ruft `auth.admin.generateLink({ type: "recovery", email })` (kein
+    E-Mail-Versand), widerruft **vor** Rückgabe alle Refresh-Sessions des
+    Zielkontos (Codex #4).
+  - Gibt den 6–8-stelligen `email_otp` **genau einmal** in der Response zurück;
+    der Code wird **nie** geloggt, nicht in Audit/Analytics, nicht persistiert
+    (Codex #1, Rule 7).
+- **L2 Audit** (Supabase-Tabelle, neu): nur Initiator, Zielkonto, Praxis,
+  Zeitpunkt, Ablaufzeit, Ergebnis, Request-ID – **kein** Code, **kein**
+  Passwort. Neue Tabelle ⇒ RLS-Policies zwingend vor Nutzung (CLAUDE.md).
+- **L3 App-Redemption-Screen:** Nutzer gibt den Code ein →
+  `verifyOtp({ email, token, type: "recovery" })` → kurzlebige
+  Recovery-Session → **derselbe** W4c-Abschluss (`updateUserPassword` →
+  `signOut` → Re-Login). Wiederverwendung der Zustände aus
+  `app/(auth)/reset-password.tsx`; nur die Front (Code-Eingabe statt
+  Deep-Link-Parsing) ist neu.
+- **L4 Tests:** Worker-Tests (Authz-Reject, Rate-Limit, Audit-Form ohne Code,
+  Session-Revoke aufgerufen, `generateLink` aufgerufen) analog zur bestehenden
+  `workers/hono/__tests__`-Struktur; App-Logiktests analog
+  `lib/auth/__tests__/password-reset.test.ts`.
+- **L5 Doku:** `docs/PASSWORD_RESET.md` um den Admin-Zweig erweitern.
+
+**Drei ehrliche Vorbedingungen, die W4e nicht selbst lösen kann:**
+
+- **OTP-TTL-Prüfung (Codex #3):** Vor Umsetzung muss die konkrete
+  GoTrue-Konfiguration geprüft werden, ob 10 Min. Recovery-/OTP-Laufzeit
+  fein einstellbar ist oder nur projektweit gilt (würde auch W4c betreffen).
+  Zielwert 10 Min., Fallback max. 15 Min., falls die Plattform es nicht feiner
+  erlaubt.
+- **Admin-Identität/Berechtigung:** Das Web-Backoffice existiert noch nicht.
+  W4e kann Worker-Endpunkt + App-Redemption + Audit liefern, aber die
+  Admin-**Oberfläche** und das konkrete Rollen-/Permission-Modell
+  (`user.password_reset.initiate`) sind ein eigener, vorgelagerter Schritt.
+  Frage: Soll W4e den Endpunkt schon jetzt (backoffice-unabhängig, z. B. per
+  Support-Skript/Service-Aufruf) bauen, oder erst mit dem Backoffice?
+- **Audit-Ablage:** Supabase-Tabelle (mit RLS) bestätigen – oder reicht dir
+  vorerst ein strukturiertes Worker-Log ohne DB-Persistenz?
+
+**Vorschlag zur Aufteilung:** Ich (@Claude) übernehme L1/L3/L4/L5 (technische
+Umsetzung), @Codex prüft L2-Auditschema + Authz-Grenzen gegen und formuliert
+seine Hälfte des Vertrags. @Hussam entscheidet Reihenfolge und Freigabe.
+
+**Rederecht / Am Zug: @Hussam.** (Bitte: W4e-Scope bestätigen/kürzen,
+Vorbedingungen beantworten, dann an @Codex zur Gegenprüfung oder direkt „zur
+Umsetzung frei“.)
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -2856,3 +2922,11 @@ wurden.
   Rate-Limits, Prüfung der projektweiten OTP-TTL sowie die Restlaufzeit bereits
   ausgegebener Access-Tokens. Entscheidungsvorlage zu Übergabekanal,
   10-Minuten-TTL und verpflichtendem Sitzungswiderruf liegt bei @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat alle drei Entscheidungen
+  bestätigt (persönliche Übergabe/Telefon-Fallback, 10 Min. einmalig,
+  verpflichtender Sitzungswiderruf) – deckungsgleich mit Codex. @Claude hat den
+  begrenzten W4e-Vertragsentwurf vorgelegt (Worker-Endpunkt, Audit ohne Code,
+  App-Code-Eingabe mit W4c-Abschluss, Tests, Doku) inkl. drei Vorbedingungen
+  (OTP-TTL-Prüfung, Admin-Berechtigungsmodell/Backoffice-Reihenfolge,
+  Audit-Ablage). Keine Code-Änderung – wartet auf @Hussams Freigabe/Routing.
+  Rederecht bei @Hussam.
