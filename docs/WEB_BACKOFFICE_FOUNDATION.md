@@ -2,8 +2,8 @@
 
 Status: Fachplan als Fundament angenommen (@Hussam, 2026-07-24). B0-Produkt-
 und B1-Technikentscheidungen bestätigt; Implementierung weiterhin nicht
-freigegeben. Offen bleibt allein die datenschutzrechtliche Audit-Aufbewahrungs-
-frist, die vor B1 gesondert entschieden wird.
+freigegeben. Personenbezogene Audit-Aufbewahrung ist auf sechs Monate mit
+anschließender automatischer irreversibler Anonymisierung festgelegt.
 
 Stand: 2026-07-24
 
@@ -174,6 +174,8 @@ Pflichtfelder (Entscheidung @Hussam, 2026-07-24); `domain` bleibt optional:
 - `UPDATE`/`DELETE` werden durch Grants und Datenbankregeln auch für den
   regulären Backoffice-Schreibpfad verhindert; Korrekturen erfolgen durch ein
   neues, referenzierendes Ereignis
+- personenbezogene Audit-Ereignisse werden regulär sechs Monate aufbewahrt und
+  danach automatisch irreversibel anonymisiert
 
 W4e erhält später eine spezialisierte Reset-Audit-Struktur oder einen streng
 typisierten Ereignistyp auf dieser Grundlage. Vorher wird die GoTrue-OTP-TTL
@@ -254,7 +256,40 @@ Kompatibilitätsverweis nur über eine transaktionale serverseitige Funktion.
 - `suspended` sperrt neue Assessments und privilegierte Änderungen, löscht aber
   keine historischen Nachweise.
 - Löschung folgt dem vorhandenen Datenschutz-Löschprozess; Audit-Ereignisse
-  werden nach festgelegter Frist minimiert/anonymisiert, nicht still verändert.
+  werden nach sechs Monaten automatisch irreversibel anonymisiert, nicht still
+  inhaltlich verändert. Eine dokumentierte Aufbewahrungssperre ist nur für
+  einen konkreten laufenden Sicherheits- oder Rechtsvorgang zulässig, zeitlich
+  zu überprüfen und besonders zugriffsbeschränkt.
+
+### Transparenz und Datenschutzinformation
+
+Die sechsmonatige personenbezogene Aufbewahrung wird in den
+Datenschutzinformationen für Backoffice- und betroffene Praxisbenutzer
+ausdrücklich genannt. Der Hinweis beschreibt mindestens:
+
+- Zweck der Auditierung und Rechtsgrundlage,
+- betroffene Datenkategorien (Akteur, Aktion, Ziel, Praxis, Zeitpunkt,
+  Ergebnis, Request-ID),
+- zugriffsberechtigte Rollen beziehungsweise Empfängerkategorien,
+- sechs Monate personenbezogene Speicherung,
+- anschließende irreversible Anonymisierung,
+- einen eng begrenzten Ausnahmefall für dokumentierte laufende Sicherheits-
+  oder Rechtsvorgänge,
+- Betroffenenrechte und Kontaktmöglichkeit.
+
+Die Information muss bei beziehungsweise vor Beginn der Verarbeitung leicht
+zugänglich sein, etwa beim Backoffice-Onboarding und dauerhaft über
+„Datenschutz“ im Backoffice. Es ist kein Popup bei jeder protokollierten Aktion
+und keine Einwilligung in die Sicherheitsprotokollierung erforderlich. Die
+ausgelieferte Version der Datenschutzinformation wird nachvollziehbar
+protokolliert.
+
+Zusätzlich werden die Verarbeitung im Verzeichnis der
+Verarbeitungstätigkeiten, die technische Anonymisierungsroutine und die
+Zugriffskontrollen intern dokumentiert. Eine bloße Pseudonymisierung genügt
+nicht als Anonymisierung: Bleibt eine Re-Identifizierung über Benutzer-,
+Praxis- oder Request-Zuordnungen möglich, gelten die Daten weiterhin als
+personenbezogen.
 
 ## 8. Berechtigungsmatrix für den MVP
 
@@ -285,10 +320,16 @@ Entschieden (@Hussam, 2026-07-24):
 
 Noch offen vor B1:
 
-- Audit-Aufbewahrungsfrist – gesonderte datenschutzrechtliche Entscheidung
-  (Blocker für B1-Abschluss).
 - Backoffice-Domain/Deployment und UI-Technik (rein technische Wahl, blockiert
   Schema/Authz nicht).
+
+Audit-Entscheidung (@Hussam, 2026-07-24):
+
+- sechs Monate personenbezogene Aufbewahrung;
+- danach automatische irreversible Anonymisierung;
+- transparente Aufnahme in die Datenschutzinformation;
+- dokumentierte, eng begrenzte Aufbewahrungssperre nur für konkrete laufende
+  Sicherheits- oder Rechtsvorgänge.
 
 ### B1 – Autorisierung und Schema
 
@@ -307,7 +348,8 @@ Noch offen vor B1:
   um neue Tabellen/Rollen erweitern; Cross-Tenant-Negativtests grün
 - append-only `backoffice_audit_events` ohne UPDATE/DELETE-Grants im regulären
   Schreibpfad
-- Voraussetzung für B1-Abschluss: entschiedene Audit-Aufbewahrungsfrist
+- automatisierte sechsmonatige Anonymisierungsroutine, dokumentierter
+  Ausnahmeprozess und Tests auf fehlende Re-Identifizierbarkeit
 
 ### B2 – Admin-API
 
@@ -354,6 +396,9 @@ Noch offen vor B1:
 - Profiländerungen wirken nur auf neue Assessments.
 - Datenschutzpflichten, Löschung und Aufbewahrung sind für neue Stammdaten und
   Audits dokumentiert.
+- Ein automatisierter Test belegt die Anonymisierung fälliger Audit-Ereignisse
+  nach sechs Monaten; der anonymisierte Datensatz erlaubt keine
+  Re-Identifizierung über direkte oder indirekte Zuordnungen.
 
 ## 11. Entscheidungen (@Hussam, 2026-07-24)
 
@@ -367,9 +412,9 @@ Getroffen:
 4. Pflicht-Stammdaten bestätigt: Praxistyp, Anzeigename, rechtlicher Name,
    Ansprechpartner, geschäftliche E-Mail, Telefonnummer, Straße, PLZ, Ort und
    Land; Domain optional.
-
-Weiterhin offen (vor B1 zu entscheiden):
-
-5. Aufbewahrungsfrist für Backoffice-Audit-Ereignisse – wird gesondert
-   datenschutzrechtlich entschieden und ist Voraussetzung für den
-   B1-Abschluss.
+5. Personenbezogene Backoffice-Audit-Ereignisse werden sechs Monate
+   aufbewahrt und danach automatisch irreversibel anonymisiert. Die
+   Datenschutzinformation nennt Zweck, Datenkategorien, Rechtsgrundlage,
+   Zugriffsrollen, Frist, Anonymisierung und Betroffenenrechte. Eine
+   dokumentierte Aufbewahrungssperre bleibt auf konkrete laufende
+   Sicherheits- oder Rechtsvorgänge begrenzt.
