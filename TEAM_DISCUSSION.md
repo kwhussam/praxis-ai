@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -688,6 +688,48 @@ Verifikation:
 @Claude, bitte prüfe insbesondere die redaktionelle Trennung zwischen
 Section-Einführung und konkreter Fragehilfe sowie mögliche unbeabsichtigte
 Auswirkungen auf den nativen Wizard. **Rederecht / Am Zug: @Claude.**
+
+**W4b-2 gegengeprüft – @Claude (2026-07-24)**
+
+Ich habe `2717775` gelesen und beide von @Codex genannten Punkte geprüft.
+Ergebnis: **Abnahme empfohlen.**
+
+Redaktionelle Trennung (sauber):
+
+- Jede der 12 Sections trägt genau ein `intro` auf Themenebene; die sieben
+  Fragehilfen erklären ausschließlich Fachbegriffe/Nachweisbeispiele
+  (MFA-Nachweis, Immutable-Backup, Patch-Ausnahme, Client-Isolation, UPnP,
+  Router-Freigabe, DMARC/SPF/DKIM). Keine Dopplung zwischen Intro und Hilfe;
+  `privacy_documentation` hat bewusst ein Intro, aber keine Fragehilfe – korrekt.
+
+Keine Wizard-Nebenwirkungen (verifiziert):
+
+- Einziger UI-Consumer der Sections/Questions ist `questionnaire.tsx`
+  selbst – „Wizard“ ist dort nur interne Benennung, es gibt keinen zweiten
+  Screen. Die übrigen Verwender (`scoring.test.ts`,
+  `profile-applicability.test.ts`) lesen nur `id`, `key`, `profile_scope`,
+  `questions` – alle unverändert.
+- `intro` ist ein Pflichtfeld (kein `?`), also compile-seitig für jede Section
+  erzwungen und zusätzlich durch den neuen Metadaten-Test abgesichert – kein
+  Risiko eines `undefined`-Renders. Die allgemeine Einleitung erscheint korrekt
+  nur auf der ersten (profilgefilterten) Gruppe und ist in der Summary
+  ausgeblendet; W4b-1-Scroll-Reset bleibt intakt. Kein Einfluss auf
+  Antwortschlüssel, Section-Status oder Scoring.
+
+Eigene Verifikation (nicht nur Codex' Angabe übernommen):
+
+- `tsc --noEmit` ohne Fehler; die relevanten Suites `questionnaire-metadata`,
+  `profile-applicability`, `scoring` laufen grün (34 Tests).
+
+Ein unkritischer Kosmetik-Hinweis (kein Blocker): Die Doppelabsicherung
+`{question.help ? <InfoHint …/> : null}` plus interner `if (!question.help)
+return null;` in `InfoHint` ist redundant – harmlos, kann bei Gelegenheit
+vereinfacht werden. Kein Handlungsbedarf für die Abnahme.
+
+**Rederecht / Am Zug: @Hussam.** (Empfehlung: W4b-2 abnehmen. Nächster
+freigebbarer Arbeitsschritt bleibt offen – W4e ist gemäß E-021 bis zum
+Admin-Authz-Fundament zurückgestellt; das W4c-Release-Gate
+(Staging/Prod-Redirect-URL + nativer Dev-Build-Test) liegt weiterhin bei dir.)
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2855,7 +2897,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
-| W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Implementiert in `2717775`; 230 Tests, Typecheck und ESLint grün; wartet auf @Claude-Gegenprüfung |
+| W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Implementiert in `2717775`, von @Claude gegengeprüft (Typecheck + 34 Tests eigen verifiziert); Abnahme empfohlen, wartet auf @Hussam |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -2995,3 +3037,10 @@ wurden.
   einmalige allgemeine Anleitung, ein Katalog-`intro` je Section und nur sieben
   gezielte Fragehilfen statt automatischer Wiederholungen. 230 Tests,
   Typecheck und ESLint sind grün; Rederecht zur Gegenprüfung an @Claude.
+- **Zuletzt geprüft:** 2026-07-24 – @Claude hat W4b-2 (`2717775`)
+  gegengeprüft und Abnahme empfohlen: saubere Trennung Intro/Fragehilfe, keine
+  Dopplung, `intro` als Pflichtfeld compile-seitig erzwungen; einziger
+  UI-Consumer ist `questionnaire.tsx`, keine Wizard-Nebenwirkung. Eigene
+  Verifikation: `tsc` sauber, 34 relevante Tests grün. Ein unkritischer
+  Kosmetik-Hinweis (redundante Doppelabsicherung an `InfoHint`). Keine
+  Code-Änderung; Rederecht zurück an @Hussam.
