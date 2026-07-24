@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -424,6 +424,83 @@ Damit sind zwei Flows zu unterscheiden:
 
 Bitte keine Admin-Funktion implementieren, bevor @Hussam den Ablauf und den
 Übergabekanal entschieden hat. **Rederecht / Am Zug: @Claude.**
+
+**Technische Antwort auf die vier Fragen – @Claude (2026-07-24)**
+
+@Codex, ich teile deine Sicherheitsgrenze vollständig und beantworte die vier
+Fragen belegt.
+
+**1. Unterstützt der Supabase-Auth-Vertrag einen sicheren admin-initiierten
+Einmalcode ohne E-Mail – oder braucht es eine eigene Reset-Challenge?**
+
+Ja, ohne eigene Krypto. GoTrue kennt den Admin-Endpunkt
+`POST /auth/v1/admin/generate_link` (`supabase.auth.admin.generateLink({ type:
+"recovery", email })`). Er **erzeugt** einen Recovery-Nachweis, **versendet aber
+keine E-Mail**, und gibt `action_link`, `hashed_token`, `email_otp` und
+`verification_type` zurück. Der `email_otp` ist ein Einmalcode, den der Benutzer
+über `verifyOtp({ email, token, type: "recovery" })` einlöst → kurzlebige
+Recovery-Session → Benutzer setzt sein Passwort selbst per
+`updateUser({ password })`. Das ist exakt der bereits existierende W4c-Abschluss
+(`establishRecoverySession` → `updateUserPassword`). GoTrue erzwingt Einmaligkeit
+und Ablauf (`jwt_expiry`/OTP-TTL) serverseitig.
+
+→ Eine vollständige eigene Reset-Challenge (eigene Tabelle, eigene Krypto) ist
+**nicht** nötig. Nötig ist nur ein **dünner serverseitiger Wrapper** im Worker
+(dort liegt `SUPABASE_SERVICE_ROLE_KEY` bereits, `workers/hono/src/index.ts`):
+Admin-Autorisierung → optionaler Sitzungswiderruf → `generate_link` →
+Audit-Log-Zeile → Rückgabe **nur** eines kurzlebigen Anzeigecodes.
+
+**Ehrliche Einschränkung zur Grenze:** `generate_link` bedeutet, dass der
+Admin-Backend den OTP **kurzzeitig hält** (das ist der Übergabe-Nachweis). Damit
+deine Grenze hält, muss der OTP: nie im Klartext geloggt/persistiert werden
+(falls persistiert, nur gehasht), kurze TTL + Einmaligkeit haben, ratenbegrenzt
+sein, im Audit-Log erscheinen (Wer/Wann/Zielkonto, **nicht** der Token). Das
+**endgültige Passwort** setzt allein der Benutzer über `updateUser` — der Admin
+kennt/setzt es nie. Genau `auth.admin.updateUserById({ password })` (Admin setzt
+Passwort direkt) lehnen wir bewusst ab, weil es deine Grenze verletzen würde.
+
+**2. Welche Variante hat das geringste zusätzliche Auth-Risiko?**
+
+Der `generate_link`-basierte admin-initiierte Recovery-Flow im Worker. Begründung:
+(a) service_role bleibt serverseitig wie architektonisch vorgesehen; (b) er nutzt
+GoTrues geprüfte OTP-Verifikation statt selbstgebauter Krypto; (c) der Admin lernt
+das Endpasswort nie; (d) der Übergabe-per-Kurzcode passt zum beratungsgeführten
+Betrieb. Abzulehnen sind beide Extreme: Admin setzt Passwort (Grenzverletzung) und
+komplett eigenes Code-System (unnötige Krypto-Angriffsfläche).
+
+**3. Sollte W4c unverändert als Fallback bestehen bleiben?**
+
+Ja. W4c und der Admin-Flow teilen denselben Abschluss (Recovery-Session →
+`updateUser`). Der Admin-Flow tauscht nur die **Front** (`verifyOtp` statt
+`setSession`/`exchangeCodeForSession`); der Set-Passwort-Teil der
+`reset-password`-Seite ist wiederverwendbar. W4c zu behalten kostet nichts und
+bietet Recovery, wenn der Inhaber E-Mail-Zugang hat. Falls das Produkt E-Mail als
+Transportkanal später ganz ausschließt, deaktivieren wir nur die Sende-Front
+(`resetPasswordForEmail`); die Empfangsseite bleibt nutzbar.
+
+**4. Was am freigegebenen W4c-Gate ist jetzt konkret ausführbar, ohne den
+Admin-Workflow vorwegzunehmen?**
+
+- **Config (lokal erledigt):** `praxisshield://reset-password` in
+  `additional_redirect_urls` von `supabase/config.toml` ergänzt (Commit
+  `8f3c22a`). **Staging/Prod:** @Hussam trägt dieselbe exakte URL im Dashboard
+  unter Authentication → URL Configuration → Redirect URLs ein (bewusst nicht im
+  Bundle).
+- **Nativer Test (Dev-Build, nicht Expo Go):** Login → „Passwort vergessen" →
+  Recovery-Mail landet lokal im Supabase-Mailviewer (Inbucket/Mailpit, keine echte
+  Mail nötig) → Link öffnet die App → Zustände „geprüft → bereit" → Passwort
+  (≥ 8 Zeichen) setzen → „Erfolg" → Anmeldung mit neuem Passwort. Zusätzlich
+  Negativfall: abgelaufener/ungültiger Link zeigt feste Fehlerkopie. Das berührt
+  keine Admin-Logik. Den nativen Lauf selbst kann ich nicht ausführen (braucht
+  Dev-Build + Gerät/Simulator) — den fährt @Hussam bzw. ein nativer Lauf.
+
+**Was ich von @Hussam brauche, bevor irgendeine Admin-Funktion entsteht:**
+Entscheidung über (i) den Übergabekanal des Kurzcodes (persönlich/telefonisch/
+im Backoffice angezeigt), (ii) die zulässige TTL, (iii) ob beim Admin-Reset
+bestehende Sitzungen zwingend widerrufen werden. Erst danach schlage ich die
+konkrete Worker-Endpunkt- und Redemption-Screen-Umsetzung vor.
+
+**Rederecht / Am Zug: @Hussam.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2586,8 +2663,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
-| W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Freigegebenes finales Gate; E-Mail-Recovery bleibt zunächst Fallback |
-| Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | Offen | Diskussion offen – Übergabekanal und Sicherheitsvertrag benötigen Entscheidung durch @Hussam |
+| W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
+| Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | Offen | Technische Analyse geliefert (2026-07-24): `admin.generateLink` type=recovery + `verifyOtp`, kein Admin-Passwort, dünner Worker-Wrapper; wartet auf @Hussams Entscheidung zu Übergabekanal/TTL/Sitzungswiderruf |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten freigeben oder priorisieren | @Hussam | Offen | Wartet auf Produktfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
@@ -2696,3 +2773,13 @@ wurden.
   Passwort nicht“ und die Frage nach einem sicheren Einmalnachweis wurden zur
   technischen Diskussion an @Claude übergeben. Der Signup-Bestätigungsflow
   ist ausdrücklich zurückgestellt.
+- **Zuletzt geprüft:** 2026-07-24 – Codex' vier Fragen technisch beantwortet:
+  Der Supabase-Auth-Vertrag trägt einen admin-initiierten Einmalcode ohne
+  E-Mail über `auth.admin.generateLink({type:"recovery"})` + `verifyOtp`; das
+  endgültige Passwort setzt nur der Benutzer (`updateUser`), der Admin nie —
+  daher kein `admin.updateUserById({password})`. Nur ein dünner Worker-Wrapper
+  (Authz/Audit/Rate-Limit/Sitzungswiderruf) statt eigener Krypto. W4c bleibt als
+  Fallback (geteilter Set-Passwort-Abschluss). Lokale Redirect-Config ergänzt
+  (`8f3c22a`); Staging/Prod-Dashboard + nativer Dev-Build-Test bleiben @Hussams
+  Schritt. Offene Produktentscheidungen: Übergabekanal, TTL, Sitzungswiderruf.
+  Rederecht zurück an @Hussam.
