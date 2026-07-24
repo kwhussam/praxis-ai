@@ -860,6 +860,56 @@ Pflicht-Stammdaten) halte ich für sinnvoll.
 B0-Produktentscheidungen treffen; Muss-Punkt + zwei Klärungen an @Codex zur
 Einarbeitung in B1, bevor irgendeine Implementierung freigegeben wird.)
 
+**Fachplan angepasst + finaler B0/B1-Scope – @Claude (2026-07-24)**
+
+@Hussam hat den Plan als Fundament angenommen und alle Entscheidungen bestätigt.
+Ich habe `docs/WEB_BACKOFFICE_FOUNDATION.md` entsprechend angepasst
+(Commit `5841840`): interne-only-Produktgrenze, Einmalcode primär/E-Mail
+Fallback, Consultant nur zugewiesene Praxen, Pflicht-Stammdaten (Domain
+optional), die drei B1-Technikergänzungen als bestätigter Abschnitt, sowie
+B0/B1 und Abschnitt 11 auf Entscheidungsstand gebracht. Keine
+Implementierung.
+
+**Finaler B0-Scope (Entscheidungen)** – getroffen:
+
+- MVP ausschließlich internes Backoffice, kein Self-Service.
+- Aktivierung: persönlich übergebener Einmalcode primär, E-Mail-Link Fallback.
+- `security_consultant` sieht nur ausdrücklich zugewiesene Praxen.
+- Pflicht-Stammdaten bestätigt; `domain` optional.
+
+Vor B1 noch offen:
+
+- **Audit-Aufbewahrungsfrist** – gesonderte datenschutzrechtliche Entscheidung;
+  Blocker für den B1-Abschluss.
+- Backoffice-Domain/Deployment und UI-Technik – rein technische Wahl, blockiert
+  Schema/Authz nicht.
+
+**Finaler B1-Scope (Autorisierung + Schema, additiv):**
+
+1. Neue Tabellen `platform_staff`, `practice_memberships`,
+   `staff_practice_assignments`, `practice_invitations`,
+   `backoffice_audit_events` inkl. RLS-Policies und Grants.
+2. Additive Praxis-Pflichtfelder + Statusmaschine
+   `draft → invited → active → suspended → archived`.
+3. **`can_access_practice`/`current_user_can_access_practice` additiv um
+   `practice_memberships` erweitern** (+ Rang-Abbildung neuer Praxisrollen
+   analog `partner_role_rank`) – Muss-Punkt.
+4. Migration: Nicht-`white_label`-Grants aus `partner_practices` nach
+   `practice_memberships`; `partner_practices` auf White-Label reduziert.
+5. `backoffice_audit_events` append-only, kein UPDATE/DELETE im regulären
+   Schreibpfad.
+6. `supabase/tests/rls_cross_tenant.sql` + `docs/RLS_PARTNER_ROLE_MATRIX.md` um
+   neue Tabellen/Rollen erweitern; Cross-Tenant-Negativtests grün.
+7. B1-Abschluss setzt die entschiedene Audit-Aufbewahrungsfrist voraus.
+
+B2 (Admin-API/Worker), B3 (Weboberfläche), B4 (Aktivierung + mobile Übergabe)
+und B5 (W4e) bleiben unverändert nachgelagert; W4e erst nach Abnahme von B1–B4
++ OTP-TTL-Doku (E-021).
+
+**Rederecht / Am Zug: @Hussam.** (Vorschlag: finalen B0/B1-Scope bestätigen;
+optional @Codex zur Gegenprüfung der Doku-Änderung; die Audit-Aufbewahrungsfrist
+entscheiden. Erst danach eine etwaige B1-Implementierungsfreigabe.)
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -3028,7 +3078,9 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
-| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Codex-Entwurf `f742673` von @Claude gegen echtes Schema geprüft; als Fundament empfohlen. Vor B1: `can_access_practice` um `practice_memberships` erweitern + `partner_practices`-Migration klären + RLS-Tests/Rollenmatrix einschließen. Wartet auf @Hussams B0-Entscheidungen, keine Implementierungsfreigabe |
+| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – Plan als Fundament angenommen; Entwurf `f742673`, Gegenprüfung, B0-Entscheidungen + drei B1-Ergänzungen in `5841840` eingearbeitet. Finaler B0/B1-Scope vorgelegt |
+| Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | Offen | Blocker für B1-Abschluss |
+| B1 umsetzen: Backoffice-Schema/Authz additiv (inkl. `can_access_practice`-Erweiterung + Migration) | @Codex, @Claude | Später | Wartet auf B0/B1-Scope-Bestätigung und Aufbewahrungsfrist; keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3194,4 +3246,12 @@ wurden.
   bestehenden RLS-Policies unsichtbar. Zwei Klärungen: `partner_practices`- vs.
   `practice_memberships`-Migration und Aufnahme von `rls_cross_tenant.sql` +
   `RLS_PARTNER_ROLE_MATRIX.md` in B1. Keine Code-/Doku-Änderung; Rederecht an
+  @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat den Plan als Fundament
+  angenommen und alle Entscheidungen bestätigt (internes MVP, Einmalcode primär
+  + E-Mail-Fallback, Consultant nur zugewiesen, Pflicht-Stammdaten/Domain
+  optional). @Claude hat `WEB_BACKOFFICE_FOUNDATION.md` in `5841840`
+  entsprechend angepasst (inkl. der drei B1-Technikergänzungen) und den finalen
+  B0/B1-Scope im Faden vorgelegt. Einzig offen vor B1: datenschutzrechtliche
+  Audit-Aufbewahrungsfrist. Keine Implementierungsfreigabe; Rederecht an
   @Hussam.
