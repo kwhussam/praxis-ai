@@ -1,6 +1,9 @@
 # Web-Backoffice-Fundament
 
-Status: Fachplan, noch keine Implementierungsfreigabe
+Status: Fachplan als Fundament angenommen (@Hussam, 2026-07-24). B0-Produkt-
+und B1-Technikentscheidungen bestätigt; Implementierung weiterhin nicht
+freigegeben. Offen bleibt allein die datenschutzrechtliche Audit-Aufbewahrungs-
+frist, die vor B1 gesondert entschieden wird.
 
 Stand: 2026-07-24
 
@@ -8,14 +11,16 @@ Verantwortlich: Produktteam
 
 ## 1. Ziel und Produktgrenze
 
-Das Web-Backoffice ist zunächst ein internes Arbeitswerkzeug für Hussam und
-später ausdrücklich berechtigte Mitarbeitende. Es dient dazu, Praxen
-professionell anzulegen, Inhaber einzuladen, Benutzerzugriffe zu verwalten und
-den Onboarding-Status nachvollziehbar zu steuern.
+Das Web-Backoffice wird **ausschließlich als internes Arbeitswerkzeug**
+(Entscheidung @Hussam, 2026-07-24) für Hussam und ausdrücklich berechtigte
+Mitarbeitende umgesetzt. Es dient dazu, Praxen professionell anzulegen, Inhaber
+einzuladen, Benutzerzugriffe zu verwalten und den Onboarding-Status
+nachvollziehbar zu steuern.
 
-Der erste Schnitt ist **kein öffentliches Self-Service-Portal** und ersetzt
-nicht die mobile Assessment-App. Praxisinhaber bearbeiten im Backoffice
-zunächst keine Fragebögen, Scans oder Berichte.
+Das MVP ist **kein öffentliches Self-Service-Portal** und ersetzt nicht die
+mobile Assessment-App. Ein Self-Service-Bereich für Praxisinhaber ist
+ausdrücklich nicht Teil dieses Schnitts. Praxisinhaber bearbeiten im Backoffice
+keine Fragebögen, Scans oder Berichte.
 
 Das Backoffice darf keine Patientendaten, Mandantenakten oder fachlichen
 Kundeninhalte erfassen. Freitext wird im MVP auf das notwendige Minimum
@@ -88,14 +93,39 @@ Praxis-Mitgliedsrolle weiterverwendet.
 Der Plan ist additiv. Historische Checks und bestehende Praxiszugriffe bleiben
 gültig.
 
+### Bestätigte B1-Technikergänzungen (@Hussam, 2026-07-24)
+
+1. **`can_access_practice` erweitern (Muss).** Die vorhandene Authz-Funktion
+   `can_access_practice(user, practice, role)` und ihr Wrapper
+   `current_user_can_access_practice` autorisieren heute nur über
+   `practices.owner_id` oder `partner_practices`. Alle bestehenden
+   RLS-Policies (`security_checks`, `reports`, `monitoring_events`,
+   `monitoring_snapshots`, `wlan_scans`, `practices`) hängen daran. B1 erweitert
+   diese Funktionen additiv um `practice_memberships`, inklusive einer
+   Rang-Abbildung der neuen Praxisrollen analog zu `partner_role_rank`.
+   Ohne diese Erweiterung wäre eine neue Mitgliedschaft für alle bestehenden
+   Policies unsichtbar; die mobile Praxis-Ladung über Mitgliedschaft
+   (Abschnitt 5, Schritt 7) hängt direkt davon ab.
+2. **`partner_practices` vs. `practice_memberships` migrieren.** Vorhandene
+   Nicht-`white_label`-Grants (`owner|manager|viewer`) werden nach
+   `practice_memberships` migriert; `partner_practices` wird auf den reinen
+   White-Label-Partnerfall reduziert. Damit entstehen keine zwei parallelen
+   Mitgliedschaftssysteme.
+3. **RLS-Tests und Rollenmatrix Teil von B1.** B1 erweitert verbindlich
+   `supabase/tests/rls_cross_tenant.sql` und `docs/RLS_PARTNER_ROLE_MATRIX.md`
+   um die neuen Tabellen und Rollen. Neue Tabellen sind erst nach RLS-Policies
+   und bestandenen Cross-Tenant-Negativtests nutzbar.
+
 ### `practices` erweitern
 
-- `practice_kind`: `general | health`
-- `legal_name`
-- `display_name`
-- `contact_first_name`, `contact_last_name`
-- `contact_email`, `contact_phone`
-- `street`, `postal_code`, `city`, `country_code`
+Pflichtfelder (Entscheidung @Hussam, 2026-07-24); `domain` bleibt optional:
+
+- `practice_kind`: `general | health` (Pflicht)
+- `legal_name` (Pflicht)
+- `display_name` (Pflicht)
+- `contact_first_name`, `contact_last_name` (Pflicht)
+- `contact_email`, `contact_phone` (Pflicht)
+- `street`, `postal_code`, `city`, `country_code` (Pflicht)
 - `domain` optional
 - `onboarding_status`: `draft | invited | active | suspended | archived`
 - `created_by_staff_id`
@@ -127,9 +157,12 @@ gültig.
 **`practice_invitations`**
 
 - Praxis, normalisierte Ziel-E-Mail, vorgesehene Rolle
+- `delivery_channel`: `in_person_code` (Primärkanal, Entscheidung @Hussam
+  2026-07-24) oder `email_link` (Fallback)
 - Status `pending | accepted | expired | revoked`
 - Ablaufzeit, Initiator, Annahmezeit
-- nur Hash/Provider-Referenz eines Nachweises, niemals Klartexttoken
+- nur Hash/Provider-Referenz eines Nachweises, niemals Klartexttoken oder
+  Einmalcode
 
 **`backoffice_audit_events`**
 
@@ -156,8 +189,9 @@ und ihre projektweite Wirkung dokumentiert.
 3. **Inhaber festlegen:** E-Mail und vorgesehene Rolle werden bestätigt. Der
    Administrator legt niemals ein dauerhaftes Benutzerpasswort fest.
 4. **Einladung:** Ein zeitlich begrenzter Aktivierungsnachweis wird erzeugt.
-   Der genaue Übergabekanal wird vor Umsetzung entschieden; E-Mail-Einladung
-   und persönlich übergebener Einmalcode sind getrennte Varianten.
+   Primärkanal ist ein **persönlich übergebener Einmalcode** (Entscheidung
+   @Hussam, 2026-07-24); ein E-Mail-Link bleibt als Fallback möglich. Der
+   Einmalcode wird genau einmal angezeigt und nie persistiert oder geloggt.
 5. **Benutzeraktivierung:** Der Inhaber bestätigt die Einladung, setzt sein
    eigenes Passwort und MFA und akzeptiert die jeweils erforderlichen
    Datenschutz-/Vertragsstände.
@@ -226,7 +260,7 @@ Kompatibilitätsverweis nur über eine transaktionale serverseitige Funktion.
 
 | Aktion | platform_admin | security_consultant | support |
 |---|---:|---:|---:|
-| Praxis lesen | Ja | Zugewiesen/operativ erforderlich | Minimalansicht |
+| Praxis lesen | Ja | Nur ausdrücklich zugewiesene Praxen | Minimalansicht |
 | Praxis anlegen/bearbeiten | Ja | Ja | Nein |
 | Einladung erzeugen/widerrufen | Ja | Ja | Nein |
 | Praxisrolle ändern | Ja | Begrenzt, nicht `practice_owner` entfernen | Nein |
@@ -241,18 +275,39 @@ bevor ein neuer Inhaber aktiv bestätigt ist.
 
 ### B0 – Entscheidungen
 
-- Backoffice-Domain/Deployment und UI-Technik
-- Aktivierungskanal für Inhaber
-- Pflichtfelder und Aufbewahrungsfristen
-- Zuordnung: Darf ein Berater alle Praxen sehen oder nur explizit zugewiesene?
+Entschieden (@Hussam, 2026-07-24):
+
+- MVP ausschließlich internes Backoffice, kein Self-Service.
+- Aktivierungskanal: persönlich übergebener Einmalcode primär, E-Mail-Link als
+  Fallback.
+- `security_consultant` sieht nur ausdrücklich zugewiesene Praxen.
+- Pflicht-Stammdaten bestätigt; `domain` optional.
+
+Noch offen vor B1:
+
+- Audit-Aufbewahrungsfrist – gesonderte datenschutzrechtliche Entscheidung
+  (Blocker für B1-Abschluss).
+- Backoffice-Domain/Deployment und UI-Technik (rein technische Wahl, blockiert
+  Schema/Authz nicht).
 
 ### B1 – Autorisierung und Schema
 
-- `platform_staff`, `practice_memberships`, `staff_practice_assignments`,
-  `practice_invitations`, `backoffice_audit_events`
-- additive Praxisfelder und Statusmaschine
+- Tabellen `platform_staff`, `practice_memberships`,
+  `staff_practice_assignments`, `practice_invitations`,
+  `backoffice_audit_events`
+- additive Praxis-Pflichtfelder (Domain optional) und Statusmaschine
+  `draft → invited → active → suspended → archived`
 - RLS, Grants, serverseitige Permission-Funktionen
-- Migration bestehender `owner_id`-/`partner_practices`-Zugriffe
+- **`can_access_practice`/`current_user_can_access_practice` additiv um
+  `practice_memberships` erweitern** (+ Rang-Abbildung neuer Praxisrollen)
+- Migration bestehender `owner_id`-/`partner_practices`-Zugriffe:
+  Nicht-`white_label`-Grants nach `practice_memberships`, `partner_practices`
+  auf White-Label reduziert
+- `supabase/tests/rls_cross_tenant.sql` und `docs/RLS_PARTNER_ROLE_MATRIX.md`
+  um neue Tabellen/Rollen erweitern; Cross-Tenant-Negativtests grün
+- append-only `backoffice_audit_events` ohne UPDATE/DELETE-Grants im regulären
+  Schreibpfad
+- Voraussetzung für B1-Abschluss: entschiedene Audit-Aufbewahrungsfrist
 
 ### B2 – Admin-API
 
@@ -300,18 +355,21 @@ bevor ein neuer Inhaber aktiv bestätigt ist.
 - Datenschutzpflichten, Löschung und Aufbewahrung sind für neue Stammdaten und
   Audits dokumentiert.
 
-## 11. Offene Entscheidungen für Hussam
+## 11. Entscheidungen (@Hussam, 2026-07-24)
 
-1. Soll das MVP ausschließlich ein internes Backoffice für Hussam sein
-   (Empfehlung) oder bereits einen Self-Service-Bereich für Praxisinhaber
-   enthalten?
-2. Wie wird die erste Inhaber-Einladung übergeben: E-Mail-Link, persönlich
-   übergebener Einmalcode oder beide Varianten?
-3. Darf ein `security_consultant` standardmäßig alle Praxen sehen oder nur
-   ausdrücklich zugewiesene Praxen (Empfehlung: nur zugewiesen)?
-4. Welche Stammdaten sind wirklich Pflicht? Empfohlen:
-   Praxistyp, Anzeigename, rechtlicher Name, Ansprechpartner, geschäftliche
-   E-Mail, Telefonnummer, Straße, PLZ, Ort und Land; Domain optional.
-5. Welche Aufbewahrungsfrist gilt für Backoffice-Audit-Ereignisse? Sie muss
-   vor Implementierung mit Datenschutz-/Nachweisanforderungen abgestimmt
-   werden.
+Getroffen:
+
+1. MVP ausschließlich internes Backoffice für Hussam und berechtigte
+   Mitarbeitende; kein Self-Service-Bereich in diesem Schnitt.
+2. Inhaber-Einladung primär über persönlich übergebenen Einmalcode; E-Mail-Link
+   bleibt als Fallback möglich.
+3. `security_consultant` sieht ausschließlich ausdrücklich zugewiesene Praxen.
+4. Pflicht-Stammdaten bestätigt: Praxistyp, Anzeigename, rechtlicher Name,
+   Ansprechpartner, geschäftliche E-Mail, Telefonnummer, Straße, PLZ, Ort und
+   Land; Domain optional.
+
+Weiterhin offen (vor B1 zu entscheiden):
+
+5. Aufbewahrungsfrist für Backoffice-Audit-Ereignisse – wird gesondert
+   datenschutzrechtlich entschieden und ist Voraussetzung für den
+   B1-Abschluss.
