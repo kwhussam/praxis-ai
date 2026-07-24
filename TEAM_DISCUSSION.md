@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -924,6 +924,39 @@ sondern auch Lösch- bzw. Anonymisierungsablauf, Rechtsgrundlage und ein Ausnahm
 fall für laufende Sicherheits- oder Rechtsvorgänge festgelegt werden. Danach
 kann eine begrenzte B1-Implementierungsfreigabe mit den bereits vereinbarten
 RLS- und Cross-Tenant-Tests erteilt werden. **Rederecht bleibt bei @Hussam.**
+
+**Entscheidung Audit-Aufbewahrung – @Hussam / Codex (2026-07-24)**
+
+@Hussam entscheidet:
+
+- Backoffice-Audit-Ereignisse werden sechs Monate personenbezogen aufbewahrt.
+- Danach werden sie automatisch irreversibel anonymisiert.
+- Die Frist und der Ablauf werden transparent in den Datenschutzinformationen
+  beschrieben.
+
+Codex hat den Fachplan in Commit `90c2c7b` entsprechend präzisiert:
+
+- Der Datenschutzhinweis nennt Zweck, Rechtsgrundlage, Datenkategorien,
+  Zugriffsrollen, Sechs-Monats-Frist, Anonymisierung und Betroffenenrechte.
+- Der Hinweis ist beim Backoffice-Onboarding und dauerhaft im Bereich
+  „Datenschutz“ erreichbar. Es ist kein Popup bei jeder Audit-Aktion und keine
+  Einwilligung erforderlich; die ausgelieferte Informationsversion wird
+  nachvollziehbar protokolliert.
+- Eine Aufbewahrungssperre ist nur für einen konkreten laufenden Sicherheits-
+  oder Rechtsvorgang zulässig, besonders zugriffsbeschränkt und regelmäßig zu
+  überprüfen.
+- B1 umfasst eine automatische Anonymisierungsroutine und einen Test, dass
+  direkte und indirekte Re-Identifizierung nach der Anonymisierung nicht mehr
+  möglich ist. Bloße Pseudonymisierung genügt nicht.
+- Verarbeitung, Zugriffskontrollen und Anonymisierung werden zusätzlich im
+  Verzeichnis der Verarbeitungstätigkeiten beziehungsweise in den internen
+  Datenschutz-/TOM-Unterlagen dokumentiert.
+
+Damit ist der letzte fachliche B1-Blocker geschlossen. Eine
+Implementierungsfreigabe für B1 wurde noch nicht erteilt.
+
+@Claude, bitte prüfe die eingearbeitete Retention-/Notice-Grenze und ob der
+finale B1-Scope damit freigabefähig ist. **Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3068,6 +3101,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-021 | 2026-07-24 | W4e wird erst mit belastbarer Admin-Authentifizierung und Berechtigungsmodell umgesetzt; Reset-Audits benötigen eine append-only Tabelle mit RLS, und die projektweite OTP-TTL-Wirkung wird vorher geprüft. Bis dahin beginnt W4b-2. | Kein sicherheitskritischer Support-Endpunkt mit provisorischer Authz oder unzureichenden Logs; klare Reihenfolge zwischen Backoffice-Fundament und Admin-Reset. | @Hussam |
 | E-022 | 2026-07-24 | W4b-2 ist nach Implementierung und Gegenprüfung final abgenommen; als nächstes wird das Web-Backoffice-Fundament fachlich geplant. | Erklärungshierarchie ist getestet und ohne Wizard-/Scoring-Nebenwirkungen; das Backoffice-Fundament bereitet professionelles Onboarding und W4e-Authz vor. | @Hussam |
 | E-023 | 2026-07-24 | Das Web-Backoffice startet als internes MVP: persönlicher Einmalcode primär, E-Mail-Link als Fallback, Consultants sehen nur zugewiesene Praxen; Stammdaten sind Pflicht, Domain optional. | Der B1-Scope ist als additive Schema-/Autorisierungsmigration festgelegt; UI und W4e bleiben nachgelagert. | @Hussam |
+| E-024 | 2026-07-24 | Backoffice-Audit-Ereignisse werden sechs Monate personenbezogen aufbewahrt und danach automatisch irreversibel anonymisiert; die Verarbeitung wird transparent in den Datenschutzinformationen beschrieben. | Speicherbegrenzung, Nachvollziehbarkeit und Betroffeneninformation werden mit automatisiertem Ablauf und eng begrenzter Aufbewahrungssperre verbunden. | @Hussam |
 
 ## Nächste Schritte
 
@@ -3095,7 +3129,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
-| Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | Offen | Blocker für B1-Abschluss |
+| Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1 umsetzen: Backoffice-Schema/Authz additiv (inkl. `can_access_practice`-Erweiterung + Migration) | @Codex, @Claude | Später | Wartet auf B0/B1-Scope-Bestätigung und Aufbewahrungsfrist; keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -3276,3 +3310,9 @@ wurden.
   allein die datenschutzrechtliche Audit-Aufbewahrungsfrist offen (einschließlich
   Lösch-/Anonymisierungsablauf, Rechtsgrundlage und Ausnahmefall); keine
   Implementierung begonnen, Rederecht bei @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat die personenbezogene
+  Backoffice-Audit-Aufbewahrung auf sechs Monate festgelegt, anschließend
+  automatische irreversible Anonymisierung (E-024). Codex hat Retention,
+  Datenschutzinformation, begrenzte Aufbewahrungssperre, VVT/TOM-Dokumentation
+  und Re-Identifizierungs-Negativtest in `90c2c7b` ergänzt. B1 bleibt ohne
+  Implementierungsfreigabe; Rederecht zur Gegenprüfung an @Claude.
