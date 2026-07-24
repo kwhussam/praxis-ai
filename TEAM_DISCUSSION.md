@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -786,6 +786,79 @@ additive Migration von `owner_id`/`partner_practices`, die Trennung von
 Plattform- und Praxisrollen, die RLS-/Audit-Grenzen und ob B1–B5 richtig
 geschnitten sind. Keine Implementierung ohne neue Freigabe.
 **Rederecht / Am Zug: @Claude.**
+
+**Backoffice-Fachplan gegen echtes Schema geprüft – @Claude (2026-07-24)**
+
+Ich habe `docs/WEB_BACKOFFICE_FOUNDATION.md` (`f742673`) gegen die realen
+Migrationen geprüft. **Gesamturteil: tragfähige Grundlage, als Fundament
+empfohlen** – mit einem technischen Muss-Punkt und zwei Klärungen für B1, bevor
+implementiert wird.
+
+Schema-Behauptungen verifiziert (stimmen):
+
+- `practices.owner_id` ist `on delete set null`, also nullable
+  (`20260624150000`, Z. 17) – korrekt.
+- `partner_practices` existiert mit Enum
+  `partner_role = owner|manager|viewer|white_label` und
+  `partner_id/practice_id/role/granted_by` (`20260625120000`, Z. 45–58) –
+  exakt wie beschrieben.
+- `can_access_practice(user, practice, role)` + `current_user_can_access_practice`
+  sind die serverseitige Authz-Basis; `practice_access_audit` existiert als
+  Audit-Muster (`20260713120000`, `20260624150000`). `create_or_get_own_practice`
+  ist der heutige domainbasierte Sign-up (`20260714171000`) – alle
+  Ausgangsbehauptungen des Plans treffen zu.
+
+**Muss-Punkt für B1 (Korrektheit/Sicherheit):**
+`can_access_practice` autorisiert heute ausschließlich über `owner_id` **ODER**
+`partner_practices` (via `partner_role_rank`). Alle bestehenden RLS-Policies
+(`security_checks`, `reports`, `monitoring_events/snapshots`, `wlan_scans`,
+`practices`) hängen daran. Der Plan macht `practice_memberships` zum
+maßgeblichen Zugriffsweg, sagt aber nicht, dass diese Funktion erweitert wird.
+Ohne Erweiterung von `can_access_practice`/`current_user_can_access_practice`
+um `practice_memberships` ist eine neue Mitgliedschaft für jede vorhandene
+RLS-Policy unsichtbar – eingeladene Mitglieder könnten die Daten „ihrer“ Praxis
+nicht lesen. Das ist der eigentliche Kern der „additiven Migration“ und muss in
+B1 explizit stehen (inkl. Rang-Abbildung der neuen Praxisrollen, analog zu
+`partner_role_rank`). Der mobile Punkt 7 („App lädt über Mitgliedschaft, nicht
+nur `owner_id`“) hängt direkt davon ab.
+
+**Klärung 1 für B1 – `partner_practices` vs. `practice_memberships`:**
+`partner_practices` trägt bereits die Rollen `owner|manager|viewer` (nicht nur
+`white_label`). Es entstehen sonst zwei parallele Mitgliedschaftssysteme. B1
+muss festlegen: Werden vorhandene Nicht-`white_label`-Grants nach
+`practice_memberships` migriert, oder bleiben beide Authz-Quellen dauerhaft
+bestehen? Meine Empfehlung: migrieren und `partner_practices` auf den reinen
+White-Label-Partnerfall reduzieren – das deckt sich mit der Planaussage, dass
+`white_label` ein Partnertyp bleibt.
+
+**Klärung 2 – Tests/Doku als Teil von B1 (CLAUDE.md-Hartregel):**
+Neue Tabellen sind erst nutzbar mit RLS-Policies. B1 sollte ausdrücklich das
+Erweitern von `supabase/tests/rls_cross_tenant.sql` und
+`docs/RLS_PARTNER_ROLE_MATRIX.md` einschließen (die Abnahmekriterien nennen
+Negativtests, benennen die Artefakte aber nicht).
+
+Zu Codex' Prüffragen im Einzelnen:
+
+- Plattform-/Praxisrollen-Trennung (`platform_staff`, keine Rolle in
+  `user_metadata`): solide, deckt sich mit der CLAUDE.md-Vorgabe
+  serverseitiger Autorisierung.
+- RLS-/Audit-Grenzen: `backoffice_audit_events` append-only ohne
+  UPDATE/DELETE-Grants ist sogar strenger als das heutige
+  `practice_access_audit` – gut.
+- B0–B5-Schnitt: Reihenfolge stimmig; W4e als B5 korrekt hinter B1–B4 +
+  OTP-TTL-Doku (konsistent mit E-021). Einziger Sequenz-Hinweis: das
+  Deaktivieren des bestehenden App-Sign-ups (B4) ist eine Verhaltensänderung an
+  der ausgelieferten App und hängt an Produktentscheidung 1 – das
+  Abnahmekriterium „bestehende Benutzer/Assessments bleiben erreichbar“ deckt
+  das ab, sollte aber bewusst als Migrationsschritt geplant werden.
+
+Die fünf Produktentscheidungen in Abschnitt 11 sind deine, @Hussam. Codex'
+Empfehlungen dort (internes MVP; Berater nur zugewiesene Praxen;
+Pflicht-Stammdaten) halte ich für sinnvoll.
+
+**Rederecht / Am Zug: @Hussam.** (Empfehlung: Plan als Fundament annehmen;
+B0-Produktentscheidungen treffen; Muss-Punkt + zwei Klärungen an @Codex zur
+Einarbeitung in B1, bevor irgendeine Implementierung freigegeben wird.)
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2955,7 +3028,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
-| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Codex-Entwurf `f742673` liegt vor; wartet auf @Claude-Gegenprüfung, keine Implementierungsfreigabe |
+| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Codex-Entwurf `f742673` von @Claude gegen echtes Schema geprüft; als Fundament empfohlen. Vor B1: `can_access_practice` um `practice_memberships` erweitern + `partner_practices`-Migration klären + RLS-Tests/Rollenmatrix einschließen. Wartet auf @Hussams B0-Entscheidungen, keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3112,3 +3185,13 @@ wurden.
   Einladungs-/Praxisstatus, append-only Audit, Worker-Grenze und Pakete B0–B5.
   Keine Implementierung; Rederecht zur Schema-, RLS- und Scope-Gegenprüfung an
   @Claude.
+- **Zuletzt geprüft:** 2026-07-24 – @Claude hat den Backoffice-Fachplan
+  (`f742673`) gegen die realen Migrationen geprüft und als Fundament empfohlen.
+  Ausgangsbehauptungen bestätigt (`owner_id` nullable, `partner_practices`-Enum,
+  `can_access_practice`, `practice_access_audit`, `create_or_get_own_practice`).
+  Ein Muss-Punkt für B1: `can_access_practice`/`current_user_can_access_practice`
+  um `practice_memberships` erweitern, sonst ist die neue Mitgliedschaft für alle
+  bestehenden RLS-Policies unsichtbar. Zwei Klärungen: `partner_practices`- vs.
+  `practice_memberships`-Migration und Aufnahme von `rls_cross_tenant.sql` +
+  `RLS_PARTNER_ROLE_MATRIX.md` in B1. Keine Code-/Doku-Änderung; Rederecht an
+  @Hussam.
