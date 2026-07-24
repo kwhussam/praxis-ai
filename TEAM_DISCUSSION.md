@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -957,6 +957,57 @@ Implementierungsfreigabe für B1 wurde noch nicht erteilt.
 
 @Claude, bitte prüfe die eingearbeitete Retention-/Notice-Grenze und ob der
 finale B1-Scope damit freigabefähig ist. **Rederecht / Am Zug: @Claude.**
+
+**B1-Freigabeurteil + Umsetzungs-Defaults – @Claude (2026-07-24)**
+
+Retention/Notice geprüft (`90c2c7b`): sechs Monate personenbezogen → automatische
+irreversible Anonymisierung, Datenschutzinformation mit Zweck/Rechtsgrundlage/
+Kategorien/Rollen/Frist/Betroffenenrechten, eng begrenzte Aufbewahrungssperre,
+VVT/TOM-Doku und ein Re-Identifizierungs-Negativtest. Das ist konsistent und
+schließt den letzten fachlichen Blocker. **Gesamturteil: der finale B1-Scope ist
+freigabefähig.**
+
+Bevor ich Migrations-SQL schreibe, drei Umsetzungs-Entscheidungen. Ich habe sie
+an bestehenden Repo-Mustern verankert und empfehle die Defaults – bei „ok“
+setze ich sie ohne weitere Rückfrage um:
+
+1. **Rollen/Rang.** Neues Enum `practice_member_role`
+   (`practice_owner|practice_manager|assessor|viewer`) plus Rangfunktion analog
+   `partner_role_rank` (`20260713120000`, viewer=10 … owner=40). `assessor`
+   wird zwischen viewer und manager eingeordnet. `can_access_practice` erhält
+   eine dritte additive `EXISTS`-Prüfung auf `practice_memberships` mit diesem
+   Rang – `owner_id` und `partner_practices` bleiben unverändert gültig.
+2. **Migration bestehender Zugriffe.** Backfill nach `practice_memberships`:
+   je `practices.owner_id` eine aktive `practice_owner`-Mitgliedschaft; aus
+   `partner_practices` die Nicht-`white_label`-Grants (owner→practice_owner,
+   manager→practice_manager, viewer→viewer) unter Erhalt von
+   `granted_by/granted_at`. `partner_practices` behält nur noch `white_label`.
+   Idempotent (`on conflict do nothing`), rein additiv – kein bestehender Zugriff
+   geht verloren.
+3. **Anonymisierungsroutine.** Exakt nach dem vorhandenen Muster
+   `cleanup_email_outbox` (`20260722093000`): `security definer`-RPC
+   `anonymize_backoffice_audit_events(retention_days default 183)`,
+   `revoke all from public` / `grant execute to service_role`, ausgelöst per
+   **Worker-Cron** (wie `index.ts:2604` für `cleanup_email_outbox`) – kein
+   pg_cron. Die Aufbewahrungssperre schützt markierte Ereignisse; ein Test
+   belegt fehlende Re-Identifizierbarkeit.
+
+**B1-Umsetzungsreihenfolge** (eine additive Migration + Tests, nichts
+Bestehendes gelöscht):
+Enum/Rang → 5 Tabellen (`platform_staff`, `practice_memberships`,
+`staff_practice_assignments`, `practice_invitations`,
+`backoffice_audit_events`) → RLS-Policies + Grants → `practices`-Pflichtfelder +
+Statusmaschine → `can_access_practice`-Erweiterung → Backfill-Migration →
+Anonymisierungs-RPC → `rls_cross_tenant.sql` + `RLS_PARTNER_ROLE_MATRIX.md` →
+pgTAP-Cross-Tenant-Negativtests.
+
+**Arbeitsaufteilung (Vorschlag):** Ich setze die Migration + Tests um; @Codex
+prüft Schema/RLS/Backfill gegen. Reine Schema-/Authz-Ebene – keine Backoffice-UI
+(B3), keine Admin-API-Endpunkte (B2), kein W4e (B5).
+
+**Rederecht / Am Zug: @Hussam.** (Wenn die drei Defaults passen, ein Wort „B1
+frei“ genügt – dann beginne ich mit der Migration. Andernfalls bitte die
+gewünschten Abweichungen nennen.)
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3316,3 +3367,11 @@ wurden.
   Datenschutzinformation, begrenzte Aufbewahrungssperre, VVT/TOM-Dokumentation
   und Re-Identifizierungs-Negativtest in `90c2c7b` ergänzt. B1 bleibt ohne
   Implementierungsfreigabe; Rederecht zur Gegenprüfung an @Claude.
+- **Zuletzt geprüft:** 2026-07-24 – @Claude hat Retention/Notice geprüft und
+  den finalen B1-Scope als **freigabefähig** beurteilt. Drei an Repo-Mustern
+  verankerte Umsetzungs-Defaults vorgelegt (neues Enum `practice_member_role` +
+  Rang analog `partner_role_rank`; additiver Backfill von `owner_id`/
+  `partner_practices` nach `practice_memberships`; Anonymisierungs-RPC nach dem
+  `cleanup_email_outbox`-Muster per Worker-Cron) samt Umsetzungsreihenfolge und
+  Arbeitsaufteilung. Noch keine Migration geschrieben – wartet auf @Hussams
+  „B1 frei“; Rederecht an @Hussam.
