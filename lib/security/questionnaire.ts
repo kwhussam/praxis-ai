@@ -78,11 +78,13 @@ export type QuestionnaireAnswers = Record<QuestionnaireAnswerKey, QuestionnaireA
 export type QuestionnaireQuestion = {
   key: QuestionnaireAnswerKey;
   label: string;
+  help?: string;
 };
 
 export type QuestionnaireSection = {
   id: string;
   title: string;
+  intro: string;
   profile_scope?: AssessmentProfile[];
   questions: QuestionnaireQuestion[];
 };
@@ -166,9 +168,15 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "access_mfa",
     title: "MFA",
+    intro:
+      "Mehrfaktor-Authentisierung (MFA/2FA) verlangt neben dem Passwort einen zweiten Nachweis, etwa eine Authenticator-App oder einen Sicherheitsschlüssel.",
     questions: [
       { key: "mfa", label: "Ist MFA für alle kritischen Konten aktiviert?" },
-      { key: "mfaEvidence", label: "Liegt ein MFA-Nachweis vor, z. B. Richtlinie, Screenshot oder Benutzerliste?" },
+      {
+        key: "mfaEvidence",
+        label: "Liegt ein MFA-Nachweis vor, z. B. Richtlinie, Screenshot oder Benutzerliste?",
+        help: "Ein Nachweis sollte erkennen lassen, für welche Konten MFA aktiviert ist; Zugangsdaten gehören nicht hinein."
+      },
       { key: "mfaEmail", label: "Sind E-Mail-Konten durch MFA geschützt?" },
       { key: "mfaPracticeSoftware", label: "Ist die Praxissoftware durch MFA oder gleichwertige starke Anmeldung geschützt?" },
       { key: "mfaVpn", label: "Sind VPN-Zugänge durch MFA geschützt?" },
@@ -180,11 +188,17 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "backup_restore",
     title: "Backups und Restore-Tests",
+    intro:
+      "Bewertet werden regelmäßige Sicherungen und der belegte Wiederanlauf. Ein Restore-Test prüft praktisch, ob gesicherte Daten tatsächlich wiederhergestellt werden können.",
     questions: [
       { key: "backups", label: "Werden Praxisdaten täglich automatisiert gesichert?" },
       { key: "backupFrequencyDocumented", label: "Ist die Backup-Frequenz schriftlich festgelegt?" },
       { key: "backupTargetDocumented", label: "Ist das Backup-Ziel dokumentiert, z. B. NAS, Cloud, Band oder Rechenzentrum?" },
-      { key: "backupOfflineOrImmutable", label: "Gibt es ein Offline- oder Immutable-Backup gegen Ransomware?" },
+      {
+        key: "backupOfflineOrImmutable",
+        label: "Gibt es ein Offline- oder Immutable-Backup gegen Ransomware?",
+        help: "Offline bedeutet vom Produktivnetz getrennt; immutable bedeutet für eine festgelegte Zeit technisch unveränderbar."
+      },
       { key: "backupOwnerDocumented", label: "Ist ein Verantwortlicher für Backup-Überwachung und Fehlerbehebung dokumentiert?" },
       { key: "backupDocumented", label: "Gibt es ein aktuelles Backup-Protokoll mit Speicherort und Aufbewahrung?" },
       { key: "restoreTested", label: "Wurde in den letzten 6 Monaten ein Restore-Test durchgeführt?" },
@@ -195,19 +209,27 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "patch_management",
     title: "Patchmanagement",
+    intro:
+      "Patchmanagement umfasst die geplante Installation und Dokumentation von Sicherheitsupdates für alle relevanten Systeme, Anwendungen und Geräte.",
     questions: [
       { key: "patching", label: "Gibt es einen festen Patchprozess für Server, Clients und Praxissoftware?" },
       { key: "patchScopeDocumented", label: "Ist der Systemumfang dokumentiert, z. B. Server, Clients, Router, Praxissoftware und Medizingeräte?" },
       { key: "patchFrequencyDefined", label: "Ist eine Patch-Frequenz festgelegt, z. B. monatlich oder nach Kritikalität?" },
       { key: "patchOwnerDocumented", label: "Ist ein Verantwortlicher für Patchmanagement benannt?" },
       { key: "lastPatchDateDocumented", label: "Ist das letzte Patchdatum je relevantem System dokumentiert?" },
-      { key: "patchExceptionsDocumented", label: "Sind Patch-Ausnahmen mit Risiko, Begründung und Ablaufdatum dokumentiert?" },
+      {
+        key: "patchExceptionsDocumented",
+        label: "Sind Patch-Ausnahmen mit Risiko, Begründung und Ablaufdatum dokumentiert?",
+        help: "Eine Ausnahme ist beispielsweise ein System, das wegen Herstellerfreigaben vorübergehend nicht aktualisiert werden darf."
+      },
       { key: "patchingEvidence", label: "Liegt ein Patch-/Update-Protokoll mit Datum und Status vor?" }
     ]
   },
   {
     id: "privacy_documentation",
     title: "DSGVO-Dokumentation",
+    intro:
+      "Hier geht es um zentrale Datenschutz-Nachweise: AVV, technische und organisatorische Maßnahmen (TOMs), Verarbeitungsverzeichnis, Lösch- und Berechtigungskonzept.",
     questions: [
       { key: "privacyDocuments", label: "Sind AVV, TOMs, Verarbeitungsverzeichnis und Löschkonzept vorhanden?" },
       { key: "avvAvailable", label: "Liegen Auftragsverarbeitungsverträge (AVV) für relevante Dienstleister vor?" },
@@ -222,6 +244,8 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "security_responsibilities",
     title: "Verantwortlichkeiten",
+    intro:
+      "Klare Zuständigkeiten stellen sicher, dass Sicherheits- und Datenschutzaufgaben auch bei Abwesenheit oder einem Vorfall bearbeitet werden.",
     questions: [
       { key: "securityOwnerAssigned", label: "Ist eine verantwortliche Person für IT-Sicherheit und Datenschutz benannt?" },
       { key: "responsibilityDocumented", label: "Sind Vertretung, Aufgaben und Eskalationswege schriftlich dokumentiert?" }
@@ -230,6 +254,8 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "network_structure",
     title: "Netzstruktur",
+    intro:
+      "Getrennte Netze oder VLANs begrenzen, welche Gerätegruppen direkt miteinander kommunizieren können, etwa Praxisgeräte, Gäste, Drucker oder IoT.",
     questions: [
       { key: "networkStructureDocumented", label: "Ist dokumentiert, welche VLANs oder getrennten WLANs für Praxisgeräte, Gäste, Server, Drucker, IoT und Medizingeräte existieren?" },
       { key: "vlanPracticeDevices", label: "Gibt es ein eigenes Netz oder VLAN für Praxisgeräte?" },
@@ -238,12 +264,18 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "vlanPrinters", label: "Gibt es ein getrenntes Druckernetz oder Drucker-VLAN?" },
       { key: "vlanIot", label: "Gibt es ein getrenntes IoT-/Kamera-Netz oder VLAN?" },
       { key: "vlanMedicalDevices", label: "Gibt es ein getrenntes Netz oder VLAN für Medizingeräte?" },
-      { key: "guestWifiClientIsolation", label: "Ist Client-Isolation im Gäste-WLAN aktiviert?" }
+      {
+        key: "guestWifiClientIsolation",
+        label: "Ist Client-Isolation im Gäste-WLAN aktiviert?",
+        help: "Client-Isolation verhindert, dass Geräte im Gäste-WLAN einander direkt erreichen."
+      }
     ]
   },
   {
     id: "dns_operations",
     title: "DNS-Betrieb",
+    intro:
+      "DNS übersetzt Namen in Netzwerkadressen. Dokumentierte Resolver und Filter können bekannte Schad- und Phishing-Domains blockieren und Fehlkonfigurationen sichtbar machen.",
     questions: [
       { key: "dnsResolverDocumented", label: "Ist dokumentiert, welcher DNS-Resolver verwendet wird, z. B. Router, Dienstleister, Schutz-DNS oder interner Server?" },
       { key: "dnsFilterEnabled", label: "Ist ein DNS-Filter für Malware-/Phishing-Domains aktiv?" },
@@ -255,6 +287,8 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "dhcp_security",
     title: "DHCP-Sicherheit",
+    intro:
+      "DHCP verteilt Netzwerkeinstellungen wie IP-Adresse, Gateway und DNS-Server automatisch. Erwartete Werte und Ausnahmen sollten nachvollziehbar dokumentiert sein.",
     questions: [
       { key: "dhcpAuthorizedServerDocumented", label: "Ist der autorisierte DHCP-Server dokumentiert?" },
       { key: "dhcpRouterIpDocumented", label: "Ist die erwartete Router-/Gateway-IP dokumentiert?" },
@@ -265,6 +299,8 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "router_evidence",
     title: "Router-Nachweis",
+    intro:
+      "Der Router ist ein zentraler Übergang zwischen Praxisnetz und Internet. Geprüft werden Betrieb, Aktualität, Administration und bewusst freigegebene Zugänge.",
     questions: [
       { key: "routerManufacturerDocumented", label: "Ist der Router-Hersteller dokumentiert?" },
       { key: "routerModelDocumented", label: "Ist das Router-Modell dokumentiert?" },
@@ -276,13 +312,23 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
       { key: "routerPasswordManagerUsed", label: "Ist der Router-Zugang sicher dokumentiert, z. B. im Passwortmanager?" },
       { key: "routerMfaAvailable", label: "Ist MFA/2FA oder ein gleichwertiger Schutz für Router-/Provider-Zugänge aktiviert, sofern verfügbar?" },
       { key: "routerRemoteAccessDisabled", label: "Ist Router-Fernzugriff aus dem Internet deaktiviert oder auf VPN/definierte Quellen beschränkt?" },
-      { key: "routerUpnpDisabled", label: "Ist UPnP am Router deaktiviert oder sind Ausnahmen dokumentiert freigegeben?" },
-      { key: "routerPortForwardsDocumented", label: "Sind alle Router-Freigaben mit Zweck, Zielsystem und Verantwortlichem dokumentiert?" }
+      {
+        key: "routerUpnpDisabled",
+        label: "Ist UPnP am Router deaktiviert oder sind Ausnahmen dokumentiert freigegeben?",
+        help: "UPnP kann Geräten erlauben, automatisch Zugänge am Router zu öffnen. In Praxisnetzen sollte dies kontrolliert oder deaktiviert sein."
+      },
+      {
+        key: "routerPortForwardsDocumented",
+        label: "Sind alle Router-Freigaben mit Zweck, Zielsystem und Verantwortlichem dokumentiert?",
+        help: "Eine Router-Freigabe macht einen internen Dienst gezielt von außen erreichbar und benötigt deshalb einen belegten Zweck."
+      }
     ]
   },
   {
     id: "ipv6_security",
     title: "IPv6-Sicherheit",
+    intro:
+      "IPv6 ist ein zusätzliches Netzwerkprotokoll. Wenn es aktiv ist, müssen Firewall-, Segmentierungs- und DNS-Schutzregeln IPv6 ausdrücklich abdecken.",
     questions: [
       { key: "ipv6UsedIntentionally", label: "Wird IPv6 bewusst genutzt und ist der Zweck dokumentiert?" },
       { key: "ipv6FirewallRulesCovered", label: "Gelten Firewall-Regeln und Segmentierung auch für IPv6?" },
@@ -292,6 +338,8 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "health_medical_devices",
     title: "Medizinische Großgeräte",
+    intro:
+      "Großgeräte mit Netzwerkanschluss benötigen kontrollierte Kommunikationswege, weil Updates und Herstellerzugriffe häufig besonderen Betriebsbedingungen unterliegen.",
     profile_scope: ["health"],
     questions: [
       { key: "hasMedicalLargeDevices", label: "Werden medizinische Großgeräte wie CT, MRT, PET oder Linearbeschleuniger eingesetzt?" },
@@ -301,9 +349,15 @@ export const QUESTIONNAIRE_SECTIONS: QuestionnaireSection[] = [
   {
     id: "general_basics",
     title: "Weitere Basisfragen",
+    intro:
+      "Zum Basisschutz gehören regelmäßig geschulte Mitarbeitende und technische Maßnahmen gegen gefälschte E-Mails im Namen der Praxis.",
     questions: [
       { key: "staffTraining", label: "Gab es in den letzten 12 Monaten Awareness-Schulung?" },
-      { key: "dmarc", label: "Ist der Schutz gegen gefälschte Praxis-E-Mails aktiv?" }
+      {
+        key: "dmarc",
+        label: "Ist der Schutz gegen gefälschte Praxis-E-Mails aktiv?",
+        help: "Gemeint sind insbesondere SPF, DKIM und eine wirksame DMARC-Richtlinie für die eigene E-Mail-Domain."
+      }
     ]
   }
 ];

@@ -29,77 +29,6 @@ const ANSWER_OPTIONS: Array<{ value: QuestionnaireAnswerValue; label: string }> 
   { value: null, label: "Weiß ich nicht" }
 ];
 
-const TERM_EXPLANATIONS: Array<{ terms: string[]; explanation: string }> = [
-  {
-    terms: ["mfa", "2fa"],
-    explanation: "MFA/2FA bedeutet: Beim Einloggen braucht man zusätzlich zum Passwort z. B. eine App, SMS oder einen Sicherheitsschlüssel."
-  },
-  {
-    terms: ["vpn"],
-    explanation: "VPN bedeutet: Ein geschützter Zugang von außen ins Praxisnetz, zum Beispiel für Fernwartung."
-  },
-  {
-    terms: ["backup", "backups"],
-    explanation: "Backup bedeutet: Eine Sicherheitskopie wichtiger Daten, damit man sie nach einem Ausfall wiederherstellen kann."
-  },
-  {
-    terms: ["restore"],
-    explanation: "Restore-Test bedeutet: Man probiert aus, ob eine Sicherung wirklich wiederhergestellt werden kann."
-  },
-  {
-    terms: ["patch", "patching", "firmware"],
-    explanation: "Patch oder Firmware-Update bedeutet: Sicherheitsupdates für Geräte, Computer, Router oder Praxissoftware."
-  },
-  {
-    terms: ["avv"],
-    explanation: "AVV ist der Vertrag mit Dienstleistern, die in Ihrem Auftrag Daten verarbeiten."
-  },
-  {
-    terms: ["toms"],
-    explanation: "TOMs sind Schutzmaßnahmen, zum Beispiel Rechte, Passwörter, Backups und sichere Abläufe."
-  },
-  {
-    terms: ["verarbeitungstätigkeiten", "löschkonzept", "berechtigungs"],
-    explanation: "Das sind Datenschutz-Unterlagen: Welche Daten genutzt werden, wer Zugriff hat und wann Daten gelöscht werden."
-  },
-  {
-    terms: ["vlan"],
-    explanation: "VLAN bedeutet: Geräte werden im Netzwerk getrennt, damit z. B. Kartenterminal und Gäste-WLAN nicht dasselbe Netz nutzen."
-  },
-  {
-    terms: ["client-isolation"],
-    explanation: "Client-Isolation bedeutet: Geräte im Gäste-WLAN können sich gegenseitig nicht direkt sehen."
-  },
-  {
-    terms: ["dns"],
-    explanation: "DNS ist das Adressbuch des Internets. Ein DNS-Filter kann bekannte Schadseiten blockieren."
-  },
-  {
-    terms: ["dhcp", "gateway-ip"],
-    explanation: "DHCP verteilt automatisch Netzwerkadressen. Gateway ist meistens der Router, über den Geräte ins Internet gehen."
-  },
-  {
-    terms: ["upnp"],
-    explanation: "UPnP erlaubt Geräten, automatisch Router-Freigaben zu öffnen. Das sollte in Praxisnetzen kontrolliert oder deaktiviert sein."
-  },
-  {
-    terms: ["router-freigaben"],
-    explanation: "Router-Freigaben öffnen gezielt Zugänge von außen. Jede Freigabe sollte einen klaren Zweck und Verantwortlichen haben."
-  },
-  {
-    terms: ["ipv6"],
-    explanation: "IPv6 ist eine neuere Art von Internetadresse. Auch dafür müssen Firewall- und DNS-Regeln passen."
-  },
-  {
-    terms: ["schutz gegen gefälschte e-mails"],
-    explanation: "Dieser Schutz hilft, gefälschte E-Mails im Namen Ihrer Praxis zu erkennen und abzuweisen."
-  },
-  {
-    terms: ["awareness"],
-    explanation: "Awareness-Schulung bedeutet: Das Team übt, Betrug, Phishing und Datenschutzrisiken im Alltag zu erkennen."
-  }
-];
-
 export default function QuestionnaireScreen() {
   const answers = useCheckStore((state) => state.answers);
   const answeredKeys = useCheckStore((state) => state.answeredKeys);
@@ -264,10 +193,13 @@ export default function QuestionnaireScreen() {
     <Screen scroll={false}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Sicherheitsfragebogen</Text>
-      <Text style={styles.copy}>
-        Kurze Fragen zu Schutzmaßnahmen und Nachweisen. Es werden keine Patientendaten, keine Dateien und keine Inhalte
-        gelesen.
-      </Text>
+      {!showSummary && currentIndex === 0 ? (
+        <Text style={styles.copy}>
+          Beantworten Sie die Fragen anhand des aktuellen Stands und vorhandener Nachweise. Wenn eine Angabe nicht
+          sicher belegt werden kann, wählen Sie „Weiß ich nicht“ statt zu raten. Es werden keine Patientendaten, Dateien
+          oder Inhalte gelesen.
+        </Text>
+      ) : null}
       <View style={styles.progressHeader}>
         <Text style={styles.progressText}>
           {showSummary ? "Übersicht" : `${currentIndex + 1} von ${sections.length} · ${currentSection?.title ?? ""}`}
@@ -327,11 +259,12 @@ export default function QuestionnaireScreen() {
           <Text ref={headingRef} accessibilityRole="header" style={styles.sectionTitle}>
             {currentSection.title}
           </Text>
+          <Text style={styles.sectionIntro}>{currentSection.intro}</Text>
           <View style={styles.questions}>
             {currentSection.questions.map((question) => (
               <View key={question.key} style={styles.questionBlock}>
                 <Text style={styles.question}>{question.label}</Text>
-                <InfoHint question={question} />
+                {question.help ? <InfoHint question={question} /> : null}
                 <View accessibilityLabel={question.label} accessibilityRole="radiogroup" style={styles.toggle}>
                   {ANSWER_OPTIONS.map(({ value, label }) => {
                     const active = answeredKeys.includes(question.key) && answers[question.key] === value;
@@ -404,25 +337,14 @@ function sectionStatusLabel(status: QuestionnaireSectionStatus) {
 }
 
 function InfoHint({ question }: { question: QuestionnaireQuestion }) {
-  const explanation = explanationForQuestion(question);
+  if (!question.help) return null;
 
   return (
     <View style={styles.infoHint}>
       <Ionicons name="information-circle" size={16} color={colors.electric} />
-      <Text style={styles.infoHintText}>{explanation}</Text>
+      <Text style={styles.infoHintText}>{question.help}</Text>
     </View>
   );
-}
-
-function explanationForQuestion(question: QuestionnaireQuestion) {
-  const text = question.label.toLowerCase();
-  const matches = TERM_EXPLANATIONS.filter((entry) => entry.terms.some((term) => text.includes(term)));
-
-  if (matches.length > 0) {
-    return matches.map((match) => match.explanation).join(" ");
-  }
-
-  return "Wenn Sie es nicht sicher wissen, wählen Sie einfach \"Weiß ich nicht\". Das ist besser als zu raten.";
 }
 
 function errorMessage(error: unknown) {
@@ -442,6 +364,7 @@ const styles = StyleSheet.create({
   copy: {
     color: colors.muted,
     fontSize: 16,
+    lineHeight: 23,
     marginTop: 8
   },
   progressHeader: {
@@ -472,6 +395,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "900",
     textTransform: "uppercase"
+  },
+  sectionIntro: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 8
   },
   questions: {
     gap: 16,
