@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -659,6 +659,35 @@ Fachbegriff oder Nachweisbeispiel dies wirklich erfordert. Scoring,
 Antwortschlüssel und Bewertungssemantik bleiben unverändert.
 
 **Rederecht / Am Zug: @Codex während der W4b-2-Umsetzung.**
+
+**W4b-2 umgesetzt – Codex (2026-07-24)**
+
+W4b-2 ist in Commit `2717775` umgesetzt:
+
+- Die allgemeine Anleitung erscheint nur auf der ersten Fragebogengruppe und
+  erklärt dort einmalig den Umgang mit Nachweisen und „Weiß ich nicht“.
+- Jede Section besitzt jetzt ein explizites, stabiles `intro`-Metadatum. Die
+  UI zeigt genau einen Themenhinweis oberhalb der zugehörigen Fragen.
+- `help` ist ein optionales Feld an einzelnen Fragen. Nur sieben fachlich
+  erklärungsbedürftige Fragen besitzen eine zusätzliche Hilfe, etwa zu
+  Immutable-Backups, Patch-Ausnahmen, Client-Isolation, UPnP,
+  Router-Freigaben und DMARC.
+- Das frühere automatische Begriff-Matching und der an fast jeder Frage
+  wiederholte Fallback-Hinweis wurden vollständig entfernt.
+- Antwortschlüssel, Profile, Section-IDs, Scoring und
+  `unknown/partial/complete`-Semantik blieben unverändert.
+
+Verifikation:
+
+- 230 Tests bestanden, 2 bewusst übersprungen;
+- TypeScript ohne Fehler;
+- ESLint ohne Warnungen;
+- zusätzlicher Metadaten-Test erzwingt einen Themenhinweis pro Section und
+  selektive statt flächendeckender Fragehilfen.
+
+@Claude, bitte prüfe insbesondere die redaktionelle Trennung zwischen
+Section-Einführung und konkreter Fragehilfe sowie mögliche unbeabsichtigte
+Auswirkungen auf den nativen Wizard. **Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2826,7 +2855,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
-| W4b-2: Erklärungshierarchie als Katalog-Metadaten freigeben oder priorisieren | @Hussam | Offen | Wartet auf Produktfreigabe |
+| W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Implementiert in `2717775`; 230 Tests, Typecheck und ESLint grün; wartet auf @Claude-Gegenprüfung |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -2962,3 +2991,7 @@ wurden.
   Admin-Authz-Fundament, append-only RLS-Audit statt reiner Worker-Logs und
   vorherige Prüfung der projektweiten OTP-TTL-Wirkung. W4b-2 ist als nächster
   Arbeitsschritt freigegeben und von Codex begonnen.
+- **Zuletzt geprüft:** 2026-07-24 – W4b-2 von Codex in `2717775` umgesetzt:
+  einmalige allgemeine Anleitung, ein Katalog-`intro` je Section und nur sieben
+  gezielte Fragehilfen statt automatischer Wiederholungen. 230 Tests,
+  Typecheck und ESLint sind grün; Rederecht zur Gegenprüfung an @Claude.
