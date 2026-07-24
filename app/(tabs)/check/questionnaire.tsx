@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -116,6 +116,8 @@ export default function QuestionnaireScreen() {
   const [showSummary, setShowSummary] = useState(false);
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const submittedRef = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const headingRef = useRef<Text>(null);
   const sections = useMemo(
     () => questionnaireSectionsForProfile(assessmentProfile),
     [assessmentProfile]
@@ -181,6 +183,16 @@ export default function QuestionnaireScreen() {
   useEffect(() => {
     recalculate();
   }, [answers, recalculate]);
+
+  // W4b-1: on every section/summary change, reset the wizard scroll to the top
+  // and move accessibility focus to the new heading. All navigation paths
+  // (Weiter, Zurück, Draft-Resume, summary jumps) flow through currentSectionId
+  // and showSummary, so one effect covers every case.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    const node = headingRef.current ? findNodeHandle(headingRef.current) : null;
+    if (node != null) AccessibilityInfo.setAccessibilityFocus(node);
+  }, [currentSectionId, showSummary]);
 
   async function handleCompleteQuestionnaire() {
     if (saving) return;
@@ -249,7 +261,8 @@ export default function QuestionnaireScreen() {
   ).length;
 
   return (
-    <Screen>
+    <Screen scroll={false}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Sicherheitsfragebogen</Text>
       <Text style={styles.copy}>
         Kurze Fragen zu Schutzmaßnahmen und Nachweisen. Es werden keine Patientendaten, keine Dateien und keine Inhalte
@@ -270,7 +283,9 @@ export default function QuestionnaireScreen() {
       </View>
       {showSummary ? (
         <GlassCard style={styles.wizardCard}>
-          <Text style={styles.sectionTitle}>Abschlussübersicht</Text>
+          <Text ref={headingRef} accessibilityRole="header" style={styles.sectionTitle}>
+            Abschlussübersicht
+          </Text>
           <Text style={styles.summaryCopy}>
             Prüfen Sie die Gruppen vor dem Absenden. „Weiß ich nicht“ ist eine gültige Antwort und bleibt in der
             Bewertung als unbekannte Evidenz sichtbar.
@@ -309,7 +324,9 @@ export default function QuestionnaireScreen() {
         </GlassCard>
       ) : currentSection ? (
         <GlassCard style={styles.wizardCard}>
-          <Text style={styles.sectionTitle}>{currentSection.title}</Text>
+          <Text ref={headingRef} accessibilityRole="header" style={styles.sectionTitle}>
+            {currentSection.title}
+          </Text>
           <View style={styles.questions}>
             {currentSection.questions.map((question) => (
               <View key={question.key} style={styles.questionBlock}>
@@ -375,6 +392,7 @@ export default function QuestionnaireScreen() {
           />
         )}
       </View>
+      </ScrollView>
     </Screen>
   );
 }
@@ -413,6 +431,9 @@ function errorMessage(error: unknown) {
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1
+  },
   title: {
     color: colors.ink,
     fontSize: 34,
