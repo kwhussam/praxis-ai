@@ -910,6 +910,21 @@ und B5 (W4e) bleiben unverändert nachgelagert; W4e erst nach Abnahme von B1–B
 optional @Codex zur Gegenprüfung der Doku-Änderung; die Audit-Aufbewahrungsfrist
 entscheiden. Erst danach eine etwaige B1-Implementierungsfreigabe.)
 
+**Einordnung – Codex (2026-07-24)**
+
+Die bestätigten B0-Entscheidungen sind konsistent mit dem Sicherheits- und
+Migrationsrahmen: internes MVP, persönliche Code-Übergabe mit E-Mail-Fallback,
+Zugriff von Consultants nur über explizite Zuweisung sowie additive
+Mitgliedschaften statt einer stillen Ablösung bestehender Zugriffswege. B1 bleibt
+damit klar ein Schema-/Autorisierungspaket und keine Freigabe für Backoffice-UI
+oder W4e.
+
+Für die noch offene Audit-Aufbewahrungsfrist sollte vor B1 nicht nur eine Dauer,
+sondern auch Lösch- bzw. Anonymisierungsablauf, Rechtsgrundlage und ein Ausnahme-
+fall für laufende Sicherheits- oder Rechtsvorgänge festgelegt werden. Danach
+kann eine begrenzte B1-Implementierungsfreigabe mit den bereits vereinbarten
+RLS- und Cross-Tenant-Tests erteilt werden. **Rederecht bleibt bei @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -3052,6 +3067,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-020 | 2026-07-24 | W4c wird als eigenständiges Passwort-Reset-Paket geführt und ist code-seitig abgeschlossen. | Die vollständige Recovery-Kette ist implementiert und getestet; die Supabase-Redirect-URL-Konfiguration bleibt ein externes Release-Gate. | @Hussam, @Claude, @Codex |
 | E-021 | 2026-07-24 | W4e wird erst mit belastbarer Admin-Authentifizierung und Berechtigungsmodell umgesetzt; Reset-Audits benötigen eine append-only Tabelle mit RLS, und die projektweite OTP-TTL-Wirkung wird vorher geprüft. Bis dahin beginnt W4b-2. | Kein sicherheitskritischer Support-Endpunkt mit provisorischer Authz oder unzureichenden Logs; klare Reihenfolge zwischen Backoffice-Fundament und Admin-Reset. | @Hussam |
 | E-022 | 2026-07-24 | W4b-2 ist nach Implementierung und Gegenprüfung final abgenommen; als nächstes wird das Web-Backoffice-Fundament fachlich geplant. | Erklärungshierarchie ist getestet und ohne Wizard-/Scoring-Nebenwirkungen; das Backoffice-Fundament bereitet professionelles Onboarding und W4e-Authz vor. | @Hussam |
+| E-023 | 2026-07-24 | Das Web-Backoffice startet als internes MVP: persönlicher Einmalcode primär, E-Mail-Link als Fallback, Consultants sehen nur zugewiesene Praxen; Stammdaten sind Pflicht, Domain optional. | Der B1-Scope ist als additive Schema-/Autorisierungsmigration festgelegt; UI und W4e bleiben nachgelagert. | @Hussam |
 
 ## Nächste Schritte
 
@@ -3078,7 +3094,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
-| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – Plan als Fundament angenommen; Entwurf `f742673`, Gegenprüfung, B0-Entscheidungen + drei B1-Ergänzungen in `5841840` eingearbeitet. Finaler B0/B1-Scope vorgelegt |
+| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | Offen | Blocker für B1-Abschluss |
 | B1 umsetzen: Backoffice-Schema/Authz additiv (inkl. `can_access_practice`-Erweiterung + Migration) | @Codex, @Claude | Später | Wartet auf B0/B1-Scope-Bestätigung und Aufbewahrungsfrist; keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
@@ -3255,3 +3271,8 @@ wurden.
   B0/B1-Scope im Faden vorgelegt. Einzig offen vor B1: datenschutzrechtliche
   Audit-Aufbewahrungsfrist. Keine Implementierungsfreigabe; Rederecht an
   @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – Codex hat den bestätigten B0/B1-Scope als
+  E-023 und in den nächsten Schritten konsolidiert. Vor einer B1-Freigabe bleibt
+  allein die datenschutzrechtliche Audit-Aufbewahrungsfrist offen (einschließlich
+  Lösch-/Anonymisierungsablauf, Rechtsgrundlage und Ausnahmefall); keine
+  Implementierung begonnen, Rederecht bei @Hussam.
