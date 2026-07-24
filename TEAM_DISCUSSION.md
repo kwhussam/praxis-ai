@@ -270,6 +270,53 @@ Code-Change (Ansage abwarten).
 
 **Rederecht / Am Zug: @Hussam.**
 
+**Umsetzung & Prüfbericht – @Claude (2026-07-24)**
+
+**@Claude:** @Hussam hat W4b-1 zur sofortigen Umsetzung freigegeben, der
+weiteren Reihenfolge zugestimmt und die Prefill-Semantik entschieden
+(frühere Antworten nur als unbestätigte Vorschläge, aktive Bestätigung,
+sonst `unknown`). Auftrag: nach W4b-1 den Passwort-Reset prüfen und die
+Lücke berichten.
+
+**W4b-1 umgesetzt (Commit `c93216c`).** Der Fragebogen besitzt nun eine
+eigene `ScrollView` (`Screen scroll={false}`); ein Effect auf
+`currentSectionId`/`showSummary` setzt den Scroll-Offset auf 0 und den
+A11y-Fokus auf die neue Überschrift. Ein Effect deckt Weiter, Zurück,
+Draft-Resume und Übersichtssprünge ab. Typecheck, Lint und der
+`check-start`-Test sind grün; nicht gepusht.
+
+**Passwort-Reset – Prüfergebnis: echte Lücke, klar umrissen.**
+
+Sende-Seite vollständig und sicher:
+- „Passwort vergessen“ (`app/(auth)/login.tsx`) →
+  `requestPasswordReset` → `supabase.auth.resetPasswordForEmail`.
+- Enumerationssicher: „Falls ein Konto zu dieser E-Mail existiert …“
+  verrät keine Kontoexistenz (entspricht Codex' Reset-Anforderung aus
+  D-005). E-Mail normalisiert, Test vorhanden.
+
+Empfangs-Seite fehlt komplett – der Reset kann angefordert, aber nicht
+abgeschlossen werden:
+1. Kein `redirectTo` – `lib/auth/password-reset.ts` trägt das TODO offen;
+   der Link zeigt auf die Supabase-Site-URL statt in die App.
+2. Keine Recovery-Route/-Screen – `app/(auth)/` hat nur `login`,
+   `welcome`, `onboarding`; nirgends `supabase.auth.updateUser({ password })`.
+3. Deep-Link nicht verarbeitet – Scheme `praxisshield` ist in `app.json`
+   gesetzt, aber `detectSessionInUrl: false` (`lib/api/supabase.ts`) und
+   `onAuthStateChange` (`lib/store/session.ts`) behandelt nur `SIGNED_OUT`;
+   das `PASSWORD_RECOVERY`-Event wird ignoriert, kein `Linking`-Handling.
+
+Fehlende Kette: `redirectTo` (Deep-Link) → Recovery-Session herstellen →
+Passwort-Setzen-Screen → `updateUser({ password })`. Die
+Sicherheitsanforderungen sind auf der Sende-Seite bereits erfüllt; es fehlt
+reine Flow-Vervollständigung, keine Sicherheitsnachbesserung. Umfang grob:
+1 Route + 1 Screen + Recovery-/Deep-Link-Handler.
+
+**Offene Frage an @Hussam:** als eigenes Paket **W4c** aufnehmen oder
+bewusst im größeren Web-Backoffice-Block (D-005 Punkt 1) belassen? Reiner
+Bericht, kein Code an der Reset-Kette angefasst.
+
+**Rederecht / Am Zug: @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
