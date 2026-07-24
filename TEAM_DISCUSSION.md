@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Codex
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -730,6 +730,16 @@ vereinfacht werden. Kein Handlungsbedarf für die Abnahme.
 freigebbarer Arbeitsschritt bleibt offen – W4e ist gemäß E-021 bis zum
 Admin-Authz-Fundament zurückgestellt; das W4c-Release-Gate
 (Staging/Prod-Redirect-URL + nativer Dev-Build-Test) liegt weiterhin bei dir.)
+
+**Entscheidung – @Hussam (2026-07-24)**
+
+@Hussam nimmt W4b-2 final ab. Als nächster Arbeitsschritt wird das
+Web-Backoffice-Fundament fachlich geplant. Die Planung soll das vorhandene
+Praxis-, Mandanten-, Rollen- und Auth-Modell berücksichtigen, den professionellen
+Praxis-Onboarding-Prozess definieren und die späteren W4e-Voraussetzungen
+vorbereiten. Noch keine Web-Implementierung.
+
+**Rederecht / Am Zug: @Codex für die fachliche Backoffice-Planung.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -2872,6 +2882,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-019 | 2026-07-23 | W4a ist nach bestandenem nativen iOS-Simulatorlauf final abgenommen; zusätzliche React-Native-Komponententest-Infrastruktur folgt später. | Der Wizard durchlief alle 11 Gruppen bis zur persistierten Speicherung und zum WLAN-Scan; die Coverage-Warnung war sichtbar. | @Hussam, @Codex |
 | E-020 | 2026-07-24 | W4c wird als eigenständiges Passwort-Reset-Paket geführt und ist code-seitig abgeschlossen. | Die vollständige Recovery-Kette ist implementiert und getestet; die Supabase-Redirect-URL-Konfiguration bleibt ein externes Release-Gate. | @Hussam, @Claude, @Codex |
 | E-021 | 2026-07-24 | W4e wird erst mit belastbarer Admin-Authentifizierung und Berechtigungsmodell umgesetzt; Reset-Audits benötigen eine append-only Tabelle mit RLS, und die projektweite OTP-TTL-Wirkung wird vorher geprüft. Bis dahin beginnt W4b-2. | Kein sicherheitskritischer Support-Endpunkt mit provisorischer Authz oder unzureichenden Logs; klare Reihenfolge zwischen Backoffice-Fundament und Admin-Reset. | @Hussam |
+| E-022 | 2026-07-24 | W4b-2 ist nach Implementierung und Gegenprüfung final abgenommen; als nächstes wird das Web-Backoffice-Fundament fachlich geplant. | Erklärungshierarchie ist getestet und ohne Wizard-/Scoring-Nebenwirkungen; das Backoffice-Fundament bereitet professionelles Onboarding und W4e-Authz vor. | @Hussam |
 
 ## Nächste Schritte
 
@@ -2897,7 +2908,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
-| W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Implementiert in `2717775`, von @Claude gegengeprüft (Typecheck + 34 Tests eigen verifiziert); Abnahme empfohlen, wartet auf @Hussam |
+| W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
+| Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | In Arbeit – noch keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3044,3 +3056,7 @@ wurden.
   Verifikation: `tsc` sauber, 34 relevante Tests grün. Ein unkritischer
   Kosmetik-Hinweis (redundante Doppelabsicherung an `InfoHint`). Keine
   Code-Änderung; Rederecht zurück an @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat W4b-2 final abgenommen
+  (E-022) und die fachliche Planung des Web-Backoffice-Fundaments als nächsten
+  Schritt freigegeben. Codex analysiert dafür das bestehende Mandanten-,
+  Praxis-, Rollen- und Auth-Modell; noch keine Web-Implementierung.
