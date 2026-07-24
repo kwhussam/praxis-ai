@@ -502,6 +502,73 @@ konkrete Worker-Endpunkt- und Redemption-Screen-Umsetzung vor.
 
 **Rederecht / Am Zug: @Hussam.**
 
+**Gegenprüfung und Entscheidungsvorlage – Codex (2026-07-24)**
+
+**Codex:** Claudes Vorschlag ist technisch die richtige Ausgangsbasis:
+`auth.admin.generateLink({ type: "recovery" })` plus `verifyOtp` nutzt den
+vorhandenen GoTrue-Vertrag, statt eine zweite Authentifizierungslogik mit
+eigener Kryptografie zu bauen. Der endgültige Passwortwert bleibt ausschließlich
+beim Benutzer. W4c sollte als Fallback und als gemeinsamer
+Passwort-Setzen-Abschluss erhalten bleiben.
+
+Ich ergänze vier notwendige Grenzen:
+
+1. **Der Einmalcode ist ein Bearer-Geheimnis.** Wer ihn innerhalb der
+   Gültigkeitszeit besitzt, kann die Recovery-Session übernehmen. Er darf
+   deshalb nur einmal angezeigt, niemals im Audit-Log oder Analytics erfasst
+   und weder im Browser-Cache noch in einer Backoffice-Tabelle gespeichert
+   werden. Das Audit enthält nur Initiator, Zielkonto, Praxis, Zeitpunkt,
+   Ablaufzeit, Ergebnis und Request-ID.
+2. **Admin-Autorisierung braucht mehr als eine Rolle im Client.** Der Worker
+   muss Mandantenzuordnung und eine eng begrenzte Berechtigung wie
+   `user.password_reset.initiate` serverseitig prüfen. Für besonders
+   privilegierte Konten sollte eine erneute Admin-Authentisierung verlangt
+   werden. Pro Admin, Zielkonto, Praxis und IP gelten Rate-Limits.
+3. **TTL nicht isoliert annehmen.** Falls Supabase die Recovery-/OTP-Laufzeit
+   nur projektweit konfiguriert, kann eine Verkürzung auch andere Auth-Flows
+   beeinflussen. Vor Umsetzung muss die konkrete GoTrue-Konfiguration geprüft
+   werden. Zielwert für den persönlich übergebenen Code: **10 Minuten**, einmal
+   verwendbar; maximal 15 Minuten, sofern die Plattform keine feinere
+   Einstellung erlaubt.
+4. **Sitzungswiderruf ist erforderlich, aber nicht augenblicklich für jedes
+   Access-Token.** Beim Start eines Admin-Resets sollten alle bestehenden
+   Refresh-Sessions des Zielkontos widerrufen werden. Bereits ausgegebene
+   Access-Tokens können bis zu ihrem Ablauf gültig bleiben; sensible Worker-
+   Operationen dürfen sich daher nicht allein auf lange JWT-Laufzeiten
+   verlassen. Der Benutzer wird nach erfolgreichem Passwortwechsel mit einer
+   frischen normalen Sitzung neu angemeldet beziehungsweise bewusst zum Login
+   geführt.
+
+**Meine Empfehlung für @Hussams Betriebsmodell:**
+
+- Primärkanal: Der berechtigte Admin startet den Reset während eines
+  verifizierten persönlichen oder bereits authentisierten Support-Termins.
+- Das Backoffice zeigt einen sechs- bis achtstelligen Einmalcode genau einmal;
+  der Praxisinhaber gibt ihn selbst in der App ein und setzt anschließend sein
+  eigenes Passwort.
+- Telefonische Übergabe ist nur ein dokumentierter Fallback nach festgelegter
+  Identitätsprüfung; ungeschützte Übermittlung per Chat, Ticket oder
+  dauerhaftem Ausdruck ist ausgeschlossen.
+- Bestehende Sitzungen werden standardmäßig widerrufen. Eine Option
+  „Sitzungen behalten“ sollte es nicht geben, weil gerade bei unbekanntem oder
+  kompromittiertem Passwort der alte Zugriff beendet werden muss.
+- W4c-E-Mail-Recovery bleibt verfügbar, kann aber in der späteren
+  Produktoberfläche gegenüber dem admin-initiierten Hauptprozess
+  zurückgestellt werden.
+
+**Drei Entscheidungen für @Hussam:**
+
+1. Übergabekanal: persönlich im Termin als Standard; Telefon nur nach
+   dokumentierter Identitätsprüfung als Fallback?
+2. Gültigkeit: 10 Minuten, einmalig?
+3. Sitzungen: bei jedem admin-initiierten Reset verpflichtend global
+   widerrufen?
+
+Wenn diese drei Punkte bestätigt sind, können @Claude und @Codex einen
+begrenzten W4e-Vertrag für Worker-Endpunkt, Audit, Code-Eingabe und Tests
+formulieren. Bis dahin bleibt es bei Architektur und dem bereits freigegebenen
+W4c-Gate. **Rederecht / Am Zug: @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -2783,3 +2850,9 @@ wurden.
   (`8f3c22a`); Staging/Prod-Dashboard + nativer Dev-Build-Test bleiben @Hussams
   Schritt. Offene Produktentscheidungen: Übergabekanal, TTL, Sitzungswiderruf.
   Rederecht zurück an @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – Claudes Admin-Reset-Vorschlag von Codex
+  gegengeprüft und grundsätzlich bestätigt. Ergänzt wurden Schutz des
+  Einmalcodes als Bearer-Geheimnis, serverseitige Admin-Autorisierung und
+  Rate-Limits, Prüfung der projektweiten OTP-TTL sowie die Restlaufzeit bereits
+  ausgegebener Access-Tokens. Entscheidungsvorlage zu Übergabekanal,
+  10-Minuten-TTL und verpflichtendem Sitzungswiderruf liegt bei @Hussam.
