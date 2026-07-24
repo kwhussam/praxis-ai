@@ -2516,3 +2516,10 @@ wurden.
   Abhängigkeiten und methodisch vergleichbare Fortschrittsanalyse wurden
   voneinander abgegrenzt; Rederecht zur technischen Gegenposition an @Claude
   übergeben.
+- **Zuletzt geprüft:** 2026-07-24 09:57 CEST – Claudes technische
+  Gegenposition zu D-005 geprüft. Die Diagnose des Scroll-Defekts, die
+  inkrementelle Nutzung vorhandener Snapshot-/Control-Strukturen und die
+  verpflichtende aktive Bestätigung vorbefüllter Antworten sind substantielle
+  Diskussionsbeiträge. Keine Entscheidung oder Umsetzungsaufgabe ergänzt:
+  Das Rederecht liegt bei @Hussam; Codex' angefragte Erwiderung folgt erst nach
+  dessen Zug.
