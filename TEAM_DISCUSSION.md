@@ -354,6 +354,29 @@ Fachbegriffe statt heute wiederholtem `InfoHint` an jeder Frage.
 
 **Rederecht / Am Zug: @Hussam.**
 
+**Abnahme & Einordnung – Codex (2026-07-24)**
+
+**Codex:** W4c ist als eigenständiges Paket fachlich sinnvoll abgegrenzt und
+nach dem berichteten Teststand code-seitig abnahmefähig: Die bisher fehlende
+Empfangskette ist nun vollständig, und die Sicherheitsgrenzen (keine
+Account-Enthüllung, keine Token-/Passwort-Protokollierung, Verwerfen der
+Recovery-Session nach Erfolg) sind angemessen.
+
+Die externe Redirect-URL-Konfiguration ist jedoch ein **Release-Gate**, kein
+kosmetischer Nachtrag. Vor einer produktiven Freigabe muss
+`praxisshield://reset-password` in jeder Supabase-Umgebung eingetragen und der
+komplette Linkfluss in einem Dev-Build manuell erfolgreich getestet sein. Das
+verbleibende Signup-Ziel `praxisshield://auth/confirm` behandle ich bewusst als
+separaten Befund: erst Route und bestehende Bestätigungssemantik prüfen, dann
+einen begrenzten Folgeauftrag entscheiden; im Monitorlauf erfolgt keine
+Umsetzung.
+
+W4b-2 bleibt unabhängig davon offen. Die nächste Produktentscheidung betrifft
+damit entweder die Freigabe der Erklärungshierarchie oder die Abnahme der
+externen W4c-Konfiguration.
+
+**Rederecht / Am Zug: @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -2493,6 +2516,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-017 | 2026-07-23 | W4 startet mit einem allgemeinen Defaultprofil, einem additiven Gesundheitsprofil und zunächst nur fachlich einzeln belegten Health-Kontrollen. | Profiltechnik darf erweitert werden, ohne ungeprüfte KBV-/Gematik-Konformitätsaussagen in Score oder Bericht einzuführen. | @Hussam, @Codex |
 | E-018 | 2026-07-23 | W4 ist nach Implementierung (`7d6b52e`) und Behebung des Worker-Profil-Persistenz-Blockers (`ac3efb8`) final abgenommen. | Das Profil bleibt über alle maßgeblichen Pfade bis zum persistierten Score of Record erhalten; kein stiller Health-Score-Pass, Selbstauskunft-Cap greift, Produktgrenze dokumentiert. | @Codex, @Claude |
 | E-019 | 2026-07-23 | W4a ist nach bestandenem nativen iOS-Simulatorlauf final abgenommen; zusätzliche React-Native-Komponententest-Infrastruktur folgt später. | Der Wizard durchlief alle 11 Gruppen bis zur persistierten Speicherung und zum WLAN-Scan; die Coverage-Warnung war sichtbar. | @Hussam, @Codex |
+| E-020 | 2026-07-24 | W4c wird als eigenständiges Passwort-Reset-Paket geführt und ist code-seitig abgeschlossen. | Die vollständige Recovery-Kette ist implementiert und getestet; die Supabase-Redirect-URL-Konfiguration bleibt ein externes Release-Gate. | @Hussam, @Claude, @Codex |
 
 ## Nächste Schritte
 
@@ -2514,6 +2538,9 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | S-1/S-2-Commit gegenprüfen | @Claude | 2026-07-23 | Erledigt – freigabefähig; 2 Follow-ups (F-1 findings-Wrapper-Merge, F-2 Autosave-Debounce) in D-003 |
 | F-1: Evidence-Wrapper beim gezielten Re-Run konsistent mergen | @Claude | 2026-07-23 | Erledigt – Commit `bf4540b`; findings.connectedDevices/securityChecks aus gemergten Arrays; tsc + eslint grün, 4 Tests grün |
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
+| W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build manuell prüfen | @Hussam | Vor Release | Offen – externes Release-Gate; kein Codeauftrag |
+| Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Offen | Offen – latenter Befund, nicht Teil von W4c |
+| W4b-2: Erklärungshierarchie als Katalog-Metadaten freigeben oder priorisieren | @Hussam | Offen | Wartet auf Produktfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -2607,3 +2634,9 @@ wurden.
   Diskussionsbeiträge. Keine Entscheidung oder Umsetzungsaufgabe ergänzt:
   Das Rederecht liegt bei @Hussam; Codex' angefragte Erwiderung folgt erst nach
   dessen Zug.
+- **Zuletzt geprüft:** 2026-07-24 10:32 CEST – Neuen W4c-Abschlussbericht
+  geprüft und direkt eingeordnet. W4c ist als eigenständiges Paket
+  code-seitig abgeschlossen (E-020); Supabase-Redirect-URLs samt manuellem
+  Dev-Build-Test bleiben ein externes Release-Gate. Der separate
+  Signup-Redirect-Befund und W4b-2 sind als offene nächste Schritte erfasst;
+  Rederecht bleibt bei @Hussam.
