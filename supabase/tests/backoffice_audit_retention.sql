@@ -4,7 +4,7 @@ create extension if not exists pgtap with schema extensions;
 begin;
 set local search_path = public, extensions;
 
-select plan(16);
+select plan(17);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
 values
@@ -22,7 +22,7 @@ insert into public.backoffice_audit_events (
   legal_hold_set_at, legal_hold_set_by
 )
 values
-  ('e2000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000e8', 'practice.update', 'practice', '00000000-0000-4000-8000-0000000000e8', '20000000-0000-4000-8000-0000000000e8', 'request-person-1', '{"ip":"192.0.2.10","user_agent":"Named Browser","email":"person@example.test"}', now() - interval '200 days' + interval '12 hours', now() - interval '17 days', null, null, null, null),
+  ('e2000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000e8', 'practice.update', 'practice', '00000000-0000-4000-8000-0000000000e8', '20000000-0000-4000-8000-0000000000e8', 'request-person-1', '{"ip":"192.0.2.10","user_agent":"Named Browser","email":"person@example.test"}', now() - interval '200 days' + interval '12 hours', now() - interval '200 days' + interval '12 hours' + interval '183 days', null, null, null, null),
   ('e2000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-0000000000e8', 'practice.read', 'practice', '00000000-0000-4000-8000-0000000000e8', '20000000-0000-4000-8000-0000000000e8', 'request-person-2', '{"email":"held@example.test"}', now() - interval '200 days', now() - interval '17 days', now() + interval '30 days', 'Laufender Sicherheitsvorfall', now(), '00000000-0000-4000-8000-0000000000e9'),
   ('e2000000-0000-4000-8000-000000000003', '00000000-0000-4000-8000-0000000000e8', 'practice.read', 'practice', '00000000-0000-4000-8000-0000000000e8', '20000000-0000-4000-8000-0000000000e8', 'request-person-3', '{"email":"recent@example.test"}', now() - interval '30 days', now() + interval '153 days', null, null, null, null),
   ('e2000000-0000-4000-8000-000000000004', '00000000-0000-4000-8000-0000000000e8', 'practice.update', 'practice', '00000000-0000-4000-8000-0000000000e8', '20000000-0000-4000-8000-0000000000e8', 'request-person-4', '{"email":"second@example.test"}', now() - interval '200 days', now() - interval '17 days', null, null, null, null);
@@ -48,6 +48,7 @@ select ok((select actor_user_id is null and target_id is null and practice_id is
 select is((select metadata from public.backoffice_audit_events where id = 'e2000000-0000-4000-8000-000000000001'), '{"anonymized":true}'::jsonb, 'identifying metadata is replaced, not filtered selectively');
 select ok((select action = 'anonymized' and target_type = 'anonymized' from public.backoffice_audit_events where id = 'e2000000-0000-4000-8000-000000000001'), 'free-text classification fields cannot retain identifying content');
 select ok((select created_at = date_trunc('day', created_at) from public.backoffice_audit_events where id = 'e2000000-0000-4000-8000-000000000001'), 'exact event timestamp is reduced to day precision');
+select ok((select retention_until - interval '183 days' = created_at and retention_until - interval '183 days' = date_trunc('day', retention_until - interval '183 days') from public.backoffice_audit_events where id = 'e2000000-0000-4000-8000-000000000001'), 'retention timestamp cannot reconstruct a sub-day original event time');
 select ok((select legal_hold_until is null and legal_hold_reason is null and legal_hold_set_at is null and legal_hold_set_by is null from public.backoffice_audit_events where id = 'e2000000-0000-4000-8000-000000000001'), 'legal-hold identifiers are removed on anonymization');
 select ok((select to_jsonb(event)::text not like '%person@example.test%' and to_jsonb(event)::text not like '%192.0.2.10%' and to_jsonb(event)::text not like '%request-person-1%' and to_jsonb(event)::text not like '%20000000-0000-4000-8000-0000000000e8%' from public.backoffice_audit_events event where id = 'e2000000-0000-4000-8000-000000000001'), 'serialized anonymized row contains no original direct or indirect identifier');
 

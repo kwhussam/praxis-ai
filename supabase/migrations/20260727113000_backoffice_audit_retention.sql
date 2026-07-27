@@ -71,6 +71,7 @@ begin
       request_id = null,
       metadata = jsonb_build_object('anonymized', true),
       created_at = date_trunc('day', event.created_at),
+      retention_until = date_trunc('day', event.created_at) + interval '183 days',
       legal_hold_until = null,
       legal_hold_reason = null,
       legal_hold_set_at = null,
@@ -88,4 +89,3 @@ revoke all on function public.anonymize_backoffice_audit_events(integer, integer
 revoke all on function public.anonymize_backoffice_audit_events(integer, integer) from anon;
 revoke all on function public.anonymize_backoffice_audit_events(integer, integer) from authenticated;
 grant execute on function public.anonymize_backoffice_audit_events(integer, integer) to service_role;
-

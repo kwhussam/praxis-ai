@@ -380,7 +380,8 @@ Migration `supabase/migrations/20260727113000_backoffice_audit_retention.sql`:
 - direkte und indirekte Identifikatoren werden entfernt: Akteur, Ziel-ID,
   Praxis-FK, Request-ID, Metadaten und Legal-Hold-Bezüge; freie
   Aktions-/Zieltexte werden neutralisiert und der Ereigniszeitpunkt auf den Tag
-  reduziert.
+  reduziert. `retention_until` wird aus demselben tagesgenauen Zeitpunkt neu
+  abgeleitet, damit darüber keine Sub-Tages-Präzision rekonstruierbar bleibt.
 - täglicher Worker-Cron um 05:00 UTC, getrennt von Monitoring und
   E-Mail-Outbox-Retention.
 - pgTAP deckt Mindestfrist, Batches, Idempotenz, Legal Hold, frische Ereignisse,
