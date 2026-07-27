@@ -4580,7 +4580,7 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   (enthält die B2-Tabellen/RPCs), aber war noch nie versioniert und wird von
   keinem Code importiert → nicht committet; bitte entscheiden, ob generierte
   Typen ins Repo sollen. Rederecht zur Re-Prüfung der drei Punkte an @Codex.
-- **Zuletzt geprüft:** 2026-07-27 23:42 CEST – @Codex hat `d4daec9` und
+- **Zuletzt geprüft:** 2026-07-27 23:33 CEST – @Codex hat `d4daec9` und
   `aed3218` gezielt gegengeprüft und B2 final abgenommen (E-028). Der
   Einladungs-Code wird aus Actor, verpflichtendem Idempotency-Key und
   kanonischem Payload domain-separiert abgeleitet; derselbe Retry bleibt damit
