@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1355,6 +1355,39 @@ Revocation-Korrektur auch dynamisch bestätigt. Es gibt keinen verbleibenden
 B1a-Befund; **B1a ist final abgenommen**. Der Kopf-Token wurde entsprechend der
 bereits dokumentierten Übergabe auf @Hussam korrigiert. B1b beginnt erst nach
 seiner ausdrücklichen Freigabe. **Rederecht / Am Zug: @Hussam.**
+
+**B1b umgesetzt – @Codex (2026-07-27)**
+
+@Hussam hat B1b freigegeben und @Codex mit der Umsetzung beauftragt; @Claude
+soll gegenprüfen. Implementiert in Commit `18f0614`:
+
+- additive Migration `20260727113000_backoffice_audit_retention.sql` mit
+  `retention_until`, dokumentierten/zeitlich begrenzten Legal-Hold-Feldern und
+  `anonymized_at`; bestehende Ereignisse erhalten `created_at + 183 Tage`;
+- gehärtete `security definer`-RPC
+  `anonymize_backoffice_audit_events(retention_days, batch_size)`: mindestens
+  183 Tage, maximal 5.000 Zeilen je Aufruf, `FOR UPDATE SKIP LOCKED`,
+  idempotent, aktive Legal Holds werden übersprungen; Ausführung ausschließlich
+  durch `service_role`;
+- irreversible Entfernung direkter und indirekter Zuordnungen: Akteur,
+  Praxis-/Ziel-/Request-IDs, freie Aktions-/Zieltexte, Metadaten und
+  Legal-Hold-Bezüge; Zeitpunkt nur noch tagesgenau;
+- separater täglicher Worker-Cron um 05:00 UTC, ohne Monitoringlauf;
+- 16 pgTAP-Prüfungen für Mindestfrist, Batchgrenze, Idempotenz, Legal Hold,
+  frische Ereignisse, RPC-Rechte und fehlende Re-Identifizierbarkeit sowie ein
+  Worker-Cron-Test;
+- Fachplan und RLS-Matrix an den umgesetzten Zustand angepasst.
+
+Verifikation: `supabase db reset --local` sauber; vollständiger und fokussierter
+pgTAP-Lauf erfolgreich; Worker-Testdatei 61/61 grün; Typecheck und ESLint grün.
+Die bekannten absichtlich ausgelösten Provider-/Fehlerlogs der Worker-Tests
+sind unverändert und kein B1b-Befund.
+
+@Claude, bitte prüfe insbesondere: Mindestfrist und `retention_until`-Zusammenspiel,
+Legal-Hold-Semantik, Vollständigkeit der Re-Identifizierungsbereinigung,
+Funktionsrechte/Append-only-Grenze, Batch-/Parallelverhalten und isoliertes
+Cron-Routing. **B1b ist implementiert, aber bis zu deiner Gegenprüfung noch
+nicht final abgenommen. Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3530,7 +3563,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
-| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Claude, @Codex | Offen | Wartet auf @Hussams Freigabe; umfasst Legal Hold, sichere Anonymisierungs-RPC, Worker-Cron und Re-Identifizierungs-Negativtests |
+| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Implementiert in `18f0614`; Migration, 16 pgTAP-Prüfungen, Worker-Cron-Test, Typecheck und ESLint grün; wartet auf @Claudes Gegenprüfung |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3786,3 +3819,9 @@ wurden.
   auch die dynamische Verifikation der letzten Revocation-Korrektur erbracht;
   B1a ist final abgenommen. Kopf-Token an @Hussam korrigiert; B1b wartet auf
   seine ausdrückliche Freigabe.
+- **Zuletzt geprüft:** 2026-07-27 – @Hussam hat B1b freigegeben; @Codex hat
+  Retention-/Legal-Hold-Schema, gehärtete Anonymisierungs-RPC, täglichen
+  Worker-Cron und Re-Identifizierungsprüfungen in `18f0614` umgesetzt.
+  `supabase db reset`, pgTAP, 61 Worker-Tests, Typecheck und ESLint sind grün.
+  Rederecht zur Sicherheitsgegenprüfung an @Claude; noch keine finale
+  B1b-Abnahme.
