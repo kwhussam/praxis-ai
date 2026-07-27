@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1473,6 +1473,28 @@ Lauf mit nun 17 B1b-Prüfungen erfolgreich; Typecheck und ESLint grün.
 @Claude, bitte prüfe fokussiert den Fix und den produktionsnahen Negativtest.
 Wenn keine weitere Korrelationsspur verbleibt, kann B1b final abgenommen
 werden. **Rederecht / Am Zug: @Claude.**
+
+**B1b-Fix gegengeprüft – Abnahme empfohlen – @Claude (2026-07-27)**
+
+Der Fix (`aec9b4f`) entspricht exakt der Empfehlung:
+`retention_until = date_trunc('day', event.created_at) + interval '183 days'`.
+Damit ist `retention_until` aus dem bereits tagesgekürzten `created_at`
+abgeleitet und enthält keine sub-tagesgenaue Ursprungsinformation mehr; der
+Rückrechenweg `retention_until − 183 Tage` liefert nur noch den Tagesbeginn.
+
+Die Fixture für Ereignis 1 ist jetzt produktionsnah
+(`retention_until = created_at + 183 Tage`), und die neue Assertion belegt, dass
+`retention_until − 183 Tage` day-aligned ist und keinen sub-tagesgenauen
+Zeitpunkt rekonstruiert. Damit hätte der ursprüngliche Leak den Test gefangen.
+
+Eigene Verifikation: `supabase db reset` sauber; **91 pgTAP-Tests grün** über
+drei Dateien (74 B1a + 17 B1b). Keine weitere Korrelationsspur: übrig bleiben nur
+`id` (Zufalls-UUID) und `result`, beide ohne Bezug zum ursprünglichen Akteur/
+Zeitpunkt; `anonymized_at` ist der Verarbeitungszeitpunkt, nicht der Ereigniszeit.
+
+**Aus meiner Sicht ist B1b final abnahmefähig.** Damit sind B1a und B1b
+abgeschlossen; der nächste abgegrenzte Schritt wäre B2 (Admin-API). Entscheidung
+und Freigabe liegen bei dir. **Rederecht / Am Zug: @Hussam.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3648,7 +3670,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
-| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Implementiert in `18f0614`, P2-Zeitstempel-Fix `aec9b4f`; 17 pgTAP-Prüfungen, Worker-Cron-Test, Typecheck und ESLint grün; wartet auf @Claudes fokussierte Re-Prüfung |
+| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Implementiert `18f0614`, P2-Zeitstempel-Fix `aec9b4f`, von @Claude gegengeprüft (91 pgTAP grün); Abnahme empfohlen, wartet auf @Hussam |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3931,3 +3953,10 @@ wurden.
   Rückrechnungs-Negativtest ergänzt. Supabase-Reset, 17 fokussierte pgTAP-
   Prüfungen, Typecheck und ESLint grün. Rederecht zur finalen fokussierten
   Gegenprüfung an @Claude.
+- **Zuletzt geprüft:** 2026-07-27 – @Claude hat den B1b-Zeitstempel-Fix
+  (`aec9b4f`) gegengeprüft: `retention_until` ist aus dem tagesgekürzten
+  `created_at` abgeleitet, kein sub-tagesgenauer Ursprung mehr rekonstruierbar;
+  produktionsnahe Fixture + Assertion greifen. Eigene Verifikation: `supabase db
+  reset` sauber, 91 pgTAP-Tests grün (74 B1a + 17 B1b). Keine weitere
+  Korrelationsspur. **B1b Abnahme empfohlen**; B1a+B1b abgeschlossen, nächster
+  Schritt wäre B2. Rederecht an @Hussam.
