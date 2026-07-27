@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Codex
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4489,3 +4489,26 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   freigegeben. Für die finale B2-Abnahme bleiben Worker-Authz/HMAC/Rate-Limit/
   Tenant-Tests sowie ein echter Zwei-Verbindungs-Idempotenztest verbindlich.
   Rederecht zur Slice-2-Implementierung an @Claude.
+- **Zuletzt geprüft:** 2026-07-27 – @Claude hat **B2 Slice 2 (Worker-Endpunkte)**
+  in `8238fea` umgesetzt (dünne Schicht über den freigegebenen `backoffice_*`-
+  RPCs), plus Migration `20260727150000` (akteur-gebundenes Rate-Limit, da
+  `practice.create` keine `practice_id` für den bestehenden praxis-gebundenen
+  Limiter hat). Verbindliche Auflagen umgesetzt: `p_actor` ausschließlich aus der
+  validierten Session; AAL2 für alle `/api/backoffice/*`-Routen und frischer
+  Step-up (neuester `amr`-Faktor im konfigurierbaren Fenster) für den
+  Owner-Transfer; zehnstelliger unverzerrter Crockford-Base32-Code (256 % 32 = 0)
+  mit `HMAC-SHA-256`-Proof `hmac:v1:<hex>`, an Code+Praxis+E-Mail gebunden,
+  Pflicht-Secret fail-closed, Klartext/Secret nie persistiert/geloggt, einmalig
+  in der Antwort; Rate-Limit vor jeder mutierenden/codeerzeugenden RPC;
+  Read-Queries serverseitig auf Capability/Assignment gefiltert (kein globaler
+  Fetch + Nachfilter), Support nur `practice.read`; keine Enumeration
+  (`forbidden`/`not_found` nach außen vereinheitlicht); **B1a-Cutover** in
+  `getPartnerRole` (Rolle aus aktiver `practice_memberships`, `white_label` nur
+  aus `partner_practices`). Verifikation: `supabase db reset` sauber, **143
+  pgTAP grün** (10 neue Rate-Limit-Tests) + **74 Worker-Tests grün** (13 neue),
+  typecheck/lint sauber. **Offen für die finale B2-Abnahme:** echter
+  Zwei-Verbindungs-Idempotenztest (single-connection-pgTAP kann das nicht) und
+  Regeneration `lib/api/database.types.ts` (neue Tabelle/RPC), sobald App/Worker
+  sie typisiert lesen; Redeem/Accept bleibt B4. Rederecht zur Slice-2-
+  Gegenprüfung (Authz, Tenant-Grenzen, HMAC-/Codefluss, Rate-Limits,
+  Anti-Enumeration, Membership-Angleichung) an @Codex.
