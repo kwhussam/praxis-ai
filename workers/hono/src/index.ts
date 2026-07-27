@@ -28,6 +28,12 @@ type Env = {
   DELETION_FROM_EMAIL?: string;
   SECURITY_PROVIDER_TIMEOUT_MS?: string;
   MONITORING_CONCURRENCY_LIMIT?: string;
+  // Server-only HMAC secret for backoffice invitation codes. The plaintext code
+  // never leaves the Worker; only the hmac:v1:<hex> proof reaches the database.
+  // Fail-closed: code-bearing endpoints refuse to operate when this is unset.
+  BACKOFFICE_INVITE_HMAC_SECRET?: string;
+  // Max age (seconds) of the most recent auth factor for owner-transfer step-up.
+  BACKOFFICE_STEPUP_MAX_AGE_S?: string;
 };
 
 type FindingSeverity = "critical" | "warning" | "info";
@@ -390,7 +396,10 @@ type PracticeRecord = {
 type PracticeAccess = {
   user: AuthUser;
   practice: PracticeRecord;
-  role: "owner" | "manager" | "viewer" | "white_label";
+  // Since B1a the tenant membership model lives in practice_memberships
+  // (practice_owner/practice_manager/assessor/viewer). partner_practices now only
+  // yields white_label. "assessor" is the B1a role between viewer and manager.
+  role: "owner" | "manager" | "viewer" | "assessor" | "white_label";
 };
 
 const REPORT_FORMAT_VERSION = "1.0.0";
@@ -574,6 +583,23 @@ app.post("/api/privacy/delete", async (c) => handlePrivacyDelete(c));
 app.get("/api/privacy/export", async (c) => handlePrivacyExport(c));
 app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
 app.post("/api/legal/consent", async (c) => handleConsent(c));
+
+// ---- B2 Backoffice Admin-API (E-027) --------------------------------------
+// All routes require an AAL2 session; ownership transfer additionally requires a
+// fresh step-up. Mutations are rate-limited per actor and delegated to the
+// backoffice_* DB RPCs, which own the transactional/idempotency contract.
+app.get("/api/backoffice/practices", async (c) => handleBackofficeListPractices(c));
+app.post("/api/backoffice/practices", async (c) => handleBackofficeCreatePractice(c));
+app.get("/api/backoffice/practices/:id", async (c) => handleBackofficePracticeDetail(c));
+app.patch("/api/backoffice/practices/:id", async (c) => handleBackofficeUpdatePractice(c));
+app.post("/api/backoffice/practices/:id/transfer-ownership", async (c) => handleBackofficeTransferOwnership(c));
+app.get("/api/backoffice/practices/:id/invitations", async (c) => handleBackofficeListInvitations(c));
+app.post("/api/backoffice/practices/:id/invitations", async (c) => handleBackofficeCreateInvitation(c));
+app.post("/api/backoffice/invitations/:id/revoke", async (c) => handleBackofficeRevokeInvitation(c));
+app.get("/api/backoffice/practices/:id/memberships", async (c) => handleBackofficeListMemberships(c));
+app.post("/api/backoffice/practices/:id/memberships", async (c) => handleBackofficeGrantMembership(c));
+app.post("/api/backoffice/practices/:id/memberships/revoke", async (c) => handleBackofficeRevokeMembership(c));
+app.get("/api/backoffice/audit", async (c) => handleBackofficeAudit(c));
 
 const SYSTEM_PROMPT = `
 Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
@@ -1627,16 +1653,37 @@ async function canAccessPractice(env: Env, userId: string, practiceId: string, r
   });
 }
 
+// B1a cutover: non-owner tenant access is resolved from active practice_memberships,
+// and partner_practices contributes ONLY white_label. Before this fix the Worker read
+// the role label solely from partner_practices, so a member granted via the backoffice
+// (which writes practice_memberships, not partner_practices) would resolve to null and
+// be denied even though can_access_practice would allow them. We now mirror the DB's
+// can_access_practice source model exactly.
+const MEMBERSHIP_ROLE_LABEL: Record<string, PracticeAccess["role"]> = {
+  practice_owner: "owner",
+  practice_manager: "manager",
+  assessor: "assessor",
+  viewer: "viewer"
+};
+
 async function getPartnerRole(env: Env, userId: string, practiceId: string): Promise<PracticeAccess["role"] | null> {
-  const grants = await supabaseRest<unknown[]>(
+  const memberships = await supabaseRest<unknown[]>(
     env,
-    `/rest/v1/partner_practices?select=role&partner_id=eq.${encodeURIComponent(userId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    `/rest/v1/practice_memberships?select=role&user_id=eq.${encodeURIComponent(userId)}&practice_id=eq.${encodeURIComponent(practiceId)}&status=eq.active&limit=1`,
     { method: "GET" }
   );
-  const grant = asRecordOrNull(grants[0]);
-  const role = grant?.role;
+  const membershipRole = asRecordOrNull(memberships[0])?.role;
+  if (typeof membershipRole === "string" && membershipRole in MEMBERSHIP_ROLE_LABEL) {
+    return MEMBERSHIP_ROLE_LABEL[membershipRole];
+  }
 
-  if (role === "owner" || role === "manager" || role === "viewer" || role === "white_label") return role;
+  // Only white_label is still sourced from partner_practices post-cutover.
+  const grants = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/partner_practices?select=role&partner_id=eq.${encodeURIComponent(userId)}&practice_id=eq.${encodeURIComponent(practiceId)}&role=eq.white_label&limit=1`,
+    { method: "GET" }
+  );
+  if (asRecordOrNull(grants[0])?.role === "white_label") return "white_label";
   return null;
 }
 
@@ -3107,6 +3154,540 @@ async function fetchPreviousMonitoringSnapshot(
     rethrowOutboundTimeout(error);
     return { summary: null, checks: null };
   }
+}
+
+// ============================================================================
+// B2 Backoffice Admin-API (E-027)
+// ----------------------------------------------------------------------------
+// The trust boundary lives here: the acting identity derives ONLY from the
+// validated session, every route requires an AAL2 session, ownership transfer
+// requires a fresh step-up, one-time invitation codes are minted with a
+// mandatory HMAC secret (fail-closed) and never persisted or logged, mutations
+// are rate-limited per actor, and reads are scoped server-side to the actor's
+// capability/assignment. The transactional + idempotency contract is owned by
+// the backoffice_* SQL RPCs (migration 20260727130000).
+// ============================================================================
+
+const BACKOFFICE_STEPUP_DEFAULT_MAX_AGE_S = 600;
+// Crockford Base32: 32 symbols, excludes I/L/O/U to avoid ambiguity. 256 is an
+// exact multiple of 32, so mapping a random byte via `% 32` is perfectly uniform.
+const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const INVITE_CODE_LENGTH = 10;
+
+// Per-actor mutation windows (window minutes, limit). Code-bearing invitation
+// creation and ownership transfer are deliberately tighter.
+const BACKOFFICE_RATE_LIMITS: Record<string, { windowMinutes: number; limit: number }> = {
+  "practice.create": { windowMinutes: 5, limit: 30 },
+  "practice.update": { windowMinutes: 1, limit: 60 },
+  "invitation.create": { windowMinutes: 5, limit: 20 },
+  "invitation.revoke": { windowMinutes: 1, limit: 60 },
+  "membership.grant": { windowMinutes: 1, limit: 60 },
+  "membership.revoke": { windowMinutes: 1, limit: 60 },
+  "ownership.transfer": { windowMinutes: 60, limit: 5 }
+};
+
+const BACKOFFICE_ERROR_STATUS: Record<string, number> = {
+  forbidden: 403,
+  aal2_required: 403,
+  stepup_required: 403,
+  owner_role_forbidden: 403,
+  not_found: 404,
+  idempotency_conflict: 409,
+  idempotency_in_progress: 409,
+  invalid_status_transition: 409,
+  invalid_state: 409,
+  rate_limited: 429,
+  idempotency_key_required: 400,
+  idempotency_key_invalid: 400,
+  request_id_invalid: 400,
+  invalid_master_data: 422,
+  invalid_invitation: 422,
+  invalid_expiry: 422,
+  mutation_failed: 500,
+  backoffice_not_configured: 500
+};
+
+type BackofficeActor = {
+  id: string;
+  email?: string;
+  aal: string;
+  // Unix seconds of the most recent authentication factor, for step-up freshness.
+  latestFactorAt: number;
+};
+
+type StaffScope = {
+  role: "platform_admin" | "security_consultant" | "support";
+  // "all" for platform_admin; otherwise the explicit active-assignment practice ids.
+  practiceIds: "all" | string[];
+};
+
+type BackofficeRpcResult = { ok: true; [key: string]: unknown } | { ok: false; error: string };
+
+// Decodes (without re-verifying) the claims of a token GoTrue has ALREADY validated
+// as authentic and unexpired. Because the signature/expiry are confirmed upstream by
+// getAuthenticatedUser, the embedded aal/amr claims are trustworthy here.
+function decodeJwtClaims(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const bytes = Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0));
+    return asRecordOrNull(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return null;
+  }
+}
+
+async function getBackofficeActor(c: Context<{ Bindings: Env }>): Promise<BackofficeActor | null> {
+  const user = await getAuthenticatedUser(c);
+  if (!user) return null;
+
+  const token = getBearerToken(c.req.header("authorization"));
+  const claims = token ? decodeJwtClaims(token) : null;
+  const aal = typeof claims?.aal === "string" ? claims.aal : "aal1";
+
+  let latestFactorAt = 0;
+  const amr = claims && Array.isArray(claims.amr) ? claims.amr : [];
+  for (const entry of amr) {
+    const timestamp = asRecordOrNull(entry)?.timestamp;
+    if (typeof timestamp === "number" && timestamp > latestFactorAt) latestFactorAt = timestamp;
+  }
+  if (latestFactorAt === 0 && claims && typeof claims.iat === "number") latestFactorAt = claims.iat;
+
+  return { id: user.id, email: user.email, aal, latestFactorAt };
+}
+
+function readStepUpMaxAge(env: Env): number {
+  const raw = Number(env.BACKOFFICE_STEPUP_MAX_AGE_S);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : BACKOFFICE_STEPUP_DEFAULT_MAX_AGE_S;
+}
+
+// Resolves the acting identity from the session and enforces AAL2 for every
+// backoffice route (plus fresh step-up when requested). Returns a Response on any
+// rejection so callers can `if (actor instanceof Response) return actor;`.
+async function requireBackofficeActor(
+  c: Context<{ Bindings: Env }>,
+  options: { freshStepUp?: boolean } = {}
+): Promise<BackofficeActor | Response> {
+  let actor: BackofficeActor | null;
+  try {
+    actor = await getBackofficeActor(c);
+  } catch (error) {
+    console.error("backoffice_auth_failed", { failure: safeErrorLog(error) });
+    return c.json({ error: "internal_server_error" }, 500);
+  }
+  if (!actor) return c.json({ error: "unauthorized" }, 401);
+  if (actor.aal !== "aal2") return c.json({ error: "aal2_required" }, 403);
+
+  if (options.freshStepUp) {
+    const maxAge = readStepUpMaxAge(c.env);
+    const ageSeconds = Math.floor(Date.now() / 1000) - actor.latestFactorAt;
+    if (actor.latestFactorAt <= 0 || ageSeconds > maxAge) {
+      return c.json({ error: "stepup_required" }, 403);
+    }
+  }
+  return actor;
+}
+
+// Uniform, uniformly-distributed 10-char Crockford Base32 one-time code.
+function generateInviteCode(): string {
+  const bytes = new Uint8Array(INVITE_CODE_LENGTH);
+  crypto.getRandomValues(bytes);
+  let code = "";
+  for (const byte of bytes) code += CROCKFORD_BASE32[byte % 32];
+  return code;
+}
+
+// Binds the HMAC proof to the code AND its target (practice + email) so a proof can
+// never be replayed for a different practice/recipient. Returns the hmac:v1:<hex>
+// format the DB requires. The secret and plaintext code never leave the Worker.
+async function computeInviteProof(secret: string, code: string, practiceId: string, email: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const message = `v1:${practiceId}:${email}:${code}`;
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return `hmac:v1:${bytesToHex(new Uint8Array(signature))}`;
+}
+
+async function consumeBackofficeRateLimit(env: Env, actorId: string, action: string): Promise<boolean> {
+  const config = BACKOFFICE_RATE_LIMITS[action];
+  if (!config) return true;
+  const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/backoffice_consume_rate_limit", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      p_actor: actorId,
+      p_endpoint: action,
+      p_window_minutes: config.windowMinutes,
+      p_limit: config.limit
+    }
+  });
+  return allowed === true;
+}
+
+async function callBackofficeRpc(
+  env: Env,
+  fn: string,
+  body: Record<string, unknown>
+): Promise<BackofficeRpcResult> {
+  const result = await supabaseRest<unknown>(env, `/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    prefer: "return=representation",
+    body
+  });
+  const record = asRecordOrNull(result);
+  if (record && typeof record.ok === "boolean") {
+    return record as BackofficeRpcResult;
+  }
+  // Any off-contract shape is treated as failure, never as success.
+  return { ok: false, error: "mutation_failed" };
+}
+
+function respondBackofficeResult(
+  c: Context<{ Bindings: Env }>,
+  result: BackofficeRpcResult,
+  options: { collapseNotFound?: boolean; successStatus?: number } = {}
+): Response {
+  if (result.ok) {
+    return c.json(result, (options.successStatus ?? 200) as 200);
+  }
+  let error = result.error;
+  // Anti-enumeration: for endpoints targeting a caller-supplied resource id, a
+  // "forbidden" (exists, no capability) and a "not_found" (absent) must be
+  // indistinguishable from outside. The DB still audits them distinctly.
+  if (options.collapseNotFound && (error === "forbidden" || error === "not_found")) {
+    error = "not_found";
+  }
+  const status = (BACKOFFICE_ERROR_STATUS[error] ?? 400) as 400;
+  return c.json({ ok: false, error }, status);
+}
+
+async function parseJsonBody(c: Context<{ Bindings: Env }>): Promise<Record<string, unknown>> {
+  try {
+    return asRecordOrNull(await c.req.json()) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function stringFieldOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function backofficeRequestId(c: Context<{ Bindings: Env }>, body: Record<string, unknown>): string | null {
+  return c.req.header("x-request-id") ?? stringFieldOrNull(body.requestId);
+}
+
+// Honours a client-supplied Idempotency-Key (header or body) for safe retries; when
+// absent, a fresh key is generated so the DB length/presence guard passes (the caller
+// simply forgoes cross-request idempotency).
+function resolveIdempotencyKey(c: Context<{ Bindings: Env }>, body: Record<string, unknown>): string {
+  return c.req.header("idempotency-key") ?? stringFieldOrNull(body.idempotencyKey) ?? crypto.randomUUID();
+}
+
+async function resolveStaffScope(env: Env, actorId: string): Promise<StaffScope | null> {
+  const staff = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/platform_staff?select=role&user_id=eq.${encodeURIComponent(actorId)}&status=eq.active&limit=1`,
+    { method: "GET" }
+  );
+  const role = asRecordOrNull(staff[0])?.role;
+  if (role !== "platform_admin" && role !== "security_consultant" && role !== "support") return null;
+  if (role === "platform_admin") return { role, practiceIds: "all" };
+
+  const assignments = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/staff_practice_assignments?select=practice_id&staff_user_id=eq.${encodeURIComponent(actorId)}&status=eq.active`,
+    { method: "GET" }
+  );
+  const practiceIds = assignments
+    .map((row) => asRecordOrNull(row)?.practice_id)
+    .filter((id): id is string => typeof id === "string" && isUuid(id));
+  return { role, practiceIds };
+}
+
+function scopeAllows(scope: StaffScope, practiceId: string): boolean {
+  return scope.practiceIds === "all" || scope.practiceIds.includes(practiceId);
+}
+
+// ---- Read endpoints (server-side scoped) ----------------------------------
+
+async function handleBackofficeListPractices(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope) return c.json({ error: "forbidden" }, 403);
+  if (scope.practiceIds !== "all" && scope.practiceIds.length === 0) {
+    return c.json({ practices: [] });
+  }
+
+  let path =
+    "/rest/v1/practices?select=id,display_name,legal_name,onboarding_status,contact_email,domain,created_at&order=created_at.desc&limit=200";
+  if (scope.practiceIds !== "all") {
+    path += `&id=in.(${scope.practiceIds.map(encodeURIComponent).join(",")})`;
+  }
+  const rows = await supabaseRest<unknown[]>(c.env, path, { method: "GET" });
+  return c.json({ practices: rows });
+}
+
+async function handleBackofficePracticeDetail(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const scope = await resolveStaffScope(c.env, actor.id);
+  // Anti-enumeration: no staff role or no assignment is indistinguishable from absent.
+  if (!scope || !scopeAllows(scope, practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const rows = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/practices?select=id,display_name,legal_name,practice_kind,onboarding_status,contact_first_name,contact_last_name,contact_email,contact_phone,street,postal_code,city,country_code,domain,owner_id,created_at,updated_at&id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    { method: "GET" }
+  );
+  if (!rows[0]) return c.json({ error: "not_found" }, 404);
+  return c.json({ practice: rows[0] });
+}
+
+async function handleBackofficeListInvitations(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope) return c.json({ error: "forbidden" }, 403);
+  // support has only practice.read (no invitation capability); mirror backoffice_actor_can.
+  if (scope.role === "support") return c.json({ error: "forbidden" }, 403);
+  if (!scopeAllows(scope, practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const rows = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/practice_invitations?select=id,target_email,intended_role,delivery_channel,status,expires_at,created_at&practice_id=eq.${encodeURIComponent(practiceId)}&order=created_at.desc&limit=200`,
+    { method: "GET" }
+  );
+  // Never expose proof_reference (HMAC) to clients.
+  return c.json({ invitations: rows });
+}
+
+async function handleBackofficeListMemberships(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope) return c.json({ error: "forbidden" }, 403);
+  if (scope.role === "support") return c.json({ error: "forbidden" }, 403);
+  if (!scopeAllows(scope, practiceId)) return c.json({ error: "not_found" }, 404);
+
+  const rows = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/practice_memberships?select=id,user_id,role,status,granted_at,revoked_at&practice_id=eq.${encodeURIComponent(practiceId)}&order=granted_at.desc&limit=200`,
+    { method: "GET" }
+  );
+  return c.json({ memberships: rows });
+}
+
+async function handleBackofficeAudit(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope) return c.json({ error: "forbidden" }, 403);
+  // audit.read is held by admin + consultant only; support is limited to practice.read.
+  if (scope.role === "support") return c.json({ error: "forbidden" }, 403);
+
+  let path =
+    "/rest/v1/backoffice_audit_events?select=id,actor_user_id,action,target_type,target_id,practice_id,result,request_id,created_at&order=created_at.desc&limit=200";
+  if (scope.practiceIds !== "all") {
+    if (scope.practiceIds.length === 0) return c.json({ events: [] });
+    path += `&practice_id=in.(${scope.practiceIds.map(encodeURIComponent).join(",")})`;
+  }
+  const rows = await supabaseRest<unknown[]>(c.env, path, { method: "GET" });
+  return c.json({ events: rows });
+}
+
+// ---- Mutation endpoints (rate-limited, actor from session) ----------------
+
+async function handleBackofficeCreatePractice(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "practice.create"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_create_practice", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_kind: stringFieldOrNull(body.practiceKind),
+    p_legal_name: stringFieldOrNull(body.legalName),
+    p_display_name: stringFieldOrNull(body.displayName),
+    p_contact_first_name: stringFieldOrNull(body.contactFirstName),
+    p_contact_last_name: stringFieldOrNull(body.contactLastName),
+    p_contact_email: stringFieldOrNull(body.contactEmail),
+    p_contact_phone: stringFieldOrNull(body.contactPhone),
+    p_street: stringFieldOrNull(body.street),
+    p_postal_code: stringFieldOrNull(body.postalCode),
+    p_city: stringFieldOrNull(body.city),
+    p_country_code: stringFieldOrNull(body.countryCode),
+    p_domain: stringFieldOrNull(body.domain)
+  });
+  return respondBackofficeResult(c, result, { successStatus: 201 });
+}
+
+async function handleBackofficeUpdatePractice(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "practice.update"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_update_practice", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_id: practiceId,
+    p_patch: asRecordOrNull(body.patch) ?? {},
+    p_new_status: stringFieldOrNull(body.newStatus)
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+async function handleBackofficeCreateInvitation(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+
+  const secret = c.env.BACKOFFICE_INVITE_HMAC_SECRET;
+  if (!secret) {
+    // Fail-closed: never mint a code without the mandatory HMAC secret.
+    console.error("backoffice_invite_secret_missing");
+    return c.json({ ok: false, error: "backoffice_not_configured" }, 500);
+  }
+
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "invitation.create"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
+  const body = await parseJsonBody(c);
+  const email = (stringFieldOrNull(body.targetEmail) ?? "").trim().toLowerCase();
+  const intendedRole = stringFieldOrNull(body.intendedRole);
+  const deliveryChannel = stringFieldOrNull(body.deliveryChannel) ?? "in_person_code";
+  const expiresAt =
+    stringFieldOrNull(body.expiresAt) ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // One-time secret: a fresh random code + HMAC proof each call. Client idempotency
+  // is intentionally NOT honoured here — a lost response cannot re-deliver a secret,
+  // and the DB revokes any prior pending invitation for the same (practice,email,role),
+  // so "latest wins". We therefore use a fresh reservation key every time.
+  const code = generateInviteCode();
+  const proof = await computeInviteProof(secret, code, practiceId, email);
+
+  const result = await callBackofficeRpc(c.env, "backoffice_create_invitation", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: crypto.randomUUID(),
+    p_practice_id: practiceId,
+    p_target_email: email,
+    p_intended_role: intendedRole,
+    p_delivery_channel: deliveryChannel,
+    p_proof_reference: proof,
+    p_expires_at: expiresAt
+  });
+
+  if (!result.ok) {
+    return respondBackofficeResult(c, result, { collapseNotFound: true });
+  }
+  // The plaintext code is returned exactly once for out-of-band delivery; it is
+  // never persisted or logged. B4 will handle email_link delivery server-side.
+  return c.json({ ...result, code }, 201);
+}
+
+async function handleBackofficeRevokeInvitation(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const invitationId = c.req.param("id");
+  if (!invitationId || !isUuid(invitationId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "invitation.revoke"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_revoke_invitation", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_invitation_id: invitationId
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+async function handleBackofficeGrantMembership(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "membership.grant"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_grant_membership", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_id: practiceId,
+    p_user_id: stringFieldOrNull(body.userId),
+    p_role: stringFieldOrNull(body.role)
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+async function handleBackofficeRevokeMembership(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "membership.revoke"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_revoke_membership", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_id: practiceId,
+    p_user_id: stringFieldOrNull(body.userId)
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+async function handleBackofficeTransferOwnership(c: Context<{ Bindings: Env }>) {
+  // Ownership transfer requires a fresh step-up on top of AAL2.
+  const actor = await requireBackofficeActor(c, { freshStepUp: true });
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "ownership.transfer"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_transfer_ownership", {
+    p_actor: actor.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_id: practiceId,
+    p_new_owner: stringFieldOrNull(body.newOwner)
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
 }
 
 async function supabaseRest<T>(

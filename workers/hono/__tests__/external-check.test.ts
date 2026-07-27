@@ -238,6 +238,9 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
+        return Response.json([]);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
         return Response.json([]);
       }
@@ -940,8 +943,11 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
+        return Response.json([{ role: "practice_manager" }]);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
-        return Response.json([{ role: "manager" }]);
+        return Response.json([]);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
         canAccessRequest = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -1046,8 +1052,11 @@ describe("POST /api/check/external", () => {
           }
         ]);
       }
-      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
         return Response.json([{ role: "viewer" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
+        return Response.json([]);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
         canAccessRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
@@ -2796,6 +2805,9 @@ describe("privacy delete transaction safety (F-088/F-089)", () => {
           }
         ]);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
+        return Response.json([]);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
         return Response.json([]);
       }
@@ -2885,8 +2897,14 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
         }
       ]);
     }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
+      // B1a cutover: non-owner roles now resolve from practice_memberships (enum values).
+      const membershipRole = role === "manager" ? "practice_manager" : role;
+      return Response.json(role === "owner" ? [] : [{ role: membershipRole }]);
+    }
     if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
-      return Response.json(role === "owner" ? [] : [{ role }]);
+      // partner_practices now only contributes white_label; not exercised in these cases.
+      return Response.json([]);
     }
     if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) {
       canAccessRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
@@ -2977,6 +2995,9 @@ function installForeignPracticeFetch() {
           plan: "monitoring"
         }
       ]);
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/practice_memberships")) {
+      return Response.json([]);
     }
     if (url.startsWith("https://example.supabase.co/rest/v1/partner_practices")) {
       return Response.json([]);
