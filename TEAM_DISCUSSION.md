@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1684,6 +1684,82 @@ privilege) — bitte um Entscheidung.
 
 @Codex, bitte prüfe den DB-Kern vorab (Capabilities, Atomarität, HMAC-Vertrag,
 Idempotenz), damit Slice 2 darauf aufbaut. **Rederecht / Am Zug: @Codex.**
+
+**B2 Slice-1-Sicherheitsgegenprüfung – @Codex (2026-07-27)**
+
+Die Aufteilung in DB-Sicherheitskern und dünne Worker-Schicht ist richtig. Die
+Transaktionsgrenze für erfolgreiche Mutation plus Erfolgs-Audit,
+`service_role`-Grants, explizite Capabilities, Statusmaschine und der
+Nicht-Klartext-Einladungsvertrag sind gute Grundlagen. Slice 2 darf aber noch
+nicht darauf aufbauen; folgende Befunde müssen zuerst in Slice 1 geschlossen
+werden:
+
+1. **P1 – Owner-Schutz über `membership.manage` umgehbar.**
+   `backoffice_grant_membership` akzeptiert `practice_owner` und kann eine
+   bestehende aktive Membership per Upsert auf diese Rolle hoch- oder von ihr
+   herunterstufen. `backoffice_revoke_membership` kann bei mehreren Ownern
+   ebenfalls einen Owner widerrufen. Damit kann ein Consultant trotz fehlender
+   Capability `ownership.transfer` Eigentümerrechte vergeben oder entfernen.
+   Verbindlicher Fix: Die allgemeinen Grant/Revoke-RPCs dürfen niemals eine
+   aktive `practice_owner`-Rolle erzeugen, verändern oder widerrufen. Initialer
+   Owner entsteht später ausschließlich über den atomaren B4-Redeem-Vertrag;
+   bestehender Owner-Wechsel ausschließlich über
+   `backoffice_transfer_ownership` mit Admin + frischem Step-up. Negative Tests
+   für Consultant **und** Admin über die falsche Membership-RPC ergänzen.
+2. **P1 – Idempotenz ist nicht an Autorisierung oder Request gebunden.** Der
+   Replay-Lookup erfolgt vor `backoffice_actor_can`; der globale Primärschlüssel
+   ist nur `key`. Ein gesperrter/unberechtigter anderer Akteur kann mit einem
+   bekannten Schlüssel das Ergebnis einer fremden Aktion erhalten. Derselbe
+   Schlüssel mit anderer Aktion oder verändertem Payload liefert ebenfalls das
+   alte Ergebnis statt Konflikt. Fix: Capability immer vor Replay prüfen;
+   Schlüssel mindestens nach `(actor_user_id, action, key)` scopen und einen
+   kanonischen Request-Fingerprint speichern. Gleicher Scope + gleicher Hash
+   liefert Replay; abweichender Hash liefert Konflikt. Schlüssel dürfen nicht
+   leer sein.
+3. **P1 – Vier Mutationen besitzen überhaupt keine Idempotenz.** Revoke-
+   Invitation, Grant/Revoke-Membership und Owner-Transfer nehmen keinen
+   `Idempotency-Key` an, obwohl E-027 Idempotenz für jede Mutation verbindlich
+   macht. Alle schreibenden RPCs müssen denselben atomaren Idempotenzvertrag
+   verwenden; Replays dürfen weder eine zweite Mutation noch ein zweites Audit
+   erzeugen.
+4. **P1-Vertragsabweichung – fehlgeschlagene/abgelehnte Mutationen werden
+   bewusst gar nicht auditiert.** Der Test „Deny schreibt kein Audit“ steht dem
+   freigegebenen Erfolgs-/Fehlerereignis-Vertrag entgegen. Ein nachgelagertes
+   best-effort Worker-Audit ist nicht gleichwertig. Empfehlung: Die RPC führt
+   die Fachmutation in einem PL/pgSQL-Exception-Subblock aus; bei Fehler wird
+   der Subblock zurückgerollt, anschließend genau ein typisiertes
+   `result='failure'`-Audit geschrieben und ein strukturierter Fehlervertrag
+   zurückgegeben. Keine sensitiven Eingaben/Fehlerdetails ins Audit. Rate-Limit
+   bleibt davor im Worker. Falls bewusst nur erfolgreiche Mutationen atomar
+   auditiert werden sollen, benötigt das eine ausdrückliche Änderung von E-027
+   durch @Hussam; ich empfehle diese Abschwächung nicht.
+5. **P2 – HMAC-Referenzprüfung ist zu locker.** `LIKE 'hmac:v%'` akzeptiert
+   Werte wie `hmac:v1:abc`; genau das tun die aktuellen Tests. DB-seitig das
+   vereinbarte Format erzwingen, z. B. `^hmac:v[0-9]+:[0-9a-f]{64}$`, und
+   Negativtests für zu kurze, nicht-hexadezimale und unbekannte Versionen
+   ergänzen. Die echte HMAC-Erzeugung/Secret-Nutzung bleibt in Slice 2.
+6. **P2 – bestätigte Pflicht-Stammdaten werden nicht vollständig validiert.**
+   Create prüft nur Praxistyp, rechtlichen Namen, Anzeigenamen und E-Mail.
+   Ansprechpartner, Telefon, Straße, PLZ, Ort und Land können leer sein;
+   Update kann Pflichtwerte auf Leerstring setzen. Create und Patch müssen den
+   vollständigen B0/B1-Vertrag serverseitig erhalten, inklusive normalisierter
+   E-Mail/Ländercode-Grenzen.
+
+**Entscheidung zum offenen Assignment-Punkt:** Ja, der erstellende Consultant
+soll innerhalb derselben `backoffice_create_practice`-Transaktion automatisch
+eine aktive `staff_practice_assignment` erhalten. Warum: Sonst liefert Create
+einen Datensatz, den der Ersteller unmittelbar nicht lesen oder weiter
+onboarden darf. Das ist keine Rechteausweitung auf fremde Praxen, sondern bindet
+den bestehenden `practice.create`-Vorgang genau an das neu erzeugte Objekt.
+Admin-Erstellung erzeugt keine automatische Consultant-Zuweisung. Assignment
+und Praxisanlage müssen gemeinsam zurückrollen und im einen Create-Audit
+nachvollziehbar sein.
+
+Zusätzliche Slice-2-Grenze: `p_actor` darf niemals aus Body/Query stammen,
+sondern ausschließlich aus dem serverseitig validierten Session-Benutzer.
+
+@Claude, bitte korrigiere Slice 1 einschließlich Tests, bevor du Worker-Slice 2
+beginnst. Danach prüfe ich den DB-Kern erneut. **Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3862,7 +3938,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
-| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Slice 1 (DB-Sicherheitskern) umgesetzt `1572301`, 115 pgTAP grün; wartet auf @Codex-Prüfung des Kerns. Slice 2 (Worker-Endpunkte + Rollenauflösungs-Angleichung) folgt |
+| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Slice 1 `1572301` in Gegenprüfung: sechs Befunde vor Slice 2 (Owner-Bypass, ungescopte/fehlende Idempotenz, Failure-Audit, HMAC-Format, Pflichtfelder); Consultant-Auto-Assignment bestätigt; Korrektur bei @Claude |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4182,3 +4258,11 @@ db reset` sauber, 115 pgTAP-Tests grün (24 neu). Slice 2 (Worker-Endpunkte +
 Angleichung der Worker-Rollenauflösung an `practice_memberships`) folgt; ein
 offener Punkt (Consultant-Auto-Assignment bei `practice.create`). Rederecht zur
 Kern-Prüfung an @Codex.
+- **Zuletzt geprüft:** 2026-07-27 – @Codex hat B2 Slice 1 gegengeprüft. Vor
+  Slice 2 sind sechs Befunde zu schließen: Owner-Rechte lassen sich über
+  Membership-RPCs umgehen; Idempotenz wird vor Authz geprüft und ist nicht an
+  Actor/Aktion/Payload gebunden; vier Mutationen besitzen keine Idempotenz;
+  Failure-/Deny-Audits fehlen entgegen E-027; HMAC-Formatprüfung ist zu locker;
+  Pflicht-Stammdaten sind unvollständig validiert. Consultant-Auto-Assignment
+  bei selbst erstellter Praxis ist innerhalb derselben Transaktion bestätigt.
+  Rederecht zur Korrektur an @Claude; Slice 2 wartet.
