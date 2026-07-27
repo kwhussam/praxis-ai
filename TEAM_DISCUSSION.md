@@ -4102,6 +4102,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-025 | 2026-07-27 | B1a (Backoffice-Tenant/Authz) ist nach Korrektur der RLS-, Owner-Transfer-, Consultant-Audit-, Backfill- und Revocation-Befunde code-seitig abgenommen. | Der Cutover hat keine parallele Nicht-`white_label`-Autorisierungsquelle mehr; ein Widerruf bleibt auch nach erneutem Backfill wirksam. | @Codex, @Claude |
 | E-026 | 2026-07-27 | B1b (sechsmonatige Backoffice-Audit-Aufbewahrung, Legal Hold und irreversible Anonymisierung) ist nach Behebung der Zeitstempel-Korrelationsspur final abgenommen. | 91 pgTAP-Prüfungen bestätigen B1a/B1b; direkte, indirekte und sub-tagesgenaue Zeitbezüge werden nach Frist entfernt, aktive dokumentierte Holds bleiben geschützt. | @Codex, @Claude |
 | E-027 | 2026-07-27 | B2 ist mit dem gehärteten Admin-API-Vertrag freigegeben: 10-stelliger HMAC-Code, 7 Tage TTL, Redeem in B4, atomare Mutation+Audit, explizite Capabilities und B1a-konforme Rollenauflösung. | Die service-role-basierte API darf keine Offline-Codeprüfung, unauditierten Teilerfolg oder alte Autorisierungsquelle eröffnen. | @Hussam |
+| E-028 | 2026-07-27 | B2 (gehärtete Admin-API) ist nach Schließen der Worker-Befunde und bestandenem Zwei-Verbindungs-Idempotenztest final abgenommen. | Einladungs-Retries sind nun deterministisch/idempotent, Owner-Transfers verlangen frisches explizites MFA und die Race-Condition ist über getrennte DB-Verbindungen belegt. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4132,7 +4133,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
-| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Slice-1-DB-Kern nach `1572301` + `839f619` + `2a21abf` final gegengeprüft und für Slice 2 freigegeben; 133 pgTAP grün. @Claude implementiert Worker; Zwei-Verbindungs-Idempotenztest bleibt finales B2-Gate |
+| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Erledigt – final abgenommen (E-028) nach Worker-Korrekturen `d4daec9` und Zwei-Verbindungs-Test `aed3218`; Redeem/Accept bleibt planmäßig B4 |
+| Versionierung generierter Supabase-Datenbanktypen entscheiden | @Hussam | Offen | Offen – `lib/api/database.types.ts` ist regeneriert, aber derzeit unversioniert und ungenutzt |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4578,3 +4580,14 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   (enthält die B2-Tabellen/RPCs), aber war noch nie versioniert und wird von
   keinem Code importiert → nicht committet; bitte entscheiden, ob generierte
   Typen ins Repo sollen. Rederecht zur Re-Prüfung der drei Punkte an @Codex.
+- **Zuletzt geprüft:** 2026-07-27 23:42 CEST – @Codex hat `d4daec9` und
+  `aed3218` gezielt gegengeprüft und B2 final abgenommen (E-028). Der
+  Einladungs-Code wird aus Actor, verpflichtendem Idempotency-Key und
+  kanonischem Payload domain-separiert abgeleitet; derselbe Retry bleibt damit
+  reproduzierbar, ohne Klartextcode zu speichern. Der Owner-Transfer akzeptiert
+  ausschließlich frisches `totp`-MFA, und ein zu kurzer HMAC-Schlüssel scheitert
+  geschlossen. Der opt-in-Test verwendet zwei parallele PostgREST-Verbindungen
+  und prüft sowohl identische Replays als auch Payload-Konflikte. Die fehlende
+  Entscheidung zur Versionierung von `lib/api/database.types.ts` ist kein
+  B2-Blocker und als nächster Schritt für @Hussam festgehalten. Rederecht an
+  @Hussam.
