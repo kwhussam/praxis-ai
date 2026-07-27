@@ -46,7 +46,7 @@ import { serviceForPort } from "@/lib/security/servicePortCatalog";
 import { resolveWifiSecurityDetails } from "@/lib/security/wifiCapabilities";
 import { resolveScanPhaseIds, type WlanScanPhaseId } from "@/lib/security/wlanScanPlan";
 import { supabase } from "@/lib/api/supabase";
-import type { Database } from "@/lib/api/database.types";
+import type { Json } from "@/lib/api/database.types";
 
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
 export type { NetworkSegmentId } from "@/lib/security/networkProbeTypes";
@@ -581,7 +581,7 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
   const { error } = await supabase.from("wlan_scans").insert({
     practice_id: practiceId,
     client_sync_id: clientSyncId,
-    network_info: {
+    network_info: toDatabaseJson({
       networkName: result.networkName,
       securityProtocol: result.securityProtocol,
       ipAddress: result.ipAddress,
@@ -597,8 +597,8 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       interactionContext: result.interactionContext,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
-    } as unknown as Database["public"]["Tables"]["wlan_scans"]["Insert"]["network_info"],
-    vulnerabilities: result.vulnerabilities as unknown as Database["public"]["Tables"]["wlan_scans"]["Insert"]["vulnerabilities"],
+    }),
+    vulnerabilities: toDatabaseJson(result.vulnerabilities),
     devices_found: result.connectedDevices.length,
     risk_level: riskLevelFromScore(result.riskScore)
   });
@@ -1442,6 +1442,24 @@ function serializeFindings(findings: WlanScanResult["findings"]) {
       }
     ])
   );
+}
+
+function toDatabaseJson(value: unknown): Json {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("WLAN scan JSON contains a non-finite number");
+    return value;
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(toDatabaseJson);
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, entry]) =>
+        entry === undefined ? [] : [[key, toDatabaseJson(entry)] as const]
+      )
+    );
+  }
+  throw new Error(`WLAN scan JSON contains unsupported ${typeof value}`);
 }
 
 function getPlatformLimitations() {

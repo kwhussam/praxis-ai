@@ -282,7 +282,10 @@ async function findOrCreatePractice(domain: string, email?: string) {
   const { data: practice, error } = await supabase
     .rpc("create_or_get_own_practice", {
       p_domain: domain,
-      p_email: email
+      // SQL defines p_email DEFAULT NULL and normalizes both omitted/undefined
+      // and explicit NULL via coalesce, so the generated optional argument is
+      // behaviorally identical to the former `email ?? null` call.
+      p_email: email ?? undefined
     })
     .single<PracticeRow>();
 

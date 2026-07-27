@@ -6,13 +6,18 @@ export async function listBackofficePractices(): Promise<BackofficePracticeSumma
   return result.practices;
 }
 
-export async function createBackofficePractice(input: CreatePracticeInput) {
+export type BackofficeMutationIds = {
+  idempotencyKey: string;
+  requestId: string;
+};
+
+export async function createBackofficePractice(input: CreatePracticeInput, ids: BackofficeMutationIds) {
   return apiRequest<CreatePracticeResult>("/api/backoffice/practices", {
     method: "POST",
     body: input,
     headers: {
-      "Idempotency-Key": crypto.randomUUID(),
-      "X-Request-Id": crypto.randomUUID()
+      "Idempotency-Key": ids.idempotencyKey,
+      "X-Request-Id": ids.requestId
     }
   });
 }

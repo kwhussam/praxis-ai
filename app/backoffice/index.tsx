@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -15,7 +15,7 @@ import {
 } from "react-native";
 
 import { supabase } from "@/lib/api/supabase";
-import { createBackofficePractice, listBackofficePractices } from "@/lib/backoffice/api";
+import { createBackofficePractice, listBackofficePractices, type BackofficeMutationIds } from "@/lib/backoffice/api";
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
 import type { BackofficePracticeSummary, CreatePracticeInput, OnboardingStatus } from "@/lib/backoffice/types";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
@@ -53,6 +53,7 @@ export default function BackofficeDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreatePracticeInput>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const createAttemptIds = useRef<BackofficeMutationIds>(newCreateAttemptIds());
 
   useEffect(() => {
     void getBackofficeAuthState()
@@ -70,10 +71,12 @@ export default function BackofficeDashboard() {
     enabled: authReady
   });
   const createPractice = useMutation({
-    mutationFn: createBackofficePractice,
+    mutationFn: ({ input, ids }: { input: CreatePracticeInput; ids: BackofficeMutationIds }) =>
+      createBackofficePractice(input, ids),
     onSuccess: async () => {
       setShowCreate(false);
       setForm(EMPTY_FORM);
+      createAttemptIds.current = newCreateAttemptIds();
       await queryClient.invalidateQueries({ queryKey: ["backoffice-practices"] });
     }
   });
@@ -97,9 +100,12 @@ export default function BackofficeDashboard() {
     setFormError(null);
     try {
       await createPractice.mutateAsync({
-        ...form,
-        contactEmail: form.contactEmail.trim().toLowerCase(),
-        domain: form.domain?.trim().toLowerCase() || undefined
+        ids: createAttemptIds.current,
+        input: {
+          ...form,
+          contactEmail: form.contactEmail.trim().toLowerCase(),
+          domain: form.domain?.trim().toLowerCase() || undefined
+        }
       });
     } catch {
       // React Query exposes the normalized error state in the form. Keeping the
@@ -139,7 +145,7 @@ export default function BackofficeDashboard() {
             <Text style={styles.heading}>Praxen</Text>
             <Text style={styles.headingCopy}>Onboarding und Zugänge zentral verwalten.</Text>
           </View>
-          <Pressable onPress={() => setShowCreate(true)} style={styles.primaryButton}>
+          <Pressable onPress={() => beginCreateAttempt(setForm, setFormError, setShowCreate, createAttemptIds)} style={styles.primaryButton}>
             <Ionicons color="#FFFFFF" name="add" size={20} />
             <Text style={styles.primaryButtonText}>Neue Praxis</Text>
           </Pressable>
@@ -254,6 +260,22 @@ function Field({ label, value, onChange, placeholder, grow }: { label: string; v
 
 function setFormValue<K extends keyof CreatePracticeInput>(setter: React.Dispatch<React.SetStateAction<CreatePracticeInput>>, key: K, value: CreatePracticeInput[K]) {
   setter((current) => ({ ...current, [key]: value }));
+}
+
+function newCreateAttemptIds(): BackofficeMutationIds {
+  return { idempotencyKey: crypto.randomUUID(), requestId: crypto.randomUUID() };
+}
+
+function beginCreateAttempt(
+  setForm: React.Dispatch<React.SetStateAction<CreatePracticeInput>>,
+  setFormError: React.Dispatch<React.SetStateAction<string | null>>,
+  setShowCreate: React.Dispatch<React.SetStateAction<boolean>>,
+  ids: React.MutableRefObject<BackofficeMutationIds>
+) {
+  setForm(EMPTY_FORM);
+  setFormError(null);
+  ids.current = newCreateAttemptIds();
+  setShowCreate(true);
 }
 
 function statusStyle(status: OnboardingStatus) {
