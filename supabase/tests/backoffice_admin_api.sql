@@ -9,7 +9,7 @@ create extension if not exists pgtap with schema extensions;
 begin;
 set local search_path = public, extensions;
 
-select plan(32);
+select plan(42);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
 values
@@ -154,6 +154,74 @@ select is(
 select is(
   public.backoffice_revoke_membership('00000000-0000-4000-8000-0000000000a3', 'req-20', 'k-m5', '20000000-0000-4000-8000-0000000000a3', '00000000-0000-4000-8000-0000000000d3') ->> 'error',
   'owner_role_forbidden', 'membership revoke cannot remove an active practice_owner'
+);
+
+-- =====================================================================
+-- Zweite Codex-Re-Pruefung 2026-07-27: zwei P1- und vier P2-Restbefunde.
+-- =====================================================================
+
+-- P1 (Befund 1) – Idempotenz-Fingerprint an das Zielobjekt gebunden.
+-- Gleicher Actor/Action/Key/Payload gegen ZWEI Praxen ist ein Konflikt, kein
+-- praxisuebergreifender Replay-Leak.
+select public.backoffice_update_practice('00000000-0000-4000-8000-0000000000a3', 'req-cp1', 'kXP', '20000000-0000-4000-8000-0000000000b3', '{"city":"Hamburg"}'::jsonb, null);
+select is(
+  public.backoffice_update_practice('00000000-0000-4000-8000-0000000000a3', 'req-cp2', 'kXP', '20000000-0000-4000-8000-0000000000a3', '{"city":"Hamburg"}'::jsonb, null) ->> 'error',
+  'idempotency_conflict', 'same key/payload against a different practice is a conflict, not a cross-tenant replay'
+);
+
+-- P1 (Befund 2) – Failure-Audit ist FK-sicher bei unbekannter Praxis.
+select is(
+  public.backoffice_update_practice('00000000-0000-4000-8000-0000000000a3', 'req-nf', 'k-nf', '20000000-0000-4000-8000-0000000000ff'::uuid, '{}'::jsonb, null) ->> 'error',
+  'not_found', 'update on an unknown practice returns a structured not_found error'
+);
+select ok(
+  exists (
+    select 1 from public.backoffice_audit_events
+    where request_id = 'req-nf' and result = 'failure'
+      and practice_id is null
+      and target_id = '20000000-0000-4000-8000-0000000000ff'::uuid
+  ),
+  'failure audit on an unknown practice is FK-safe (practice_id null, requested id only in non-FK target_id)'
+);
+
+-- P2 (Befund 3) – nur unterstuetzte HMAC-Version v1 wird akzeptiert.
+select is(
+  public.backoffice_create_invitation('00000000-0000-4000-8000-0000000000a3', 'req-v2', 'k-v2', '20000000-0000-4000-8000-0000000000a3', 'owner@example.test', 'practice_owner', 'in_person_code', 'hmac:v2:' || repeat('a', 64), now() + interval '1 day') ->> 'error',
+  'invalid_invitation', 'an unsupported HMAC version (v2) is rejected'
+);
+
+-- P2 (Befund 4) – Patch-E-Mail wird wie bei create mindestvalidiert (@).
+select is(
+  public.backoffice_update_practice('00000000-0000-4000-8000-0000000000a3', 'req-em', 'k-em', '20000000-0000-4000-8000-0000000000b3', '{"contact_email":"ungueltig"}'::jsonb, null) ->> 'error',
+  'invalid_master_data', 'a patched contact email without @ is rejected'
+);
+
+-- P2 (Befund 5) – kein No-op-Erfolg beim Widerruf.
+select is(
+  public.backoffice_revoke_membership('00000000-0000-4000-8000-0000000000a3', 'req-nm', 'k-nm', '20000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000e3') ->> 'error',
+  'not_found', 'revoking a non-existent active membership is audited as not_found, never a silent success'
+);
+select public.backoffice_create_invitation('00000000-0000-4000-8000-0000000000a3', 'req-ri0', 'k-ri0', '20000000-0000-4000-8000-0000000000b3', 'rev@example.test', 'viewer', 'in_person_code', 'hmac:v1:' || repeat('d', 64), now() + interval '1 day');
+select is(
+  public.backoffice_revoke_invitation('00000000-0000-4000-8000-0000000000a3', 'req-ri1', 'k-ri1', (select id from public.practice_invitations where practice_id = '20000000-0000-4000-8000-0000000000b3' and lower(target_email) = 'rev@example.test' order by created_at desc limit 1)) ->> 'ok',
+  'true', 'revoking an open invitation succeeds'
+);
+select is(
+  public.backoffice_revoke_invitation('00000000-0000-4000-8000-0000000000a3', 'req-ri2', 'k-ri2', (select id from public.practice_invitations where practice_id = '20000000-0000-4000-8000-0000000000b3' and lower(target_email) = 'rev@example.test' order by created_at desc limit 1)) ->> 'error',
+  'invalid_state', 're-revoking an already revoked invitation is audited as invalid_state, never a silent success'
+);
+
+-- P2 (Befund 6) – abgeschlossene Reservierung traegt ein Ergebnis (Beleg fuer
+-- reserve->commit; die echte Parallelitaet serialisiert das ON-CONFLICT-Blocking).
+select isnt(
+  (select result from public.backoffice_idempotency_keys where actor_user_id = '00000000-0000-4000-8000-0000000000a3' and action = 'practice.create' and key = 'K1'),
+  '{}'::jsonb, 'a completed reservation is finalized with a non-empty result'
+);
+
+-- Zusaetzliche Haertung – Idempotenz-Key laengenbegrenzt.
+select is(
+  public.backoffice_create_practice('00000000-0000-4000-8000-0000000000a3', 'req-long', repeat('k', 300), 'general', 'L', 'D', 'V', 'N', 'k@example.test', '+49', 'S', '10115', 'B', 'DE') ->> 'error',
+  'idempotency_key_invalid', 'an over-long idempotency key is rejected'
 );
 
 select * from finish();
