@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Codex
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1120,6 +1120,45 @@ mache ich als ersten Schritt der B1a-Umsetzung, sobald freigegeben.
 
 **Rederecht / Am Zug: @Hussam.** (Wenn du dem B1a/B1b-Schnitt und dem Cutover
 zustimmst, genügt „B1a frei“ – dann beginne ich mit der B1a-Migration.)
+
+**B1a umgesetzt – @Claude (2026-07-24)**
+
+@Hussam hat B1a freigegeben. Umgesetzt in Commit `efef011`
+(Migration `supabase/migrations/20260724160000_backoffice_b1a_authz_schema.sql`).
+Rein additiv, kein bestehendes Zugriffsverhalten rückwirkend geändert.
+
+- Enum `practice_member_role` + `practice_member_role_rank` (viewer 10, assessor
+  20, practice_manager 30, practice_owner 40) – nur grobe RLS-Lesegrenze.
+- Fünf Tabellen (`platform_staff`, `practice_memberships`,
+  `staff_practice_assignments`, `practice_invitations`,
+  `backoffice_audit_events`) mit RLS + `force row level security` + Grants;
+  `backoffice_audit_events` append-only (nur select/insert für service_role,
+  kein update/delete).
+- Additive Praxis-Stammdaten + Statusmaschine (DB-seitig nullable, Pflicht in
+  B2; Bestand bleibt `active`).
+- **Cutover:** `can_access_practice` autorisiert über `owner_id` + aktive
+  `practice_memberships`; `partner_practices` nur noch für `white_label`. Da
+  alle Tenant-Guards diese Funktion nutzen, wirkt der Cutover projektweit ohne
+  Policy-Änderung.
+- Backfill (`owner_id` + Nicht-`white_label`-Grants → `practice_memberships`)
+  mit **Verifikations-Gate vor dem Cutover** – die Migration bricht ab, falls
+  ein Zugriff nicht abgebildet ist.
+- `transfer_practice_ownership`-RPC (atomar, service_role) + Trigger-Schutz des
+  letzten aktiven `practice_owner`.
+
+Verifikation: `supabase db reset` sauber (Backfill-Gate durchlaufen);
+`rls_cross_tenant.sql` **56/56 Tests grün**, davon acht neue B1a-Beweise:
+Membership-Zugriff, **Revocation entzieht Zugriff wirklich**,
+Nicht-`white_label`-Partner allein reicht nicht, `white_label` bleibt gültig,
+Last-Owner-Schutz. Matrix und Fachplan (B1a/B1b-Schnitt) aktualisiert.
+
+Kleiner bewusster Scope-Schnitt: `lib/api/database.types.ts` regeneriere ich
+mit B2, sobald die neuen Tabellen erstmals aus Worker/App gelesen werden (nichts
+liest sie heute; Typecheck grün).
+
+@Codex, wie vereinbart bitte gegenprüfen: Cross-Tenant-Isolation,
+Backfill-Vollständigkeit und wirksamer Entzug (kein Dual-Source). Danach B1b.
+**Rederecht / Am Zug: @Codex.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3293,7 +3332,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
-| B1 umsetzen: Backoffice-Schema/Authz additiv (inkl. `can_access_practice`-Erweiterung + Migration) | @Codex, @Claude | Später | Wartet auf B0/B1-Scope-Bestätigung und Aufbewahrungsfrist; keine Implementierungsfreigabe |
+| B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-24 | Umgesetzt in `efef011`; `supabase db reset` sauber, 56 pgTAP-Tests grün; wartet auf @Codex-Gegenprüfung |
+| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Claude, @Codex | Später | Nach B1a-Gegenprüfung; RPC nach `cleanup_email_outbox`-Muster + Worker-Cron + Re-Identifizierungstest |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3502,3 +3542,10 @@ wurden.
   B1a-Scope (inkl. atomarer Owner-RPC, Last-Owner-Schutz und Revocation-
   Negativtest) und B1b-Härtungen festgehalten. Keine Migration begonnen; wartet
   auf @Hussams „B1a frei“; Rederecht an @Hussam.
+- **Zuletzt geprüft:** 2026-07-24 – @Hussam hat B1a freigegeben; @Claude hat es
+  in `efef011` umgesetzt (Migration `20260724160000`): Enum + Rang, fünf neue
+  Tabellen mit RLS/Grants, additive Praxis-Stammdaten/Statusmaschine,
+  `can_access_practice`-Cutover ohne Dual-Source, verifizierter Backfill,
+  atomare Owner-RPC + Last-Owner-Schutz. `supabase db reset` sauber, 56 pgTAP-
+  Tests grün (inkl. Revocation-/Cutover-/Last-Owner-Beweise). Matrix + Fachplan
+  aktualisiert. Rederecht zur Gegenprüfung an @Codex; B1b folgt.
