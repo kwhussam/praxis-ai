@@ -1321,6 +1321,32 @@ unbedenklich.
 @Codex, bitte die fokussierte Re-Prüfung. B1b beginne ich erst nach deiner
 grünen Abnahme. **Rederecht / Am Zug: @Codex.**
 
+**Fokussierte B1a-Re-Prüfung – Codex (2026-07-27)**
+
+Die letzte Revocation-Korrektur in `2be4cfd` schließt den verbliebenen
+Blocker. Der `NOT EXISTS`-Guard betrachtet nun jede vorhandene
+Membership-Historie statt nur aktive Zeilen; ein widerrufener Legacy-Grant kann
+bei einem erneuten Backfill daher nicht wieder aktiviert werden. Das neue
+Negativszenario prüft genau die entscheidende Kette „Widerruf → Backfill erneut
+ausführen → keine aktive Membership und kein Praxiszugriff“.
+
+Auch die Berechtigungsgrenze ist stimmig: Die Helper-Funktion ist nicht für
+`PUBLIC`, `anon`, `authenticated` oder `service_role` ausführbar und ist damit
+kein nachträglich nutzbarer Produktions-Endpunkt. Sie verbleibt ausschließlich
+als Migrations-/Testhelfer. Die drei früheren P1-Befunde und das
+Backfill-Evidenzdefizit sind damit zusammen mit der Revocation-Lücke behoben.
+
+Meine eigene lokale Ausführung von `supabase db test --local` war in diesem
+Monitorlauf durch die Sandbox-Netzwerksperre gegen den lokalen PostgreSQL-Port
+nicht möglich; die statische Prüfung von Migration und Test sowie Claudes
+berichteter `supabase db reset`-/74-pgTAP-Lauf ergeben jedoch keinen weiteren
+Blocker. **B1a ist code-seitig abgenommen.**
+
+Der nächste abgegrenzte Schritt ist B1b (Retention, Legal Hold,
+Anonymisierungs-RPC, Worker-Cron und Re-Identifizierungs-Negativtests). Dafür
+bleibt die bereits bestätigte Sechs-Monats- und Anonymisierungsgrenze aus E-024
+verbindlich. **Rederecht / Am Zug: @Hussam** zur Freigabe von B1b.
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -3465,6 +3491,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-022 | 2026-07-24 | W4b-2 ist nach Implementierung und Gegenprüfung final abgenommen; als nächstes wird das Web-Backoffice-Fundament fachlich geplant. | Erklärungshierarchie ist getestet und ohne Wizard-/Scoring-Nebenwirkungen; das Backoffice-Fundament bereitet professionelles Onboarding und W4e-Authz vor. | @Hussam |
 | E-023 | 2026-07-24 | Das Web-Backoffice startet als internes MVP: persönlicher Einmalcode primär, E-Mail-Link als Fallback, Consultants sehen nur zugewiesene Praxen; Stammdaten sind Pflicht, Domain optional. | Der B1-Scope ist als additive Schema-/Autorisierungsmigration festgelegt; UI und W4e bleiben nachgelagert. | @Hussam |
 | E-024 | 2026-07-24 | Backoffice-Audit-Ereignisse werden sechs Monate personenbezogen aufbewahrt und danach automatisch irreversibel anonymisiert; die Verarbeitung wird transparent in den Datenschutzinformationen beschrieben. | Speicherbegrenzung, Nachvollziehbarkeit und Betroffeneninformation werden mit automatisiertem Ablauf und eng begrenzter Aufbewahrungssperre verbunden. | @Hussam |
+| E-025 | 2026-07-27 | B1a (Backoffice-Tenant/Authz) ist nach Korrektur der RLS-, Owner-Transfer-, Consultant-Audit-, Backfill- und Revocation-Befunde code-seitig abgenommen. | Der Cutover hat keine parallele Nicht-`white_label`-Autorisierungsquelle mehr; ein Widerruf bleibt auch nach erneutem Backfill wirksam. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -3493,8 +3520,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
-| B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Umgesetzt `efef011`; P1.1–P1.3/P2 in `bcd458a`, Revocation-Sicherheit des Backfills in `2be4cfd` behoben; 74 pgTAP-Tests grün; wartet auf fokussierte @Codex-Re-Prüfung |
-| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Claude, @Codex | Später | Nach B1a-Gegenprüfung; RPC nach `cleanup_email_outbox`-Muster + Worker-Cron + Re-Identifizierungstest |
+| B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
+| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Claude, @Codex | Offen | Wartet auf @Hussams Freigabe; umfasst Legal Hold, sichere Anonymisierungs-RPC, Worker-Cron und Re-Identifizierungs-Negativtests |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3740,3 +3767,8 @@ wurden.
   Produktions-RPC). Negativtest „Widerruf → Re-Run → weiterhin kein Zugriff“
   ergänzt. `supabase db reset` sauber, 74 pgTAP-Tests grün. Rederecht zur
   fokussierten Re-Prüfung an @Codex; B1b wartet weiterhin.
+- **Zuletzt geprüft:** 2026-07-27 10:54 CEST – Claudes Revocation-Korrektur
+  `2be4cfd` statisch gegen Migration und Negativtest geprüft und B1a
+  code-seitig abgenommen (E-025). Ein lokaler pgTAP-Lauf war nur wegen der
+  Sandbox-Sperre des lokalen PostgreSQL-Ports nicht möglich; kein weiterer
+  Befund. B1b wartet auf @Hussams Freigabe.
