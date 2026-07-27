@@ -158,12 +158,21 @@ security definer
 set search_path = public
 as $$
 begin
+  -- Revocation-sicher: legt eine Mitgliedschaft NUR an, wenn fuer das
+  -- Praxis-/Benutzerpaar noch KEINERLEI Historie existiert (weder aktiv noch
+  -- widerrufen). Ein erneuter Aufruf kann daher eine zuvor widerrufene
+  -- Mitgliedschaft nicht wiederbeleben.
+
   -- Je owner_id eine aktive practice_owner-Mitgliedschaft.
   insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
   select p.id, p.owner_id, 'practice_owner', 'active', p.owner_id, now()
   from public.practices p
   where p.owner_id is not null
-  on conflict (practice_id, user_id) where status = 'active' do nothing;
+    and not exists (
+      select 1 from public.practice_memberships m
+      where m.practice_id = p.id
+        and m.user_id = p.owner_id
+    );
 
   -- Nicht-white_label-Grants aus partner_practices uebernehmen (Rang + Herkunft erhalten).
   insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
@@ -180,9 +189,15 @@ begin
     coalesce(pp.granted_at, now())
   from public.partner_practices pp
   where pp.role <> 'white_label'
-  on conflict (practice_id, user_id) where status = 'active' do nothing;
+    and not exists (
+      select 1 from public.practice_memberships m
+      where m.practice_id = pp.practice_id
+        and m.user_id = pp.partner_id
+    );
 end $$;
 
+-- Einmaliger Migrations-/Testschritt, keine Produktions-RPC: execute wird auch
+-- service_role entzogen. Nur der Migrations-/Testkontext (Eigentuemer) ruft sie.
 revoke execute on function public.backfill_practice_memberships() from public;
 do $$
 begin
@@ -193,7 +208,7 @@ begin
     execute 'revoke execute on function public.backfill_practice_memberships() from authenticated';
   end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
-    execute 'grant execute on function public.backfill_practice_memberships() to service_role';
+    execute 'revoke execute on function public.backfill_practice_memberships() from service_role';
   end if;
 end $$;
 

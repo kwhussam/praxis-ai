@@ -11,7 +11,7 @@ begin;
 
 set local search_path = public, extensions;
 
-select plan(6);
+select plan(8);
 
 -- Legacy fixtures (fresh ids so nothing is pre-mapped by the migration backfill).
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -75,6 +75,28 @@ select ok(
       and status = 'active'
   ),
   'migrated membership preserves granted_by and granted_at'
+);
+
+-- Revocation must survive a re-run of the backfill (no resurrection). The
+-- legacy manager partner grant in partner_practices still exists, so a naive
+-- re-run could recreate access.
+update public.practice_memberships
+set status = 'revoked', revoked_at = now()
+where practice_id = '20000000-0000-4000-8000-0000000000f0'
+  and user_id = '00000000-0000-4000-8000-0000000000f2'
+  and status = 'active';
+
+select public.backfill_practice_memberships();
+
+select is(
+  (select count(*) from public.practice_memberships where practice_id = '20000000-0000-4000-8000-0000000000f0' and user_id = '00000000-0000-4000-8000-0000000000f2' and status = 'active'),
+  0::bigint,
+  'a revoked membership is not resurrected by re-running the backfill'
+);
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000f2', '20000000-0000-4000-8000-0000000000f0', 'viewer'),
+  false,
+  'revoked legacy partner still has no access after a backfill re-run'
 );
 
 select * from finish();
