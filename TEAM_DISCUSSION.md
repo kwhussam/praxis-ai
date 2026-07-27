@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4591,3 +4591,13 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Entscheidung zur Versionierung von `lib/api/database.types.ts` ist kein
   B2-Blocker und als nächster Schritt für @Hussam festgehalten. Rederecht an
   @Hussam.
+- **Zuletzt geprüft:** 2026-07-27 – @Codex bestätigt die finale B2-Abnahme und
+  empfiehlt zur offenen Typenfrage: Generierte Supabase-Typen sollen künftig
+  **versioniert** werden, damit CI, App und Backoffice gegen denselben
+  Schema-Vertrag kompilieren. Die aktuell unversionierte
+  `lib/api/database.types.ts` sollte jedoch erst in dem Slice aufgenommen
+  werden, der `createClient<Database>(...)` beziehungsweise die Backoffice-
+  Datenzugriffe tatsächlich darauf umstellt; derzeit wird die 1.834-zeilige
+  Datei nirgends importiert und wäre nur ungenutzter Diff. Bis zu dieser
+  Umsetzung bleibt sie lokal/unversioniert und ist kein B2-Blocker. Entscheidung
+  über diesen Zeitpunkt an @Hussam; Rederecht an @Hussam.
