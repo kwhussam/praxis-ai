@@ -5,7 +5,7 @@ begin;
 
 set local search_path = public, extensions;
 
-select plan(48);
+select plan(56);
 
 select set_config('request.jwt.claim.sub', '', false);
 select set_config('request.jwt.claims', '{}', false);
@@ -31,6 +31,33 @@ on conflict (id) do nothing;
 
 insert into public.partner_practices (id, partner_id, practice_id, role, granted_by)
 values ('30000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', '20000000-0000-4000-8000-0000000000a1', 'viewer', '00000000-0000-4000-8000-0000000000a1')
+on conflict (partner_id, practice_id) do nothing;
+
+-- B1a: membership-Nutzer und -Grants für den Autorisierungs-Cutover.
+--   d1 = Mitglied mit practice_manager-Mitgliedschaft (Praxis A) und
+--        practice_owner-Mitgliedschaft (Praxis B, zum Testen des Last-Owner-Schutzes)
+--   e1 = Partner mit reinem Nicht-white_label-partner_practices-Grant (kein membership)
+--   f1 = Partner mit white_label-partner_practices-Grant
+insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+values
+  ('00000000-0000-4000-8000-0000000000d1', 'authenticated', 'authenticated', 'member-d@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb),
+  ('00000000-0000-4000-8000-0000000000e1', 'authenticated', 'authenticated', 'legacy-manager-e@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb),
+  ('00000000-0000-4000-8000-0000000000f1', 'authenticated', 'authenticated', 'white-label-f@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb)
+on conflict (id) do nothing;
+
+-- Spiegelt den Backfill fuer Partner C (partner_practices viewer bleibt fuer die
+-- Audit-Funktion; Zugriff laeuft nach dem Cutover ueber die Mitgliedschaft).
+insert into public.practice_memberships (practice_id, user_id, role, status, granted_by)
+values
+  ('20000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000c1', 'viewer', 'active', '00000000-0000-4000-8000-0000000000a1'),
+  ('20000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'practice_manager', 'active', '00000000-0000-4000-8000-0000000000a1'),
+  ('20000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000d1', 'practice_owner', 'active', '00000000-0000-4000-8000-0000000000b1')
+on conflict (practice_id, user_id) where status = 'active' do nothing;
+
+insert into public.partner_practices (id, partner_id, practice_id, role, granted_by)
+values
+  ('30000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000e1', '20000000-0000-4000-8000-0000000000a1', 'manager', '00000000-0000-4000-8000-0000000000a1'),
+  ('30000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000f1', '20000000-0000-4000-8000-0000000000a1', 'white_label', '00000000-0000-4000-8000-0000000000a1')
 on conflict (partner_id, practice_id) do nothing;
 
 insert into public.security_checks (id, practice_id, type, score, results)
@@ -195,6 +222,64 @@ select throws_ok(
   '23503',
   null,
   'deletion_requests rejects insert with non-existent practice_id'
+);
+
+-- B1a cutover: practice_memberships is an authoritative access source ----------
+select ok(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000d1', '20000000-0000-4000-8000-0000000000a1', 'manager'),
+  'practice_manager membership satisfies manager role'
+);
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000d1', '20000000-0000-4000-8000-0000000000a1', 'owner'),
+  false,
+  'practice_manager membership does not satisfy owner role'
+);
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000d1', '20000000-0000-4000-8000-0000000000b1', 'viewer'),
+  true,
+  'practice_owner membership on practice B grants viewer access'
+);
+
+-- B1a cutover: a non-white_label partner_practices grant alone grants nothing ---
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000e1', '20000000-0000-4000-8000-0000000000a1', 'viewer'),
+  false,
+  'legacy non-white_label partner_practices grant without membership grants no access'
+);
+
+-- B1a cutover: white_label partner_practices grant is still honoured ------------
+select ok(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000f1', '20000000-0000-4000-8000-0000000000a1', 'viewer'),
+  'white_label partner_practices grant still satisfies viewer role'
+);
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000f1', '20000000-0000-4000-8000-0000000000a1', 'manager'),
+  false,
+  'white_label partner_practices grant does not satisfy manager role'
+);
+
+-- B1a: the last active practice_owner cannot be revoked -------------------------
+select throws_ok(
+  $$update public.practice_memberships
+      set status = 'revoked', revoked_at = now()
+    where user_id = '00000000-0000-4000-8000-0000000000d1'
+      and practice_id = '20000000-0000-4000-8000-0000000000b1'
+      and role = 'practice_owner'$$,
+  'P0001',
+  null,
+  'revoking the last active practice_owner is rejected server-side'
+);
+
+-- B1a: revoking a membership actually removes access (no dual-source) -----------
+update public.practice_memberships
+  set status = 'revoked', revoked_at = now()
+where user_id = '00000000-0000-4000-8000-0000000000d1'
+  and practice_id = '20000000-0000-4000-8000-0000000000a1'
+  and role = 'practice_manager';
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000d1', '20000000-0000-4000-8000-0000000000a1', 'viewer'),
+  false,
+  'revoking the practice_manager membership removes practice A access'
 );
 
 set local role authenticated;

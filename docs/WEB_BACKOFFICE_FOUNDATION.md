@@ -331,25 +331,44 @@ Audit-Entscheidung (@Hussam, 2026-07-24):
 - dokumentierte, eng begrenzte Aufbewahrungssperre nur für konkrete laufende
   Sicherheits- oder Rechtsvorgänge.
 
-### B1 – Autorisierung und Schema
+### B1a – Tenant/Autorisierung und Schema (umgesetzt)
 
+Migration `supabase/migrations/20260724160000_backoffice_b1a_authz_schema.sql`;
+56 pgTAP-Tests grün (`supabase db reset` + `rls_cross_tenant.sql`).
+
+- Enum `practice_member_role` + Rangfunktion `practice_member_role_rank`
+  (grobe RLS-Lesegrenze, keine Aktionsrechte).
 - Tabellen `platform_staff`, `practice_memberships`,
   `staff_practice_assignments`, `practice_invitations`,
-  `backoffice_audit_events`
-- additive Praxis-Pflichtfelder (Domain optional) und Statusmaschine
-  `draft → invited → active → suspended → archived`
-- RLS, Grants, serverseitige Permission-Funktionen
-- **`can_access_practice`/`current_user_can_access_practice` additiv um
-  `practice_memberships` erweitern** (+ Rang-Abbildung neuer Praxisrollen)
-- Migration bestehender `owner_id`-/`partner_practices`-Zugriffe:
-  Nicht-`white_label`-Grants nach `practice_memberships`, `partner_practices`
-  auf White-Label reduziert
-- `supabase/tests/rls_cross_tenant.sql` und `docs/RLS_PARTNER_ROLE_MATRIX.md`
-  um neue Tabellen/Rollen erweitern; Cross-Tenant-Negativtests grün
-- append-only `backoffice_audit_events` ohne UPDATE/DELETE-Grants im regulären
-  Schreibpfad
-- automatisierte sechsmonatige Anonymisierungsroutine, dokumentierter
-  Ausnahmeprozess und Tests auf fehlende Re-Identifizierbarkeit
+  `backoffice_audit_events` mit RLS, Grants und `force row level security`.
+- additive Praxis-Pflichtfelder (Domain optional, auf DB-Ebene nullable –
+  Pflicht wird in B2 erzwungen) und Statusmaschine
+  `draft → invited → active → suspended → archived` (Default `active` für
+  Bestand).
+- **`can_access_practice` additiv um aktive `practice_memberships` erweitert**;
+  `partner_practices` zählt nur noch für `white_label` (Cutover ohne
+  Dual-Source). Alle Tenant-Guards nutzen die Funktion, daher projektweit wirksam.
+- Backfill `owner_id` + Nicht-`white_label`-`partner_practices` →
+  `practice_memberships`, mit Verifikations-Gate vor dem Cutover (Migration
+  bricht ab, falls ein Zugriff nicht abgebildet ist).
+- `transfer_practice_ownership`-RPC (atomar, service_role) + Trigger-Schutz des
+  letzten aktiven `practice_owner`.
+- `rls_cross_tenant.sql` + `RLS_PARTNER_ROLE_MATRIX.md` erweitert;
+  Revocation-, Cutover- und Last-Owner-Negativtests grün.
+
+Folgeaufgabe (mit B2): `lib/api/database.types.ts` regenerieren, sobald die
+neuen Tabellen erstmals aus Worker/App gelesen werden.
+
+### B1b – Retention/Anonymisierung (offen)
+
+- `retention`/`legal_hold`/`anonymized_at`-Felder auf `backoffice_audit_events`.
+- `security definer`-RPC `anonymize_backoffice_audit_events` (fester
+  `search_path`, `execute` von public/anon/authenticated entzogen, nur
+  `service_role`; idempotente begrenzte Batches; Ausnahme nur bei aktiver
+  dokumentierter Aufbewahrungssperre; Bereinigung direkter **und** indirekter
+  Identifikatoren) per Worker-Cron (Muster `cleanup_email_outbox`).
+- Re-Identifizierungs-Negativtest inkl. verbleibender Fremd-/Korrelationsschlüssel.
+- append-only bleibt: kein UPDATE/DELETE-Grant im regulären Schreibpfad.
 
 ### B2 – Admin-API
 

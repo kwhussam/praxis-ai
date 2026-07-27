@@ -2,11 +2,21 @@
 
 This matrix documents the server-side access model enforced by `public.can_access_practice(user_id, practice_id, required_role)`.
 
-Role order:
+Required-role order (`partner_role_rank`, unchanged):
 
-`viewer < white_label < manager < owner`
+`viewer(10) < white_label(20) < manager(30) < owner(40)`
 
-Direct practice owners satisfy every required role for their own practice. Partner users only satisfy access through rows in `public.partner_practices`.
+Access is granted when any of the following holds for the practice:
+
+1. the user is the direct `practices.owner_id` (satisfies every required role), or
+2. the user has an **active `public.practice_memberships` row** whose `practice_member_role_rank` meets the required role, or
+3. the user has a `public.partner_practices` row **with role `white_label`** meeting the required role.
+
+Practice-membership rank (`practice_member_role_rank`, B1a — coarse RLS read gate only, not an action-permission model):
+
+`viewer(10) < assessor(20) < practice_manager(30) < practice_owner(40)`
+
+**B1a authorization cutover:** since B1a, `can_access_practice` no longer treats non-`white_label` `partner_practices` rows as an access source. Those grants were migrated into `practice_memberships` (owner→practice_owner, manager→practice_manager, viewer→viewer) so that revoking a membership actually removes access (no dual-source). Legacy `partner_practices` rows may persist for a transition but only `white_label` is still an effective grant. Action-level permissions (`assessment.execute`, `practice.manage`, `membership.manage`, `report.read`) are deferred to capability enforcement in B2 and are not encoded in the rank.
 
 | Resource | Action | Required role | Notes |
 | --- | --- | --- | --- |
@@ -50,6 +60,12 @@ Direct practice owners satisfy every required role for their own practice. Partn
 | `router_wifi_configurations` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
 | `router_firewall_rules` | Read | `viewer` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
 | `router_firewall_rules` | Write | `manager` | Same tenant-guard pattern as `inventory_items`; not yet pgTAP-covered. |
+| `practice_memberships` (B1a) | Read | Self or `manager` of the practice | Users read their own memberships; practice managers read all rows of the practice. |
+| `practice_memberships` (B1a) | Create/update/revoke | `owner` of the practice | Server-side/service_role in practice. Last active `practice_owner` is protected by a trigger; ownership transfer via `transfer_practice_ownership` RPC (service_role only). pgTAP-covered: membership grant, revocation removes access, non-white_label partner alone denied, white_label retained, last-owner guard. |
+| `platform_staff` (B1a) | Read | Self row only | Authoritative platform-staff identity; management is service_role only. `current_user_platform_role()` exposes the caller's active role. |
+| `staff_practice_assignments` (B1a) | Read | Self (`staff_user_id`) | Limits a `security_consultant` to explicitly assigned practices; management is service_role only. |
+| `practice_invitations` (B1a) | Read | `manager` of the practice | Stores only a hash/provider `proof_reference`, never a cleartext code. Creation/acceptance is service_role only. |
+| `backoffice_audit_events` (B1a) | Read | `platform_admin` / `security_consultant` | Append-only: no UPDATE/DELETE grant to any role; inserts via service_role only. Retention/anonymization is B1b. |
 
 Audit note:
 
