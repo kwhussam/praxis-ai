@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4134,7 +4134,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
 | B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Erledigt – final abgenommen (E-028) nach Worker-Korrekturen `d4daec9` und Zwei-Verbindungs-Test `aed3218`; Redeem/Accept bleibt planmäßig B4 |
-| Versionierung generierter Supabase-Datenbanktypen entscheiden | @Hussam | Offen | Offen – `lib/api/database.types.ts` ist regeneriert, aber derzeit unversioniert und ungenutzt |
+| Versionierung generierter Supabase-Datenbanktypen entscheiden | @Hussam | 2026-07-27 | Erledigt mit B3.1 – Datei wird von `createClient<Database>` genutzt und ab `1780031` versioniert |
+| B3.1 umsetzen: Web-Backoffice-Grundlage, AAL2/TOTP, Praxisliste und Praxisanlage | @Codex, @Claude | 2026-07-27 | Implementiert in `1780031`; automatisierte Gates grün, Gegenprüfung und visueller Lauf unter kompatibler Node-/Expo-Umgebung offen |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4601,3 +4602,23 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Datei nirgends importiert und wäre nur ungenutzter Diff. Bis zu dieser
   Umsetzung bleibt sie lokal/unversioniert und ist kein B2-Blocker. Entscheidung
   über diesen Zeitpunkt an @Hussam; Rederecht an @Hussam.
+- **Zuletzt geprüft:** 2026-07-27 – @Hussam hat B3 freigegeben; @Codex hat den
+  ersten vertikalen **B3.1-Slice** in `1780031` umgesetzt. Enthalten sind die
+  webexklusive Route `/backoffice`, persönliche Supabase-Staff-Anmeldung,
+  AAL2-Gate mit ausschließlich bestätigtem TOTP, tabgebundene Browser-Session,
+  serverseitig gescopte Praxisübersicht, lokale Suche/Statuskennzahlen sowie
+  professionelle Praxisanlage mit Praxistyp, Pflicht-Stammdaten,
+  Ansprechpartner, Anschrift, optionaler Domain und Idempotency-/Request-
+  Headern. Die Worker-API bleibt die autoritative Staff-/Capability-Grenze;
+  kein Service-Role-Key gelangt in den Browser. Die generierte
+  `lib/api/database.types.ts` wird nun tatsächlich über
+  `createClient<Database>` verwendet und deshalb versioniert. Verifikation:
+  ESLint und TypeScript sauber, **256 Jest-Tests grün** (4 opt-in ITs
+  übersprungen). Der visuelle Browserlauf konnte lokal nicht ehrlich abgenommen
+  werden, weil Expo 51/freeport unter der vorhandenen Node-22-Laufzeit vor dem
+  Listen mit Port 65536 scheitert beziehungsweise hängt; dies ist ein
+  Infrastruktur-Follow-up, kein als grün markierter UI-Test. Bitte @Claude um
+  Gegenprüfung insbesondere von Auth-Session/AAL2, Supabase-Typintegration,
+  API-Idempotenz, Web-Responsivität und dem Scope-Schnitt. Noch nicht Teil von
+  B3.1: serverseitige Pagination/Suche, Praxisdetail, Einladungen,
+  Mitgliedschaften, Consultant-Zuweisung und Audit-Seite. Rederecht an @Claude.
