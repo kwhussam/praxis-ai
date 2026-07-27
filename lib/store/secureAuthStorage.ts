@@ -13,6 +13,8 @@ const MAX_CHUNK_LENGTH = 500;
 export function createSecureAuthStorage(namespace: string): AuthStorage {
   return {
     async getItem(key) {
+      const webStorage = getWebSessionStorage();
+      if (webStorage) return webStorage.getItem(webStorageKey(namespace, key));
       if (!(await canUseSecureStore())) {
         return memoryFallback.get(key) ?? null;
       }
@@ -39,6 +41,11 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
       return chunks.join("");
     },
     async setItem(key, value) {
+      const webStorage = getWebSessionStorage();
+      if (webStorage) {
+        webStorage.setItem(webStorageKey(namespace, key), value);
+        return;
+      }
       memoryFallback.set(key, value);
       if (!(await canUseSecureStore())) return;
 
@@ -66,6 +73,11 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
       }
     },
     async removeItem(key) {
+      const webStorage = getWebSessionStorage();
+      if (webStorage) {
+        webStorage.removeItem(webStorageKey(namespace, key));
+        return;
+      }
       memoryFallback.delete(key);
       if (!(await canUseSecureStore())) return;
 
@@ -78,6 +90,18 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
       await SecureStore.deleteItemAsync(storeKey, options);
     }
   };
+}
+
+function getWebSessionStorage(): Storage | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function webStorageKey(namespace: string, key: string) {
+  return `${namespace}.${key}`;
 }
 
 async function canUseSecureStore() {

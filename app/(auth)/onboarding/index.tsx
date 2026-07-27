@@ -282,7 +282,7 @@ async function findOrCreatePractice(domain: string, email?: string) {
   const { data: practice, error } = await supabase
     .rpc("create_or_get_own_practice", {
       p_domain: domain,
-      p_email: email ?? null
+      p_email: email
     })
     .single<PracticeRow>();
 

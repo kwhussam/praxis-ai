@@ -46,6 +46,7 @@ import { serviceForPort } from "@/lib/security/servicePortCatalog";
 import { resolveWifiSecurityDetails } from "@/lib/security/wifiCapabilities";
 import { resolveScanPhaseIds, type WlanScanPhaseId } from "@/lib/security/wlanScanPlan";
 import { supabase } from "@/lib/api/supabase";
+import type { Database } from "@/lib/api/database.types";
 
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
 export type { NetworkSegmentId } from "@/lib/security/networkProbeTypes";
@@ -596,8 +597,8 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       interactionContext: result.interactionContext,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
-    },
-    vulnerabilities: result.vulnerabilities,
+    } as unknown as Database["public"]["Tables"]["wlan_scans"]["Insert"]["network_info"],
+    vulnerabilities: result.vulnerabilities as unknown as Database["public"]["Tables"]["wlan_scans"]["Insert"]["vulnerabilities"],
     devices_found: result.connectedDevices.length,
     risk_level: riskLevelFromScore(result.riskScore)
   });

@@ -49,4 +49,25 @@ describe("apiRequest timeout (TS-02)", () => {
 
     expect(result).toEqual({ ok: true });
   });
+
+  it("reicht Backoffice-Idempotenz- und Request-Header unveraendert weiter", async () => {
+    let requestInit: RequestInit | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      requestInit = init;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }) as typeof fetch;
+
+    await apiRequest("/api/backoffice/practices", {
+      method: "POST",
+      token: "test-token",
+      body: { legalName: "Test" },
+      headers: { "Idempotency-Key": "stable-key", "X-Request-Id": "request-1" }
+    });
+
+    expect(requestInit?.headers).toMatchObject({
+      Authorization: "Bearer test-token",
+      "Idempotency-Key": "stable-key",
+      "X-Request-Id": "request-1"
+    });
+  });
 });

@@ -1,9 +1,9 @@
 # Web-Backoffice-Fundament
 
-Status: Fachplan als Fundament angenommen (@Hussam, 2026-07-24). B0-Produkt-
-und B1-Technikentscheidungen bestätigt; Implementierung weiterhin nicht
-freigegeben. Personenbezogene Audit-Aufbewahrung ist auf sechs Monate mit
-anschließender automatischer irreversibler Anonymisierung festgelegt.
+Status: B3-Implementierung gestartet. Slice B3.1 liefert das interne Web-
+Backoffice-Fundament mit Staff-Anmeldung, AAL2/TOTP-Gate, Praxisübersicht und
+professioneller Praxisanlage. Personenbezogene Audit-Aufbewahrung ist auf sechs
+Monate mit anschließender automatischer irreversibler Anonymisierung festgelegt.
 
 Stand: 2026-07-24
 
@@ -232,6 +232,26 @@ Kompatibilitätsverweis nur über eine transaktionale serverseitige Funktion.
    - Einladung erzeugen/widerrufen/erneuern, Rolle ändern, Zugang sperren
 6. **Audit**
    - filterbare Ereignisse; keine Bearbeiten-/Löschen-Funktion
+
+### B3.1 – erster vertikaler UI-Slice (umgesetzt, Gegenprüfung offen)
+
+- Route `/backoffice` als webexklusives internes Arbeitswerkzeug innerhalb der
+  vorhandenen Expo-Web-Anwendung; kein öffentliches Self-Service-Sign-up.
+- persönliche Supabase-Anmeldung und zwingendes AAL2-Gate; die Erhöhung erfolgt
+  ausschließlich über einen bereits bestätigten TOTP-Faktor. Die Worker-API
+  bleibt die autoritative Staff-/Capability-Grenze.
+- tabgebundene Browser-Session über `sessionStorage`; native Clients verwenden
+  weiterhin gerätegebundenes SecureStore.
+- serverseitig gescopte Praxisliste über `/api/backoffice/practices`, lokale
+  Suche innerhalb des geladenen ersten Slices und Statusübersicht.
+- professionelle Praxisanlage mit Praxistyp, Pflicht-Stammdaten,
+  Ansprechpartner, Anschrift, optionaler Domain, UI-Validierung sowie
+  Idempotency-/Request-Headern; die serverseitige B2-Validierung bleibt
+  maßgeblich.
+- `lib/api/database.types.ts` wird ab diesem Slice versioniert und vom Supabase-
+  Client tatsächlich als Schema-Vertrag verwendet.
+- Noch folgende B3-Slices: serverseitige Pagination/Suche, Praxisdetail,
+  Einladungs-/Mitgliederverwaltung, Consultant-Zuweisung und Audit-Ansicht.
 
 ### Bewusst nicht im ersten Schnitt
 

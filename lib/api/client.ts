@@ -6,6 +6,7 @@ type RequestOptions = {
   body?: unknown;
   token?: string;
   timeoutMs?: number;
+  headers?: Record<string, string>;
 };
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -39,7 +40,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       method: options.method ?? "GET",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.headers ?? {})
       },
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal
