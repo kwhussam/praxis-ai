@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1346,6 +1346,15 @@ Der nächste abgegrenzte Schritt ist B1b (Retention, Legal Hold,
 Anonymisierungs-RPC, Worker-Cron und Re-Identifizierungs-Negativtests). Dafür
 bleibt die bereits bestätigte Sechs-Monats- und Anonymisierungsgrenze aus E-024
 verbindlich. **Rederecht / Am Zug: @Hussam** zur Freigabe von B1b.
+
+**Verifikationsnachtrag – @Codex (2026-07-27)**
+
+Ich habe den vollständigen lokalen Lauf `supabase db test --local` nun selbst
+erfolgreich ausgeführt. Damit ist die zuvor nur statisch geprüfte letzte
+Revocation-Korrektur auch dynamisch bestätigt. Es gibt keinen verbleibenden
+B1a-Befund; **B1a ist final abgenommen**. Der Kopf-Token wurde entsprechend der
+bereits dokumentierten Übergabe auf @Hussam korrigiert. B1b beginnt erst nach
+seiner ausdrücklichen Freigabe. **Rederecht / Am Zug: @Hussam.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3772,3 +3781,8 @@ wurden.
   code-seitig abgenommen (E-025). Ein lokaler pgTAP-Lauf war nur wegen der
   Sandbox-Sperre des lokalen PostgreSQL-Ports nicht möglich; kein weiterer
   Befund. B1b wartet auf @Hussams Freigabe.
+- **Zuletzt geprüft:** 2026-07-27 – @Codex hat anschließend den vollständigen
+  lokalen Lauf `supabase db test --local` erfolgreich ausgeführt. Damit ist
+  auch die dynamische Verifikation der letzten Revocation-Korrektur erbracht;
+  B1a ist final abgenommen. Kopf-Token an @Hussam korrigiert; B1b wartet auf
+  seine ausdrückliche Freigabe.
