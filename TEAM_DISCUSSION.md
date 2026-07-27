@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1614,6 +1614,33 @@ Zu Claudes offenen Entscheidungen empfehle ich:
 B4-Redeem-Grenze bestätigst, kann B2 freigegeben werden. Anschließend kann
 @Claude wie vorgeschlagen implementieren und @Codex gegenprüfen.
 **Rederecht / Am Zug: @Hussam.**
+
+**B2-Implementierungsfreigabe – @Hussam / @Codex (2026-07-27)**
+
+@Hussam gibt B2 auf Grundlage des gehärteten Vertrags frei. Damit sind
+verbindlich:
+
+- zehnstelliger Crockford-Base32-Einmalcode, ausschließlich versioniert per
+  `HMAC-SHA-256` gespeichert; kein bloßer SHA-256-Hash;
+- sieben Tage TTL, single-use, widerrufbar; Neuausstellung widerruft ältere
+  passende offene Einladungen;
+- Redeem-/Accept-Implementierung erst in B4, der kompatible Vertrag wird in B2
+  bereits eingehalten und getestet;
+- explizite Capabilities, AAL2 und frische Step-up-Authentisierung für
+  Owner-Transfer;
+- Consultant ausschließlich im aktiven Assignment-Scope, Support nur für
+  ausdrücklich freigegebene Leseaktionen;
+- Worker-Rollenauflösung exakt über `owner_id`, aktive
+  `practice_memberships` und nur `white_label` aus `partner_practices`;
+- jede Mutation mit Idempotenz und fachlichem Audit atomar in derselben
+  Datenbanktransaktion; kein erfolgreicher Zustand ohne zugehöriges Audit;
+- Rate-Limits für sicherheitskritische und codebezogene Vorgänge.
+
+@Claude, B2 ist damit zur Implementierung freigegeben. Bitte setze Endpunkte,
+transaktionale RPCs, Capability-Matrix, Membership-Angleichung und Tests gemäß
+diesem Vertrag um. @Codex prüft anschließend Authz, Mandantengrenzen,
+HMAC-/Codefluss, Idempotenz, Rate-Limits und Audit-Atomarität gegen.
+**Rederecht / Am Zug: @Claude.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3761,6 +3788,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-024 | 2026-07-24 | Backoffice-Audit-Ereignisse werden sechs Monate personenbezogen aufbewahrt und danach automatisch irreversibel anonymisiert; die Verarbeitung wird transparent in den Datenschutzinformationen beschrieben. | Speicherbegrenzung, Nachvollziehbarkeit und Betroffeneninformation werden mit automatisiertem Ablauf und eng begrenzter Aufbewahrungssperre verbunden. | @Hussam |
 | E-025 | 2026-07-27 | B1a (Backoffice-Tenant/Authz) ist nach Korrektur der RLS-, Owner-Transfer-, Consultant-Audit-, Backfill- und Revocation-Befunde code-seitig abgenommen. | Der Cutover hat keine parallele Nicht-`white_label`-Autorisierungsquelle mehr; ein Widerruf bleibt auch nach erneutem Backfill wirksam. | @Codex, @Claude |
 | E-026 | 2026-07-27 | B1b (sechsmonatige Backoffice-Audit-Aufbewahrung, Legal Hold und irreversible Anonymisierung) ist nach Behebung der Zeitstempel-Korrelationsspur final abgenommen. | 91 pgTAP-Prüfungen bestätigen B1a/B1b; direkte, indirekte und sub-tagesgenaue Zeitbezüge werden nach Frist entfernt, aktive dokumentierte Holds bleiben geschützt. | @Codex, @Claude |
+| E-027 | 2026-07-27 | B2 ist mit dem gehärteten Admin-API-Vertrag freigegeben: 10-stelliger HMAC-Code, 7 Tage TTL, Redeem in B4, atomare Mutation+Audit, explizite Capabilities und B1a-konforme Rollenauflösung. | Die service-role-basierte API darf keine Offline-Codeprüfung, unauditierten Teilerfolg oder alte Autorisierungsquelle eröffnen. | @Hussam |
 
 ## Nächste Schritte
 
@@ -3791,6 +3819,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
+| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Freigegeben (E-027); @Claude implementiert, @Codex prüft Authz, Tenant-Isolation, HMAC, Idempotenz, Rate-Limits und Audit-Atomarität |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4095,3 +4124,9 @@ wurden.
   Worker-Rollenauflösung exakt nach B1a-Cutover und jetzt festgelegter
   B4-Redeem-Vertrag. Empfehlung: sieben Tage TTL und Redeem-Implementierung in
   B4. Rederecht zur Entscheidung an @Hussam.
+- **Zuletzt geprüft:** 2026-07-27 – @Hussam hat den gehärteten B2-Vertrag
+  vollständig freigegeben (E-027). Zehnstelliger HMAC-Code, sieben Tage TTL,
+  Redeem in B4, atomare Mutation+Audit-RPCs, explizite Capabilities,
+  B1a-konforme Rollenauflösung und Rate-Limits sind verbindlich. Rederecht zur
+  Implementierung an @Claude; @Codex übernimmt anschließend die
+  Sicherheitsgegenprüfung.
