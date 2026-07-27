@@ -5,7 +5,7 @@ begin;
 
 set local search_path = public, extensions;
 
-select plan(56);
+select plan(66);
 
 select set_config('request.jwt.claim.sub', '', false);
 select set_config('request.jwt.claims', '{}', false);
@@ -59,6 +59,42 @@ values
   ('30000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000e1', '20000000-0000-4000-8000-0000000000a1', 'manager', '00000000-0000-4000-8000-0000000000a1'),
   ('30000000-0000-4000-8000-0000000000f1', '00000000-0000-4000-8000-0000000000f1', '20000000-0000-4000-8000-0000000000a1', 'white_label', '00000000-0000-4000-8000-0000000000a1')
 on conflict (partner_id, practice_id) do nothing;
+
+-- B1a P1.2: Owner-Transfer-Szenario (a2 = Alt-Owner, b2 = Neu-Owner, Praxis T).
+-- B1a P1.3: Plattform-Mitarbeitende (c2 = security_consultant zugewiesen auf A,
+--           d2 = platform_admin) und Backoffice-Audit-Ereignisse.
+insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+values
+  ('00000000-0000-4000-8000-0000000000a2', 'authenticated', 'authenticated', 'old-owner-a2@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb),
+  ('00000000-0000-4000-8000-0000000000b2', 'authenticated', 'authenticated', 'new-owner-b2@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb),
+  ('00000000-0000-4000-8000-0000000000c2', 'authenticated', 'authenticated', 'consultant-c2@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb),
+  ('00000000-0000-4000-8000-0000000000d2', 'authenticated', 'authenticated', 'admin-d2@example.test', 'x', now(), now(), now(), '{}'::jsonb, '{}'::jsonb)
+on conflict (id) do nothing;
+
+insert into public.practices (id, owner_id, name)
+values ('20000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000a2', 'Praxis T (Transfer)')
+on conflict (id) do nothing;
+
+insert into public.practice_memberships (practice_id, user_id, role, status, granted_by)
+values ('20000000-0000-4000-8000-0000000000a2', '00000000-0000-4000-8000-0000000000a2', 'practice_owner', 'active', '00000000-0000-4000-8000-0000000000a2')
+on conflict (practice_id, user_id) where status = 'active' do nothing;
+
+insert into public.platform_staff (user_id, role, status)
+values
+  ('00000000-0000-4000-8000-0000000000c2', 'security_consultant', 'active'),
+  ('00000000-0000-4000-8000-0000000000d2', 'platform_admin', 'active')
+on conflict (user_id) do nothing;
+
+insert into public.staff_practice_assignments (staff_user_id, practice_id, status)
+values ('00000000-0000-4000-8000-0000000000c2', '20000000-0000-4000-8000-0000000000a1', 'active')
+on conflict (staff_user_id, practice_id) where status = 'active' do nothing;
+
+insert into public.backoffice_audit_events (id, actor_user_id, action, target_type, target_id, practice_id)
+values
+  ('e1000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d2', 'practice.update', 'practice', '20000000-0000-4000-8000-0000000000a1', '20000000-0000-4000-8000-0000000000a1'),
+  ('e1000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000d2', 'practice.update', 'practice', '20000000-0000-4000-8000-0000000000b1', '20000000-0000-4000-8000-0000000000b1'),
+  ('e1000000-0000-4000-8000-0000000000c1', '00000000-0000-4000-8000-0000000000d2', 'staff.update', 'platform_staff', '00000000-0000-4000-8000-0000000000c2', null)
+on conflict (id) do nothing;
 
 insert into public.security_checks (id, practice_id, type, score, results)
 values
@@ -282,6 +318,27 @@ select is(
   'revoking the practice_manager membership removes practice A access'
 );
 
+-- B1a P1.2: ownership transfer moves access from the old to the new owner ------
+select transfer_practice_ownership(
+  '20000000-0000-4000-8000-0000000000a2',
+  '00000000-0000-4000-8000-0000000000b2',
+  '00000000-0000-4000-8000-0000000000d2'
+);
+select ok(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000b2', '20000000-0000-4000-8000-0000000000a2', 'owner'),
+  'after transfer the new owner has owner access'
+);
+select is(
+  public.can_access_practice('00000000-0000-4000-8000-0000000000a2', '20000000-0000-4000-8000-0000000000a2', 'viewer'),
+  false,
+  'after transfer the old owner has no remaining access'
+);
+select is(
+  (select owner_id from public.practices where id = '20000000-0000-4000-8000-0000000000a2'),
+  '00000000-0000-4000-8000-0000000000b2'::uuid,
+  'after transfer practices.owner_id points to exactly the new owner'
+);
+
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000a1","role":"authenticated"}', true);
@@ -306,6 +363,10 @@ select is((select count(*) from public.inventory_items where practice_id = '2000
 select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B inventory item (DB-03)');
 select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own monitoring target (DB-03)');
 select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B monitoring target (DB-03)');
+
+-- B1a P1.1: practice_memberships are visible under RLS (permissive SELECT policy).
+select ok((select count(*) from public.practice_memberships where practice_id = '20000000-0000-4000-8000-0000000000a1') >= 1, 'owner A (manager on own practice) can see practice A memberships');
+select is((select count(*) from public.practice_memberships where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot see practice B memberships');
 
 select throws_ok(
   $$insert into public.reports (practice_id, check_id, content)
@@ -398,6 +459,10 @@ select is((select count(*) from public.security_checks where practice_id = '2000
 select is((select count(*) from public.reports where id = '50000000-0000-4000-8000-0000000000b1'), 0::bigint, 'partner cannot select ungranted practice B report by exchanged report_id');
 select is((select count(*) from public.monitoring_snapshots where id = '70000000-0000-4000-8000-0000000000b1'), 0::bigint, 'partner cannot select ungranted practice B snapshot by exchanged snapshot_id');
 
+-- B1a P1.1: a non-manager member sees only their own membership row.
+select ok((select count(*) from public.practice_memberships where user_id = '00000000-0000-4000-8000-0000000000c1') >= 1, 'viewer member C can see their own membership row');
+select is((select count(*) from public.practice_memberships where practice_id = '20000000-0000-4000-8000-0000000000a1' and user_id <> '00000000-0000-4000-8000-0000000000c1'), 0::bigint, 'viewer member C cannot see other members of practice A');
+
 -- DB-03: partner C has only a 'viewer' grant on practice A - can read, cannot write.
 select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A inventory item (DB-03)');
 select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A monitoring target (DB-03)');
@@ -417,6 +482,17 @@ select throws_ok(
   null,
   'viewer partner cannot insert monitoring target for granted practice A (DB-03)'
 );
+
+-- B1a P1.3: security_consultant sees backoffice audit only for assigned practices.
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000c2', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c2","role":"authenticated"}', true);
+select is((select count(*) from public.backoffice_audit_events where id = 'e1000000-0000-4000-8000-0000000000a1'), 1::bigint, 'consultant can read audit event for assigned practice A');
+select is((select count(*) from public.backoffice_audit_events where id in ('e1000000-0000-4000-8000-0000000000b1', 'e1000000-0000-4000-8000-0000000000c1')), 0::bigint, 'consultant cannot read audit events for unassigned practice B or system events');
+
+-- B1a P1.3: platform_admin sees all backoffice audit events.
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000d2', true);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000d2","role":"authenticated"}', true);
+select is((select count(*) from public.backoffice_audit_events where id in ('e1000000-0000-4000-8000-0000000000a1', 'e1000000-0000-4000-8000-0000000000b1', 'e1000000-0000-4000-8000-0000000000c1')), 3::bigint, 'platform_admin can read all backoffice audit events including system events');
 
 select * from finish();
 

@@ -36,4 +36,4 @@ jobs:
       - name: Start local Supabase
         run: supabase start
       - name: Run cross-tenant RLS pgTAP tests
-        run: supabase db test --local supabase/tests/rls_cross_tenant.sql
+        run: supabase db test --local

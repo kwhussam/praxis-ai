@@ -148,29 +148,56 @@ alter table public.practices
   add column if not exists updated_at timestamptz default now();
 
 -- 4. Backfill nach practice_memberships (rein additiv) --------------------
--- Je owner_id eine aktive practice_owner-Mitgliedschaft.
-insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
-select p.id, p.owner_id, 'practice_owner', 'active', p.owner_id, now()
-from public.practices p
-where p.owner_id is not null
-on conflict (practice_id, user_id) where status = 'active' do nothing;
+-- Idempotente Funktion, damit die exakte Rollen-/Herkunftsabbildung in einem
+-- Vorher-/Nachher-Test (supabase/tests/backfill_b1a_membership.sql) auf real
+-- vorhandenen owner_id-/partner_practices-Daten belegt werden kann.
+create or replace function public.backfill_practice_memberships()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Je owner_id eine aktive practice_owner-Mitgliedschaft.
+  insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
+  select p.id, p.owner_id, 'practice_owner', 'active', p.owner_id, now()
+  from public.practices p
+  where p.owner_id is not null
+  on conflict (practice_id, user_id) where status = 'active' do nothing;
 
--- Nicht-white_label-Grants aus partner_practices uebernehmen (Rang erhalten).
-insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
-select
-  pp.practice_id,
-  pp.partner_id,
-  case pp.role
-    when 'owner' then 'practice_owner'::public.practice_member_role
-    when 'manager' then 'practice_manager'::public.practice_member_role
-    when 'viewer' then 'viewer'::public.practice_member_role
-  end,
-  'active',
-  pp.granted_by,
-  coalesce(pp.granted_at, now())
-from public.partner_practices pp
-where pp.role <> 'white_label'
-on conflict (practice_id, user_id) where status = 'active' do nothing;
+  -- Nicht-white_label-Grants aus partner_practices uebernehmen (Rang + Herkunft erhalten).
+  insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
+  select
+    pp.practice_id,
+    pp.partner_id,
+    case pp.role
+      when 'owner' then 'practice_owner'::public.practice_member_role
+      when 'manager' then 'practice_manager'::public.practice_member_role
+      when 'viewer' then 'viewer'::public.practice_member_role
+    end,
+    'active',
+    pp.granted_by,
+    coalesce(pp.granted_at, now())
+  from public.partner_practices pp
+  where pp.role <> 'white_label'
+  on conflict (practice_id, user_id) where status = 'active' do nothing;
+end $$;
+
+revoke execute on function public.backfill_practice_memberships() from public;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'anon') then
+    execute 'revoke execute on function public.backfill_practice_memberships() from anon';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'authenticated') then
+    execute 'revoke execute on function public.backfill_practice_memberships() from authenticated';
+  end if;
+  if exists (select 1 from pg_roles where rolname = 'service_role') then
+    execute 'grant execute on function public.backfill_practice_memberships() to service_role';
+  end if;
+end $$;
+
+select public.backfill_practice_memberships();
 
 -- 5. Backfill-Verifikation VOR dem Cutover --------------------------------
 -- Schlaegt die Migration fehl (Rollback), falls ein bestehender Zugriff nicht
@@ -279,7 +306,10 @@ create trigger practice_memberships_guard_last_owner
 before update or delete on public.practice_memberships
 for each row execute function public.guard_last_practice_owner();
 
--- Setzt owner_id und die practice_owner-Mitgliedschaft in einer Transaktion.
+-- Setzt owner_id und die practice_owner-Mitgliedschaft in einer Transaktion und
+-- entzieht dem bisherigen Eigentuemer seine aktive Owner-Mitgliedschaft
+-- (Reihenfolge: neuen Owner aktivieren -> owner_id umsetzen -> alten widerrufen,
+-- damit der Last-Owner-Trigger nie den alleinigen aktiven Owner blockiert).
 create or replace function public.transfer_practice_ownership(
   p_practice_id uuid,
   p_new_owner uuid,
@@ -290,20 +320,45 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_old_owner uuid;
 begin
   if p_practice_id is null or p_new_owner is null then
     raise exception 'practice and new owner are required';
   end if;
 
+  -- Praxiszeile sperren und bisherigen Eigentuemer erfassen.
+  select owner_id into v_old_owner
+  from public.practices
+  where id = p_practice_id
+  for update;
+
+  if not found then
+    raise exception 'practice % not found', p_practice_id;
+  end if;
+
+  -- 1. Neuen Owner aktivieren (bestehende aktive Mitgliedschaft ggf. hochstufen).
   insert into public.practice_memberships (practice_id, user_id, role, status, granted_by, granted_at)
   values (p_practice_id, p_new_owner, 'practice_owner', 'active', p_actor, now())
   on conflict (practice_id, user_id) where status = 'active'
   do update set role = 'practice_owner';
 
+  -- 2. Kompatibilitaetsanker umsetzen.
   update public.practices
   set owner_id = p_new_owner,
       updated_at = now()
   where id = p_practice_id;
+
+  -- 3. Alte Owner-Mitgliedschaft widerrufen (jetzt sicher: neuer Owner ist aktiv).
+  if v_old_owner is not null and v_old_owner <> p_new_owner then
+    update public.practice_memberships
+    set status = 'revoked',
+        revoked_at = now()
+    where practice_id = p_practice_id
+      and user_id = v_old_owner
+      and role = 'practice_owner'
+      and status = 'active';
+  end if;
 end $$;
 
 -- 8. RLS ------------------------------------------------------------------
@@ -341,14 +396,14 @@ on public.platform_staff for select
 using (user_id = auth.uid());
 
 -- practice_memberships: eigene Mitgliedschaften lesbar; Manager der Praxis
--- sehen alle; Schreiben nur fuer Owner (bzw. serverseitig via service_role).
+-- sehen alle. Permissive SELECT-Policy (eine allein stehende restriktive Policy
+-- wuerde alle Zeilen verwerfen). Mutationen bleiben mangels authenticated-Grant
+-- ausschliesslich serverseitig (service_role umgeht RLS).
 drop policy if exists "tenant guard: practice memberships" on public.practice_memberships;
-create policy "tenant guard: practice memberships"
-on public.practice_memberships
-as restrictive
-for all
-using (user_id = auth.uid() or public.current_user_can_access_practice(practice_id, 'manager'))
-with check (public.current_user_can_access_practice(practice_id, 'owner'));
+drop policy if exists "practice memberships readable by self or manager" on public.practice_memberships;
+create policy "practice memberships readable by self or manager"
+on public.practice_memberships for select
+using (user_id = auth.uid() or public.current_user_can_access_practice(practice_id, 'manager'));
 
 -- staff_practice_assignments: Mitarbeitende sehen eigene Zuweisungen.
 drop policy if exists "staff can read own assignments" on public.staff_practice_assignments;
@@ -362,12 +417,27 @@ create policy "tenant guard: practice invitations"
 on public.practice_invitations for select
 using (public.current_user_can_access_practice(practice_id, 'manager'));
 
--- backoffice_audit_events: Lesen nur fuer platform_admin/security_consultant.
--- Kein UPDATE/DELETE-Grant (append-only); Schreiben serverseitig via service_role.
+-- backoffice_audit_events: platform_admin liest alles; security_consultant nur
+-- Ereignisse zu ausdruecklich zugewiesenen Praxen. Praxislose/systemweite
+-- Ereignisse bleiben admin-only. Kein UPDATE/DELETE-Grant (append-only);
+-- Schreiben serverseitig via service_role.
 drop policy if exists "backoffice audit readable by platform staff" on public.backoffice_audit_events;
 create policy "backoffice audit readable by platform staff"
 on public.backoffice_audit_events for select
-using (public.current_user_platform_role() in ('platform_admin', 'security_consultant'));
+using (
+  public.current_user_platform_role() = 'platform_admin'
+  or (
+    public.current_user_platform_role() = 'security_consultant'
+    and practice_id is not null
+    and exists (
+      select 1
+      from public.staff_practice_assignments a
+      where a.staff_user_id = auth.uid()
+        and a.practice_id = backoffice_audit_events.practice_id
+        and a.status = 'active'
+    )
+  )
+);
 
 -- 9. Grants ---------------------------------------------------------------
 
