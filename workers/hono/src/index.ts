@@ -28,9 +28,13 @@ type Env = {
   DELETION_FROM_EMAIL?: string;
   SECURITY_PROVIDER_TIMEOUT_MS?: string;
   MONITORING_CONCURRENCY_LIMIT?: string;
-  // Server-only HMAC secret for backoffice invitation codes. The plaintext code
-  // never leaves the Worker; only the hmac:v1:<hex> proof reaches the database.
-  // Fail-closed: code-bearing endpoints refuse to operate when this is unset.
+  // Server-only HMAC signing key for backoffice invitation codes. The plaintext
+  // code never leaves the Worker; only the hmac:v1:<hex> proof reaches the
+  // database. Deployment: set via `wrangler secret put`, generate cryptographically
+  // at random (e.g. `openssl rand -base64 48`), and rotate periodically —
+  // rotation invalidates outstanding un-redeemed codes by design. Fail-closed:
+  // code-bearing endpoints refuse to operate when it is unset or shorter than
+  // BACKOFFICE_INVITE_MIN_SECRET_BYTES.
   BACKOFFICE_INVITE_HMAC_SECRET?: string;
   // Max age (seconds) of the most recent auth factor for owner-transfer step-up.
   BACKOFFICE_STEPUP_MAX_AGE_S?: string;
@@ -3173,6 +3177,13 @@ const BACKOFFICE_STEPUP_DEFAULT_MAX_AGE_S = 600;
 // exact multiple of 32, so mapping a random byte via `% 32` is perfectly uniform.
 const CROCKFORD_BASE32 = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const INVITE_CODE_LENGTH = 10;
+// Fail-closed lower bound for the HMAC signing key. 32 bytes = full SHA-256
+// security margin; anything shorter is treated as unconfigured.
+const BACKOFFICE_INVITE_MIN_SECRET_BYTES = 32;
+// Only an explicit MFA factor may satisfy the ownership-transfer step-up. A
+// fresh password (or a bare JWT issue time) must NOT count. Extend deliberately
+// as new MFA factors are enabled for the product.
+const STEP_UP_MFA_METHODS = new Set(["totp"]);
 
 // Per-actor mutation windows (window minutes, limit). Code-bearing invitation
 // creation and ownership transfer are deliberately tighter.
@@ -3211,8 +3222,10 @@ type BackofficeActor = {
   id: string;
   email?: string;
   aal: string;
-  // Unix seconds of the most recent authentication factor, for step-up freshness.
-  latestFactorAt: number;
+  // Unix seconds of the most recent MFA factor (STEP_UP_MFA_METHODS) in the
+  // token's amr, or 0 if none. Used exclusively for step-up freshness; a
+  // password amr or a bare iat never contributes.
+  latestMfaFactorAt: number;
 };
 
 type StaffScope = {
@@ -3247,15 +3260,26 @@ async function getBackofficeActor(c: Context<{ Bindings: Env }>): Promise<Backof
   const claims = token ? decodeJwtClaims(token) : null;
   const aal = typeof claims?.aal === "string" ? claims.aal : "aal1";
 
-  let latestFactorAt = 0;
+  // Only explicit MFA factors count toward step-up freshness — never a password
+  // factor and never the JWT issue time. This prevents a fresh non-MFA login from
+  // masquerading as a fresh MFA step-up.
+  let latestMfaFactorAt = 0;
   const amr = claims && Array.isArray(claims.amr) ? claims.amr : [];
   for (const entry of amr) {
-    const timestamp = asRecordOrNull(entry)?.timestamp;
-    if (typeof timestamp === "number" && timestamp > latestFactorAt) latestFactorAt = timestamp;
+    const record = asRecordOrNull(entry);
+    const method = record?.method;
+    const timestamp = record?.timestamp;
+    if (
+      typeof method === "string" &&
+      STEP_UP_MFA_METHODS.has(method) &&
+      typeof timestamp === "number" &&
+      timestamp > latestMfaFactorAt
+    ) {
+      latestMfaFactorAt = timestamp;
+    }
   }
-  if (latestFactorAt === 0 && claims && typeof claims.iat === "number") latestFactorAt = claims.iat;
 
-  return { id: user.id, email: user.email, aal, latestFactorAt };
+  return { id: user.id, email: user.email, aal, latestMfaFactorAt };
 }
 
 function readStepUpMaxAge(env: Env): number {
@@ -3282,27 +3306,16 @@ async function requireBackofficeActor(
 
   if (options.freshStepUp) {
     const maxAge = readStepUpMaxAge(c.env);
-    const ageSeconds = Math.floor(Date.now() / 1000) - actor.latestFactorAt;
-    if (actor.latestFactorAt <= 0 || ageSeconds > maxAge) {
+    const ageSeconds = Math.floor(Date.now() / 1000) - actor.latestMfaFactorAt;
+    // Requires a genuine MFA factor (latestMfaFactorAt > 0) verified within the window.
+    if (actor.latestMfaFactorAt <= 0 || ageSeconds > maxAge) {
       return c.json({ error: "stepup_required" }, 403);
     }
   }
   return actor;
 }
 
-// Uniform, uniformly-distributed 10-char Crockford Base32 one-time code.
-function generateInviteCode(): string {
-  const bytes = new Uint8Array(INVITE_CODE_LENGTH);
-  crypto.getRandomValues(bytes);
-  let code = "";
-  for (const byte of bytes) code += CROCKFORD_BASE32[byte % 32];
-  return code;
-}
-
-// Binds the HMAC proof to the code AND its target (practice + email) so a proof can
-// never be replayed for a different practice/recipient. Returns the hmac:v1:<hex>
-// format the DB requires. The secret and plaintext code never leave the Worker.
-async function computeInviteProof(secret: string, code: string, practiceId: string, email: string): Promise<string> {
+async function hmacSha256(secret: string, message: string): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -3310,9 +3323,36 @@ async function computeInviteProof(secret: string, code: string, practiceId: stri
     false,
     ["sign"]
   );
-  const message = `v1:${practiceId}:${email}:${code}`;
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
-  return `hmac:v1:${bytesToHex(new Uint8Array(signature))}`;
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+}
+
+// Deterministic 10-char Crockford Base32 code, domain-separated and bound to
+// (actor, idempotency key, canonical payload). Because it is a pure function of
+// those inputs, an idempotent retry of the SAME key+payload re-derives the
+// identical code — so the one-time secret can be returned again on a replay
+// without ever being stored. 256 % 32 == 0, so byte % 32 stays uniform.
+async function deriveInviteCode(
+  secret: string,
+  actorId: string,
+  idempotencyKey: string,
+  canonicalPayload: string
+): Promise<string> {
+  const mac = await hmacSha256(
+    secret,
+    `praxisshield/backoffice-invite-code/v1\n${actorId}\n${idempotencyKey}\n${canonicalPayload}`
+  );
+  let code = "";
+  for (let i = 0; i < INVITE_CODE_LENGTH; i += 1) code += CROCKFORD_BASE32[mac[i] % 32];
+  return code;
+}
+
+// Binds the HMAC proof to the code AND its target (practice + email) so a proof
+// can never be replayed for a different practice/recipient. Domain-separated
+// from the code derivation. Returns the hmac:v1:<hex> format the DB requires;
+// the secret and plaintext code never leave the Worker.
+async function computeInviteProof(secret: string, code: string, practiceId: string, email: string): Promise<string> {
+  const mac = await hmacSha256(secret, `praxisshield/backoffice-invite-proof/v1\n${practiceId}\n${email}\n${code}`);
+  return `hmac:v1:${bytesToHex(mac)}`;
 }
 
 async function consumeBackofficeRateLimit(env: Env, actorId: string, action: string): Promise<boolean> {
@@ -3567,36 +3607,55 @@ async function handleBackofficeCreateInvitation(c: Context<{ Bindings: Env }>) {
   if (actor instanceof Response) return actor;
 
   const secret = c.env.BACKOFFICE_INVITE_HMAC_SECRET;
-  if (!secret) {
-    // Fail-closed: never mint a code without the mandatory HMAC signing key.
+  if (!secret || secret.length < BACKOFFICE_INVITE_MIN_SECRET_BYTES) {
+    // Fail-closed: never mint a code without a sufficiently strong signing key.
     console.error("backoffice_invite_hmac_unconfigured");
     return c.json({ ok: false, error: "backoffice_not_configured" }, 500);
   }
 
   const practiceId = c.req.param("id");
   if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+
+  const body = await parseJsonBody(c);
+  // Idempotency is MANDATORY here (unlike other mutations): the code is derived
+  // deterministically from the key + payload, so a retry must carry the same key
+  // to re-derive the same code and replay the same invitation rather than mint a
+  // second one. No auto-generated key.
+  const idempotencyKey = (c.req.header("idempotency-key") ?? stringFieldOrNull(body.idempotencyKey) ?? "").trim();
+  if (!idempotencyKey) {
+    return c.json({ ok: false, error: "idempotency_key_required" }, 400);
+  }
+  const email = (stringFieldOrNull(body.targetEmail) ?? "").trim().toLowerCase();
+  const intendedRole = stringFieldOrNull(body.intendedRole);
+  const deliveryChannel = stringFieldOrNull(body.deliveryChannel) ?? "in_person_code";
+  // expires_at must be supplied by the caller so retries stay deterministic
+  // (a Worker default would differ per call and break idempotent replay).
+  const expiresAt = stringFieldOrNull(body.expiresAt);
+  if (!expiresAt) {
+    return c.json({ ok: false, error: "invalid_expiry" }, 400);
+  }
+
   if (!(await consumeBackofficeRateLimit(c.env, actor.id, "invitation.create"))) {
     return c.json({ ok: false, error: "rate_limited" }, 429);
   }
 
-  const body = await parseJsonBody(c);
-  const email = (stringFieldOrNull(body.targetEmail) ?? "").trim().toLowerCase();
-  const intendedRole = stringFieldOrNull(body.intendedRole);
-  const deliveryChannel = stringFieldOrNull(body.deliveryChannel) ?? "in_person_code";
-  const expiresAt =
-    stringFieldOrNull(body.expiresAt) ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  // One-time secret: a fresh random code + HMAC proof each call. Client idempotency
-  // is intentionally NOT honoured here — a lost response cannot re-deliver a secret,
-  // and the DB revokes any prior pending invitation for the same (practice,email,role),
-  // so "latest wins". We therefore use a fresh reservation key every time.
-  const code = generateInviteCode();
+  // Canonical payload with a fixed key order: identity of the invitation for both
+  // the deterministic code and the DB idempotency fingerprint. Retrying with the
+  // same key MUST reuse identical values.
+  const canonicalPayload = JSON.stringify({
+    channel: deliveryChannel,
+    email,
+    expires: expiresAt,
+    practice: practiceId,
+    role: intendedRole
+  });
+  const code = await deriveInviteCode(secret, actor.id, idempotencyKey, canonicalPayload);
   const proof = await computeInviteProof(secret, code, practiceId, email);
 
   const result = await callBackofficeRpc(c.env, "backoffice_create_invitation", {
     p_actor: actor.id,
     p_request_id: backofficeRequestId(c, body),
-    p_idempotency_key: crypto.randomUUID(),
+    p_idempotency_key: idempotencyKey,
     p_practice_id: practiceId,
     p_target_email: email,
     p_intended_role: intendedRole,
@@ -3608,8 +3667,10 @@ async function handleBackofficeCreateInvitation(c: Context<{ Bindings: Env }>) {
   if (!result.ok) {
     return respondBackofficeResult(c, result, { collapseNotFound: true });
   }
-  // The plaintext code is returned exactly once for out-of-band delivery; it is
-  // never persisted or logged. B4 will handle email_link delivery server-side.
+  // The plaintext code is returned for out-of-band delivery; it is never
+  // persisted or logged. On an idempotent replay the code is re-derived
+  // identically, so a lost response can be safely retried. B4 handles
+  // email_link delivery server-side.
   return c.json({ ...result, code }, 201);
 }
 

@@ -20,7 +20,8 @@ const baseEnv = {
   SUPABASE_URL,
   SUPABASE_ANON_KEY: "anon",
   SUPABASE_SERVICE_ROLE_KEY: "service",
-  BACKOFFICE_INVITE_HMAC_SECRET: "unit-test-secret"
+  // Must be >= 32 bytes (BACKOFFICE_INVITE_MIN_SECRET_BYTES) or the code endpoint fails closed.
+  BACKOFFICE_INVITE_HMAC_SECRET: "unit-test-secret-0123456789-abcdef-01"
 };
 
 type OutboundCall = { url: string; method: string; body: unknown };
@@ -122,6 +123,11 @@ function request(
 
 const aal2Token = () => makeToken({ aal: "aal2", amr: [{ method: "totp", timestamp: nowSeconds() }], iat: nowSeconds() });
 const aal1Token = () => makeToken({ aal: "aal1", amr: [{ method: "password", timestamp: nowSeconds() }], iat: nowSeconds() });
+// AAL2 but the only fresh factor is a password (no MFA) — must NOT satisfy step-up.
+const aal2PasswordOnlyToken = () =>
+  makeToken({ aal: "aal2", amr: [{ method: "password", timestamp: nowSeconds() }], iat: nowSeconds() });
+// AAL2 with no amr at all — a bare iat must NOT satisfy step-up.
+const aal2NoAmrToken = () => makeToken({ aal: "aal2", iat: nowSeconds() });
 
 let originalFetch: typeof fetch;
 let originalConsoleError: typeof console.error;
@@ -192,15 +198,25 @@ describe("Rate limiting", () => {
 });
 
 describe("Invitation code minting", () => {
+  const invitationsPath = "/api/backoffice/practices/22222222-2222-4222-8222-222222222222/invitations";
+  const expiresAt = "2026-08-01T00:00:00.000Z";
+  const inviteBody = (overrides: Record<string, unknown> = {}) => ({
+    targetEmail: "Owner@Example.test",
+    intendedRole: "practice_owner",
+    expiresAt,
+    ...overrides
+  });
+
   it("fails closed with 500 when the HMAC secret is not configured", async () => {
     installWorld();
     const { BACKOFFICE_INVITE_HMAC_SECRET, ...envWithoutSecret } = baseEnv;
     void BACKOFFICE_INVITE_HMAC_SECRET;
     const res = await call(
-      request("/api/backoffice/practices/22222222-2222-4222-8222-222222222222/invitations", {
+      request(invitationsPath, {
         method: "POST",
         token: aal2Token(),
-        body: { targetEmail: "owner@example.test", intendedRole: "practice_owner" }
+        headers: { "idempotency-key": "k-nosecret" },
+        body: inviteBody()
       }),
       envWithoutSecret
     );
@@ -208,17 +224,55 @@ describe("Invitation code minting", () => {
     expect(await res.json()).toEqual({ ok: false, error: "backoffice_not_configured" });
   });
 
+  it("fails closed with 500 when the HMAC secret is too short", async () => {
+    installWorld();
+    const res = await call(
+      request(invitationsPath, {
+        method: "POST",
+        token: aal2Token(),
+        headers: { "idempotency-key": "k-short" },
+        body: inviteBody()
+      }),
+      { ...baseEnv, BACKOFFICE_INVITE_HMAC_SECRET: "too-short" }
+    );
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: "backoffice_not_configured" });
+  });
+
+  it("requires an idempotency key (400 without one, no DB call)", async () => {
+    const world = installWorld();
+    const res = await call(request(invitationsPath, { method: "POST", token: aal2Token(), body: inviteBody() }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "idempotency_key_required" });
+    expect(world.calls.some((c) => c.url.includes("backoffice_create_invitation"))).toBe(false);
+  });
+
+  it("requires an explicit expires_at (400 without one)", async () => {
+    installWorld();
+    const res = await call(
+      request(invitationsPath, {
+        method: "POST",
+        token: aal2Token(),
+        headers: { "idempotency-key": "k-noexp" },
+        body: inviteBody({ expiresAt: undefined })
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "invalid_expiry" });
+  });
+
   it("mints a v1 HMAC proof, keeps the plaintext code out of the DB call, and returns the code once", async () => {
     const world = installWorld({
       rpcResults: {
-        backoffice_create_invitation: { ok: true, invitation_id: "inv1", expires_at: "2026-08-01T00:00:00Z" }
+        backoffice_create_invitation: { ok: true, invitation_id: "inv1", expires_at: expiresAt }
       }
     });
     const res = await call(
-      request("/api/backoffice/practices/22222222-2222-4222-8222-222222222222/invitations", {
+      request(invitationsPath, {
         method: "POST",
         token: aal2Token(),
-        body: { targetEmail: "Owner@Example.test", intendedRole: "practice_owner" }
+        headers: { "idempotency-key": "k-mint" },
+        body: inviteBody()
       })
     );
     expect(res.status).toBe(201);
@@ -229,17 +283,45 @@ describe("Invitation code minting", () => {
     const rpc = world.calls.find((c) => c.url.includes("backoffice_create_invitation"));
     const rpcBody = rpc?.body as Record<string, unknown>;
     expect(rpcBody.p_proof_reference).toMatch(/^hmac:v1:[0-9a-f]{64}$/);
+    expect(rpcBody.p_idempotency_key).toBe("k-mint");
     // The plaintext code must never appear in the DB payload.
     expect(JSON.stringify(rpcBody)).not.toContain(payload.code);
     // Email is normalized to lowercase before it reaches the DB.
     expect(rpcBody.p_target_email).toBe("owner@example.test");
+  });
+
+  it("derives the same code for the same key + payload (idempotent retry re-delivers the secret)", async () => {
+    const rpcResults = {
+      backoffice_create_invitation: { ok: true, invitation_id: "inv1", expires_at: expiresAt }
+    };
+    installWorld({ rpcResults });
+    const first = await call(
+      request(invitationsPath, {
+        method: "POST",
+        token: aal2Token(),
+        headers: { "idempotency-key": "k-repeat" },
+        body: inviteBody()
+      })
+    );
+    installWorld({ rpcResults });
+    const second = await call(
+      request(invitationsPath, {
+        method: "POST",
+        token: aal2Token(),
+        headers: { "idempotency-key": "k-repeat" },
+        body: inviteBody()
+      })
+    );
+    const p1 = (await first.json()) as { code: string };
+    const p2 = (await second.json()) as { code: string };
+    expect(p1.code).toBe(p2.code);
   });
 });
 
 describe("Ownership transfer step-up", () => {
   const practicePath = "/api/backoffice/practices/33333333-3333-4333-8333-333333333333/transfer-ownership";
 
-  it("rejects a stale AAL2 session with 403 stepup_required", async () => {
+  it("rejects a stale MFA step-up with 403 stepup_required", async () => {
     installWorld();
     const staleToken = makeToken({
       aal: "aal2",
@@ -251,7 +333,23 @@ describe("Ownership transfer step-up", () => {
     expect(await res.json()).toEqual({ error: "stepup_required" });
   });
 
-  it("proceeds with a fresh AAL2 step-up", async () => {
+  it("rejects a fresh password-only AAL2 session (no MFA factor) with 403 stepup_required", async () => {
+    installWorld();
+    const res = await call(
+      request(practicePath, { method: "POST", token: aal2PasswordOnlyToken(), body: { newOwner: "u" } })
+    );
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "stepup_required" });
+  });
+
+  it("rejects an AAL2 session with no amr (no iat fallback) with 403 stepup_required", async () => {
+    installWorld();
+    const res = await call(request(practicePath, { method: "POST", token: aal2NoAmrToken(), body: { newOwner: "u" } }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "stepup_required" });
+  });
+
+  it("proceeds with a fresh MFA step-up", async () => {
     installWorld({
       rpcResults: { backoffice_transfer_ownership: { ok: true, practice_id: "p", owner_id: "u" } }
     });
