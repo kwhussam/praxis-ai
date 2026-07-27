@@ -11,6 +11,7 @@ declare const process: {
     TEST_PRACTICE_A_EMAIL?: string;
     TEST_PRACTICE_A_PASSWORD?: string;
     TEST_PRACTICE_B_ID?: string;
+    RUN_BACKOFFICE_IDEMPOTENCY_IT?: string;
     CI?: string;
   };
 };

@@ -1,5 +1,10 @@
 import worker from "../src/index";
 
+// This repo declares jest lifecycle hooks per test module (see the ambient
+// describe/it/expect in global.d.ts and the local declares in other suites).
+declare const beforeEach: (fn: () => void | Promise<void>) => void;
+declare const afterEach: (fn: () => void | Promise<void>) => void;
+
 // ---------------------------------------------------------------------------
 // Test harness: the Worker talks to GoTrue (/auth/v1/user) and PostgREST
 // (/rest/v1/*). We mock globalThis.fetch and route by URL, capturing every
@@ -38,7 +43,8 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 function base64url(value: string) {
-  return Buffer.from(value).toString("base64url");
+  // btoa is a Workers/global runtime primitive (typed via @cloudflare/workers-types).
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function makeToken(claims: Record<string, unknown>) {
@@ -257,7 +263,7 @@ describe("Ownership transfer step-up", () => {
       })
     );
     expect(res.status).toBe(200);
-    expect((await res.json()).ok).toBe(true);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
   });
 });
 

@@ -3568,8 +3568,8 @@ async function handleBackofficeCreateInvitation(c: Context<{ Bindings: Env }>) {
 
   const secret = c.env.BACKOFFICE_INVITE_HMAC_SECRET;
   if (!secret) {
-    // Fail-closed: never mint a code without the mandatory HMAC secret.
-    console.error("backoffice_invite_secret_missing");
+    // Fail-closed: never mint a code without the mandatory HMAC signing key.
+    console.error("backoffice_invite_hmac_unconfigured");
     return c.json({ ok: false, error: "backoffice_not_configured" }, 500);
   }
 
