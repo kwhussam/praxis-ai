@@ -528,6 +528,9 @@ const CRON_MODULES = new Map<string, MonitoringModule[]>(
 // of how many monitoring modules exist.
 const EMAIL_OUTBOX_RETENTION_CRON = "0 4 * * *";
 const EMAIL_OUTBOX_RETENTION_DAYS = 30;
+const BACKOFFICE_AUDIT_RETENTION_CRON = "0 5 * * *";
+const BACKOFFICE_AUDIT_RETENTION_DAYS = 183;
+const BACKOFFICE_AUDIT_RETENTION_BATCH_SIZE = 500;
 
 app.use(
   "*",
@@ -2610,6 +2613,20 @@ async function runEmailOutboxRetention(env: Env) {
   }
 }
 
+async function runBackofficeAuditRetention(env: Env) {
+  try {
+    await supabaseRest(env, "/rest/v1/rpc/anonymize_backoffice_audit_events", {
+      method: "POST",
+      body: {
+        retention_days: BACKOFFICE_AUDIT_RETENTION_DAYS,
+        batch_size: BACKOFFICE_AUDIT_RETENTION_BATCH_SIZE
+      }
+    });
+  } catch (error) {
+    console.error("backoffice_audit_retention_failed", { failure: safeErrorLog(error) });
+  }
+}
+
 function monitoringConcurrencyLimit(env: Env) {
   const configuredLimit = Number.parseInt(env.MONITORING_CONCURRENCY_LIMIT ?? "", 10);
   if (!Number.isFinite(configuredLimit) || configuredLimit <= 0) {
@@ -4059,6 +4076,10 @@ export default {
   scheduled: (controller: ScheduledController, env: Env, ctx: ExecutionContext) => {
     if (controller.cron === EMAIL_OUTBOX_RETENTION_CRON) {
       ctx.waitUntil(runEmailOutboxRetention(env));
+      return;
+    }
+    if (controller.cron === BACKOFFICE_AUDIT_RETENTION_CRON) {
+      ctx.waitUntil(runBackofficeAuditRetention(env));
       return;
     }
     ctx.waitUntil(runScheduledMonitoring(controller.cron, env));

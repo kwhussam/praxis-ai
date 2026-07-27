@@ -1790,6 +1790,35 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("anonymisiert beim Backoffice-Audit-Cron nur faellige Audit-Ereignisse", async () => {
+    const originalFetch = globalThis.fetch;
+    const calledUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calledUrls.push(url);
+
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/anonymize_backoffice_audit_events")) {
+        expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({ retention_days: 183, batch_size: 500 });
+        return Response.json(0);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const waitUntilPromises: Promise<unknown>[] = [];
+      const ctx = { waitUntil: (promise: Promise<unknown>) => waitUntilPromises.push(promise) } as unknown as ExecutionContext;
+
+      worker.scheduled({ cron: "0 5 * * *", scheduledTime: Date.now() } as unknown as ScheduledController, baseEnv, ctx);
+      await Promise.all(waitUntilPromises);
+
+      expect(calledUrls.some((url) => url.includes("/rest/v1/rpc/anonymize_backoffice_audit_events"))).toBe(true);
+      expect(calledUrls.some((url) => url.includes("/rest/v1/practices"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("GET /api/dashboard", () => {

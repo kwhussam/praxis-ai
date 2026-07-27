@@ -176,6 +176,11 @@ Pflichtfelder (Entscheidung @Hussam, 2026-07-24); `domain` bleibt optional:
   neues, referenzierendes Ereignis
 - personenbezogene Audit-Ereignisse werden regulär sechs Monate aufbewahrt und
   danach automatisch irreversibel anonymisiert
+- `retention_until` macht die reguläre Frist je Ereignis nachvollziehbar; eine
+  aktive Aufbewahrungssperre benötigt Ablaufdatum, Begründung und Setzzeitpunkt
+- die Anonymisierung entfernt Akteur, Praxis-/Ziel-/Request-Bezüge,
+  Freitext-Metadaten und Legal-Hold-Bezüge und reduziert den Zeitpunkt auf
+  Tagesgenauigkeit
 
 W4e erhält später eine spezialisierte Reset-Audit-Struktur oder einen streng
 typisierten Ereignistyp auf dieser Grundlage. Vorher wird die GoTrue-OTP-TTL
@@ -359,16 +364,31 @@ Migration `supabase/migrations/20260724160000_backoffice_b1a_authz_schema.sql`;
 Folgeaufgabe (mit B2): `lib/api/database.types.ts` regenerieren, sobald die
 neuen Tabellen erstmals aus Worker/App gelesen werden.
 
-### B1b – Retention/Anonymisierung (offen)
+### B1b – Retention/Anonymisierung (umgesetzt)
 
-- `retention`/`legal_hold`/`anonymized_at`-Felder auf `backoffice_audit_events`.
-- `security definer`-RPC `anonymize_backoffice_audit_events` (fester
-  `search_path`, `execute` von public/anon/authenticated entzogen, nur
-  `service_role`; idempotente begrenzte Batches; Ausnahme nur bei aktiver
-  dokumentierter Aufbewahrungssperre; Bereinigung direkter **und** indirekter
-  Identifikatoren) per Worker-Cron (Muster `cleanup_email_outbox`).
-- Re-Identifizierungs-Negativtest inkl. verbleibender Fremd-/Korrelationsschlüssel.
-- append-only bleibt: kein UPDATE/DELETE-Grant im regulären Schreibpfad.
+Migration `supabase/migrations/20260727113000_backoffice_audit_retention.sql`:
+
+- `retention_until`, dokumentierte/zeitlich begrenzte Legal-Hold-Felder und
+  `anonymized_at` auf `backoffice_audit_events`; Bestand erhält
+  `created_at + 183 Tage`.
+- `security definer`-RPC `anonymize_backoffice_audit_events` mit festem
+  `search_path`; `execute` ist `PUBLIC`/`anon`/`authenticated` entzogen und nur
+  `service_role` erlaubt. Weniger als 183 Tage sowie ungültige Batchgrößen
+  werden abgelehnt.
+- begrenzte, parallelausführungssichere Batches (`FOR UPDATE SKIP LOCKED`),
+  idempotent; aktive dokumentierte Aufbewahrungssperren werden übersprungen.
+- direkte und indirekte Identifikatoren werden entfernt: Akteur, Ziel-ID,
+  Praxis-FK, Request-ID, Metadaten und Legal-Hold-Bezüge; freie
+  Aktions-/Zieltexte werden neutralisiert und der Ereigniszeitpunkt auf den Tag
+  reduziert.
+- täglicher Worker-Cron um 05:00 UTC, getrennt von Monitoring und
+  E-Mail-Outbox-Retention.
+- pgTAP deckt Mindestfrist, Batches, Idempotenz, Legal Hold, frische Ereignisse,
+  RPC-Rechte und fehlende Re-Identifizierbarkeit ab; Worker-Test prüft den
+  isolierten Cron-Pfad.
+- append-only bleibt: kein `UPDATE`/`DELETE`-Grant im regulären Schreibpfad;
+  ausschließlich die gehärtete Anonymisierungsfunktion verändert fällige
+  Zeilen.
 
 ### B2 – Admin-API
 
