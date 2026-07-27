@@ -1559,6 +1559,62 @@ Idempotenz und Audit gegen.
 offenen Punkte entscheiden, dann „B2 frei“ oder an @Codex zur Kontrakt-
 Gegenprüfung.)
 
+**B1b-Abnahme und B2-Kontrakt-Gegenprüfung – @Codex (2026-07-27)**
+
+Claudes fokussierte Prüfung bestätigt den letzten Fix mit vollständigem
+Supabase-Reset und 91 grünen pgTAP-Prüfungen. Es bleibt keine bekannte direkte
+oder indirekte Korrelationsspur im anonymisierten Ereignis. **B1b ist damit
+final abgenommen**; B1a und B1b sind abgeschlossen.
+
+Der vorgeschlagene B2-Scope ist grundsätzlich richtig, benötigt vor der
+Implementierungsfreigabe aber folgende verbindliche Präzisierungen:
+
+1. **Einmalcode niemals mit bloßem SHA-256 speichern.** Acht Base32-Zeichen
+   besitzen nur ungefähr 40 Bit und wären bei einem Datenbankabfluss offline
+   durchsuchbar. Empfehlung: zehn eindeutige Crockford-Base32-Zeichen und
+   ausschließlich `HMAC-SHA-256` mit einem Worker-Secret/„Pepper“; gespeicherte
+   Form mit Schlüsselversion, z. B. `hmac:v1:<digest>`. Vergleich
+   timing-sicher, Klartext nur einmal ausgeben und niemals loggen. Online-
+   Versuche werden streng je Einladung, IP und Zeitfenster begrenzt.
+2. **Mutation und Audit müssen atomar sein.** Ein Worker-`PATCH` und ein
+   anschließender separater Audit-`INSERT` erlauben den Zustand „Änderung
+   erfolgreich, Audit fehlgeschlagen“. Jede schreibende B2-Aktion muss daher
+   über eine eng begrenzte transaktionale DB-RPC oder eine gleichwertige
+   atomare Datenbankoperation laufen, die Berechtigungsziel,
+   Idempotency-Key, Statusänderung und genau ein Erfolgs-/Fehlerereignis
+   konsistent behandelt. Kritische Fehler dürfen nicht als erfolgreicher
+   Fachzustand ohne Audit enden.
+3. **Capabilities vor Endpunkten festschreiben.** Mindestens getrennt:
+   `practice.read`, `practice.create`, `practice.manage`, `invitation.manage`,
+   `membership.manage`, `ownership.transfer`, `audit.read`. Consultant nur im
+   aktiven Assignment-Scope; Support ausschließlich die ausdrücklich
+   freigegebenen Leseaktionen; Owner-Transfer nur `platform_admin` und mit
+   frischer Step-up-Authentisierung. Ein lineares Rollenranking reicht nicht.
+4. **Worker-Rollenauflösung folgt exakt dem B1a-Cutover.** `owner_id` plus
+   aktive `practice_memberships`; `partner_practices` ausschließlich für
+   `white_label`. Ein Fallback auf alte Nicht-`white_label`-Grants würde die
+   bereits geschlossene Revocation-Lücke wieder öffnen.
+5. **B4-Abgrenzung ist akzeptabel, der Redeem-Vertrag wird aber jetzt
+   festgelegt.** B2 darf nur kompatible Einladungen erzeugen: single-use,
+   widerrufbar, Ablaufzeit, atomarer Statuswechsel und keine Unterscheidung
+   „Code unbekannt“ versus „abgelaufen/widerrufen“ nach außen. Die eigentliche
+   öffentliche Einlösung, Membership-Aktivierung und Praxisaktivierung bleiben
+   in B4.
+
+Zu Claudes offenen Entscheidungen empfehle ich:
+
+- **TTL: sieben Tage akzeptieren**, weil der Code persönlich im
+  Onboarding-Prozess übergeben wird; mit zehn Zeichen, HMAC, Single-use,
+  Widerruf und Rate-Limit bleibt das vertretbar. Erneutes Erzeugen widerruft
+  alle älteren offenen Einladungen für dieselbe Praxis/Zieladresse/Rolle.
+- **Accept/Redeem in B4 akzeptieren**, jedoch mit dem oben festgeschriebenen
+  Vertrag und Tests der B2-Erzeugungsseite.
+
+@Hussam, wenn du diesen gehärteten Vertrag einschließlich 7-Tage-TTL und
+B4-Redeem-Grenze bestätigst, kann B2 freigegeben werden. Anschließend kann
+@Claude wie vorgeschlagen implementieren und @Codex gegenprüfen.
+**Rederecht / Am Zug: @Hussam.**
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -3704,6 +3760,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-023 | 2026-07-24 | Das Web-Backoffice startet als internes MVP: persönlicher Einmalcode primär, E-Mail-Link als Fallback, Consultants sehen nur zugewiesene Praxen; Stammdaten sind Pflicht, Domain optional. | Der B1-Scope ist als additive Schema-/Autorisierungsmigration festgelegt; UI und W4e bleiben nachgelagert. | @Hussam |
 | E-024 | 2026-07-24 | Backoffice-Audit-Ereignisse werden sechs Monate personenbezogen aufbewahrt und danach automatisch irreversibel anonymisiert; die Verarbeitung wird transparent in den Datenschutzinformationen beschrieben. | Speicherbegrenzung, Nachvollziehbarkeit und Betroffeneninformation werden mit automatisiertem Ablauf und eng begrenzter Aufbewahrungssperre verbunden. | @Hussam |
 | E-025 | 2026-07-27 | B1a (Backoffice-Tenant/Authz) ist nach Korrektur der RLS-, Owner-Transfer-, Consultant-Audit-, Backfill- und Revocation-Befunde code-seitig abgenommen. | Der Cutover hat keine parallele Nicht-`white_label`-Autorisierungsquelle mehr; ein Widerruf bleibt auch nach erneutem Backfill wirksam. | @Codex, @Claude |
+| E-026 | 2026-07-27 | B1b (sechsmonatige Backoffice-Audit-Aufbewahrung, Legal Hold und irreversible Anonymisierung) ist nach Behebung der Zeitstempel-Korrelationsspur final abgenommen. | 91 pgTAP-Prüfungen bestätigen B1a/B1b; direkte, indirekte und sub-tagesgenaue Zeitbezüge werden nach Frist entfernt, aktive dokumentierte Holds bleiben geschützt. | @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -3733,7 +3790,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
-| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Implementiert `18f0614`, P2-Zeitstempel-Fix `aec9b4f`, von @Claude gegengeprüft (91 pgTAP grün); Abnahme empfohlen, wartet auf @Hussam |
+| B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4031,3 +4088,10 @@ wurden.
   Worker-Rollenauflösung an `practice_memberships`, Idempotenz/Rate-Limit/
   Audit). Zwei offene Entscheidungen: Einladungs-TTL (Vorschlag 7 Tage) und
   Accept-Endpunkt nach B4. Keine Implementierung; Rederecht an @Hussam.
+- **Zuletzt geprüft:** 2026-07-27 – @Codex hat B1b nach Claudes grüner
+  Gegenprüfung final abgenommen (E-026). B2-Scope grundsätzlich bestätigt,
+  aber vor Freigabe gehärtet: zehnstelliger Base32-Code ausschließlich als
+  versionierter HMAC, atomare Mutation+Audit-RPCs, explizite Capabilities,
+  Worker-Rollenauflösung exakt nach B1a-Cutover und jetzt festgelegter
+  B4-Redeem-Vertrag. Empfehlung: sieben Tage TTL und Redeem-Implementierung in
+  B4. Rederecht zur Entscheidung an @Hussam.
