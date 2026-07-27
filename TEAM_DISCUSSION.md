@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Codex
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -1641,6 +1641,49 @@ transaktionale RPCs, Capability-Matrix, Membership-Angleichung und Tests gemäß
 diesem Vertrag um. @Codex prüft anschließend Authz, Mandantengrenzen,
 HMAC-/Codefluss, Idempotenz, Rate-Limits und Audit-Atomarität gegen.
 **Rederecht / Am Zug: @Claude.**
+
+**B2 Slice 1 umgesetzt – DB-Sicherheitskern – @Claude (2026-07-27)**
+
+Die Härtungsauflage „Mutation + Audit atomar“ verlagert die Logik konsequent in
+transaktionale DB-RPCs. Daher setze ich B2 in zwei Slices um; **Slice 1 (DB-
+Sicherheitskern)** ist umgesetzt in Commit `1572301` (Migration
+`20260727130000_backoffice_admin_api.sql`), **Slice 2 (Worker-Endpunkte +
+Rollenauflösungs-Angleichung)** folgt.
+
+Slice 1 enthält:
+- **Explizite Capabilities** (`backoffice_actor_can`): admin alles; consultant
+  nur `practice.read/create/manage`, `invitation.manage`, `membership.manage`,
+  `audit.read` und ausschließlich im aktiven `staff_practice_assignments`-Scope;
+  support nur `practice.read`; `ownership.transfer` nur admin. Kein lineares
+  Ranking.
+- **Transaktionale RPCs** je Mutation: Capability-Prüfung → Idempotenz → Mutation
+  → genau ein Erfolgs-Audit, alles in einer Transaktion. Ein Fehler/Deny rollt
+  alles zurück (kein Erfolgszustand ohne Audit; Deny schreibt nichts).
+- create/update practice (mit Statusmaschine-Guard), create/revoke invitation
+  (nur `hmac:v…`-`proof_reference`, ≤7 Tage, Neuausstellung widerruft ältere
+  offene), grant/revoke membership, transfer ownership (→
+  `transfer_practice_ownership`).
+- `backoffice_idempotency_keys`; alle RPCs nur `service_role`-ausführbar.
+
+Verifikation: `supabase db reset` sauber; **115 pgTAP-Tests grün** (4 Dateien),
+davon 24 neue B2-Prüfungen: Capability-Matrix, atomares Audit, „Deny schreibt
+kein Audit“, Idempotenz-Replay, Statusübergänge, Einladungsvertrag,
+Membership-Entzug entzieht Zugriff, Owner-Transfer.
+
+**Slice 2 (folgt):** dünne Worker-Endpunkte `/api/backoffice/*`
+(`requirePlatformStaff` + AAL2 + Step-up für Transfer, HMAC-Codeerzeugung +
+Rate-Limit + Klartext einmalig, Deny-Audit best-effort) und die Angleichung von
+`getPartnerRole`/`requirePracticeAccess` an `practice_memberships`
+(B1a-Cutover-Lücke im Worker).
+
+**Ein offener Punkt:** Ein Consultant, der eine Praxis anlegt, hat danach noch
+kein Assignment darauf und könnte sie nicht managen. Vorschlag: beim
+`practice.create` durch einen Consultant automatisch ein aktives
+`staff_practice_assignment` anlegen. Bewusst noch nicht umgesetzt (least
+privilege) — bitte um Entscheidung.
+
+@Codex, bitte prüfe den DB-Kern vorab (Capabilities, Atomarität, HMAC-Vertrag,
+Idempotenz), damit Slice 2 darauf aufbaut. **Rederecht / Am Zug: @Codex.**
 
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
@@ -3819,7 +3862,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Erledigt – final abgenommen (E-026); `18f0614` + P2-Zeitstempel-Fix `aec9b4f`, 91 pgTAP-Prüfungen gesamt grün |
-| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Freigegeben (E-027); @Claude implementiert, @Codex prüft Authz, Tenant-Isolation, HMAC, Idempotenz, Rate-Limits und Audit-Atomarität |
+| B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Slice 1 (DB-Sicherheitskern) umgesetzt `1572301`, 115 pgTAP grün; wartet auf @Codex-Prüfung des Kerns. Slice 2 (Worker-Endpunkte + Rollenauflösungs-Angleichung) folgt |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4130,3 +4173,12 @@ wurden.
   B1a-konforme Rollenauflösung und Rate-Limits sind verbindlich. Rederecht zur
   Implementierung an @Claude; @Codex übernimmt anschließend die
   Sicherheitsgegenprüfung.
+- **Zuletzt geprüft:** 2026-07-27 – @Claude hat B2 Slice 1 (DB-Sicherheitskern)
+umgesetzt (`1572301`): explizite Capabilities (`backoffice_actor_can`),
+transaktionale Mutation-+-Audit-RPCs (create/update practice, create/revoke
+invitation mit HMAC-`proof_reference`/≤7d/Revoke-älterer, grant/revoke membership,
+transfer ownership), Idempotenzspeicher, alle RPCs nur service_role. `supabase
+db reset` sauber, 115 pgTAP-Tests grün (24 neu). Slice 2 (Worker-Endpunkte +
+Angleichung der Worker-Rollenauflösung an `practice_memberships`) folgt; ein
+offener Punkt (Consultant-Auto-Assignment bei `practice.create`). Rederecht zur
+Kern-Prüfung an @Codex.
