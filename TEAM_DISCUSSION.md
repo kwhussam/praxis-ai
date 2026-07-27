@@ -1496,6 +1496,69 @@ Zeitpunkt; `anonymized_at` ist der Verarbeitungszeitpunkt, nicht der Ereigniszei
 abgeschlossen; der nächste abgegrenzte Schritt wäre B2 (Admin-API). Entscheidung
 und Freigabe liegen bei dir. **Rederecht / Am Zug: @Hussam.**
 
+**B2-Scope (Admin-API) – @Claude (2026-07-27)**
+
+@Hussam hat den Start des nächsten Schritts freigegeben. Wie bei B1 lege ich
+zuerst einen im echten Worker-Code verankerten Kontrakt vor, damit die
+sicherheitskritische API-Schicht (service_role lebt im Worker) auf abgestimmter
+Grundlage entsteht – noch keine Implementierung.
+
+**Grundlage (bestehende Worker-Muster, wiederverwendbar):**
+`getAuthenticatedUser` (Bearer → `/auth/v1/user`), `requirePracticeAccess`
+(Rolle via `owner_id`/`getPartnerRole`, `requiredRole` via
+`can_access_practice`-RPC, `auditPracticeAccess`), `consume_rate_limit_window`
+und das vorhandene Idempotency-Muster.
+
+**Integrationsbefund (muss B2 mit erledigen):** `getPartnerRole`/
+`requirePracticeAccess` lesen die Rolle heute nur aus `partner_practices`. Nach
+dem B1a-Cutover kennt der Worker `practice_memberships` noch nicht; ein reiner
+Membership-Zugriff (künftige eingeladene Mitglieder) liefe ins 403, obwohl die
+DB-Funktion Zugriff gäbe. B2 gleicht die Worker-Rollenauflösung an
+`practice_memberships` an.
+
+**Neuer Authz-Layer (`requirePlatformStaff(c, capability)`):** valider Session →
+AAL2 → aktiver `platform_staff`-Eintrag (via service_role) → Capability der
+Rolle → (consultant) Zuweisungs-Scope via `staff_practice_assignments` →
+Rate-Limit → Backoffice-Audit. Rollen→Capabilities laut Matrix
+(`platform_admin` alle; `security_consultant` nur zugewiesene Praxen;
+`support` nur Lesen).
+
+**Endpunkte (alle `/api/backoffice/*`, Staff + AAL2):**
+- `GET /practices` (Suche, serverseitige Pagination; consultant nur zugewiesen)
+- `POST /practices` (Draft anlegen, Pflicht-Stammdaten)
+- `GET /practices/:id`, `PATCH /practices/:id` (Stammdaten + Statusübergänge
+  `draft→invited→active→suspended→archived`, nur erlaubte Übergänge)
+- `POST /practices/:id/invitations` (Einmalcode erzeugen; Klartext **einmalig**
+  in der Antwort, nur Hash als `proof_reference`; `delivery_channel`) und
+  `POST /invitations/:id/revoke`
+- `GET /practices/:id/memberships`, `POST` grant / `POST .../revoke`
+  (Owner-Wechsel über `transfer_practice_ownership`)
+- `GET /practices/:id/audit` (admin alle, consultant zugewiesen)
+- jede mutierende Route schreibt genau ein `backoffice_audit_events` (append-only)
+
+**Empfohlene Defaults (bei „ok“ setze ich sie so um):**
+1. **Einmalcode:** 8 Zeichen Base32 (ohne mehrdeutige Zeichen), Speicherung nur
+   als HMAC/SHA-256 in `proof_reference`, single-use, nie geloggt.
+2. **Idempotenz** für `POST /practices` und `/invitations` (Header
+   `Idempotency-Key`) gegen Doppelanlage; **Rate-Limit** je Staff/Ziel/Praxis/IP
+   über `consume_rate_limit_window`.
+3. **AAL2:** Backoffice-Endpunkte verlangen `aal2`; MFA-Enrollment ist Ops/B3.
+
+**Offene Entscheidungen für dich:**
+- **Einladungs-TTL:** Passwort-Reset-artige 10 Min sind für Onboarding zu kurz.
+  Vorschlag: **7 Tage**, einmalig, widerrufbar, erneutes Senden invalidiert.
+- **Accept-/Redeem-Endpunkt** (Inhaber löst Code ein → Membership + Praxis
+  `active`) gehört fachlich zu **B4** (Aktivierung), nicht B2. Vorschlag: in B2
+  nur Staff-Endpunkte, Accept in B4. Einverstanden?
+
+**Arbeitsaufteilung (Vorschlag):** Ich setze B2 (Endpunkte + Tests + Worker-
+Membership-Angleichung) um; @Codex prüft Authz/Capabilities, Rate-Limit/
+Idempotenz und Audit gegen.
+
+**Rederecht / Am Zug: @Hussam.** (Bitte: Scope bestätigen/kürzen, die zwei
+offenen Punkte entscheiden, dann „B2 frei“ oder an @Codex zur Kontrakt-
+Gegenprüfung.)
+
 ### D-004 – Gesamtbewertung und nächste Verbesserungen
 
 - **Datum:** 2026-07-23
@@ -3671,6 +3734,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | Audit-Aufbewahrungsfrist für Backoffice-Ereignisse datenschutzrechtlich entscheiden | @Hussam | 2026-07-24 | Erledigt – sechs Monate personenbezogen, danach automatische irreversible Anonymisierung (E-024, `90c2c7b`) |
 | B1a umsetzen: Backoffice-Tenant/Authz additiv (Cutover, Backfill, RLS) | @Claude, @Codex | 2026-07-27 | Erledigt – code-seitig abgenommen (E-025); `efef011` + Korrekturen `bcd458a`/`2be4cfd`, 74 pgTAP-Tests berichtet grün |
 | B1b umsetzen: Retention/Anonymisierung (`backoffice_audit_events`) | @Codex, @Claude | 2026-07-27 | Implementiert `18f0614`, P2-Zeitstempel-Fix `aec9b4f`, von @Claude gegengeprüft (91 pgTAP grün); Abnahme empfohlen, wartet auf @Hussam |
+| B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
 
@@ -3960,3 +4024,10 @@ wurden.
   reset` sauber, 91 pgTAP-Tests grün (74 B1a + 17 B1b). Keine weitere
   Korrelationsspur. **B1b Abnahme empfohlen**; B1a+B1b abgeschlossen, nächster
   Schritt wäre B2. Rederecht an @Hussam.
+- **Zuletzt geprüft:** 2026-07-27 – @Hussam hat den Start von B2 freigegeben;
+  @Claude hat einen im Worker-Code verankerten B2-Kontrakt-Scope vorgelegt
+  (neuer `requirePlatformStaff`-Authz-Layer mit AAL2/Capabilities/Zuweisungs-
+  Scope, Backoffice-Endpunkte, Einmalcode-Einladung, Angleichung der
+  Worker-Rollenauflösung an `practice_memberships`, Idempotenz/Rate-Limit/
+  Audit). Zwei offene Entscheidungen: Einladungs-TTL (Vorschlag 7 Tage) und
+  Accept-Endpunkt nach B4. Keine Implementierung; Rederecht an @Hussam.
