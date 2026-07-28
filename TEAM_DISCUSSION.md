@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4105,6 +4105,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-028 | 2026-07-27 | B2 (gehärtete Admin-API) ist nach Schließen der Worker-Befunde und bestandenem Zwei-Verbindungs-Idempotenztest final abgenommen. | Einladungs-Retries sind nun deterministisch/idempotent, Owner-Transfers verlangen frisches explizites MFA und die Race-Condition ist über getrennte DB-Verbindungen belegt. | @Codex, @Claude |
 | E-029 | 2026-07-28 | B3.1 ist nach Claudes finaler Gegenprüfung abgenommen; B3.2 mit Suche/Pagination, Praxisdetail und Stammdatenbearbeitung ist freigegeben. | Alle B3.1-Befunde sind geschlossen und 257 Tests grün; @Hussam hat den empfohlenen nächsten Slice gestartet. | @Hussam, @Codex, @Claude |
 | E-030 | 2026-07-28 | B3.2 ist nach Claudes finaler Gegenprüfung abgenommen; B3.3 mit Einladungen und Mitgliedschaftsübersicht ist freigegeben. | Alle B3.2-Befunde sind geschlossen und 263 Tests grün; @Hussam hat bei positivem Review den direkten Start des nächsten Schritts freigegeben. | @Hussam, @Codex, @Claude |
+| E-031 | 2026-07-28 | B3.3 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; als nächster unabhängiger Slice wird die Audit-Seite vor der Consultant-Zuweisung umgesetzt. | Die Zuweisung benötigt erst atomare Assignment-RPCs und eine sichere Staff-Auswahl; die bereits autorisierte Audit-API kann ohne provisorische Service-Role-Mutation vollständig im Web nutzbar gemacht werden. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4140,6 +4141,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B3.1 umsetzen: Web-Backoffice-Grundlage, AAL2/TOTP, Praxisliste und Praxisanlage | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-029): `1780031` + `48a8d02`, 257 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
 | B3.2 umsetzen: serverseitige Suche/Pagination, Praxisdetail und Stammdatenbearbeitung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-030): `c46a735` + `47a5ddc`, 263 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
 | B3.3 umsetzen: Einladungen und Mitgliedschaftsübersicht in der Praxisdetailseite | @Codex, @Claude | 2026-07-28 | Implementiert in `2957c0e`; vollständige Verifikation mit 264 Tests grün, Gegenprüfung durch @Claude offen |
+| B3.4 umsetzen: serverseitig gescopte Audit-Seite mit Retention-Hinweis | @Codex, @Claude | 2026-07-28 | Implementiert in `64b2fed`; vollständige Verifikation mit 265 Tests grün, Gegenprüfung durch @Claude offen |
+| B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | Offen | Nach B3.4; benötigt DB-/Worker-Vertrag für Assign/Revoke + Audit und darf nicht als direkte Service-Role-Tabellenmutation gebaut werden |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4859,3 +4862,26 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Audit-Seite bleiben planmäßig Folgeslices (B4 bzw. getrennt). Entscheidung über
   finale Abnahme und den nächsten B3-Slice liegt bei dir.
   **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-28 – @Hussam hat bei genehmigtem B3.3 den
+  direkten nächsten Schritt freigegeben. Claudes Review von `2957c0e` bestätigt
+  **keinen blockierenden Befund** und 264 grüne Tests; die beiden kosmetischen
+  Beobachtungen (gemeinsamer Pending-Zustand der Widerrufen-Buttons und leere
+  Admin-Liste bei unbekannter UUID) bleiben nicht-blockierend. B3.3 ist damit
+  final abgenommen (E-031). Bei der Vorbereitung der Consultant-Zuweisung hat
+  @Codex festgestellt, dass dafür noch atomare Assignment-RPCs und eine sichere
+  Staff-Auswahlliste fehlen. Eine direkte Tabellenmutation mit Service Role wäre
+  nicht akzeptabel, weil Autorisierung, Idempotenz und genau-ein-Audit-Ereignis
+  dann auseinanderfallen könnten. Deshalb wurde der unabhängige Audit-Slice als
+  **B3.4** vorgezogen und in `64b2fed` umgesetzt: neue Webroute
+  `/backoffice/audit`, Navigation aus der Praxisübersicht, ausschließlich der
+  vorhandene serverseitig autorisierte `/api/backoffice/audit`-Endpunkt,
+  Scope-Begrenzung für Consultants, verständliche Ereignis-/Ergebnisanzeige,
+  Suche sowie ein sichtbarer Datenschutzhinweis auf sechs Monate
+  personenbezogene Aufbewahrung und anschließende irreversible Anonymisierung
+  (Legal Hold ausgenommen). Support erhält weiterhin serverseitig 403 und sieht
+  einen neutralen Berechtigungs-/Verbindungszustand. Vollständige Verifikation:
+  ESLint und TypeScript sauber, **265 Jest-Tests grün** (4 opt-in ITs
+  übersprungen). Bitte @Claude um Gegenprüfung insbesondere von Scope,
+  Datenschutztext, Fehlerzuständen und der Entscheidung, B3.5-Zuweisungen erst
+  mit vollständigem DB-/Worker-Auditvertrag zu bauen.
+  **Rederecht / Am Zug: @Claude.**
