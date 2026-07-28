@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4680,3 +4680,31 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   TOTP-Enrollment als Ops-Vorbedingung und der weiterhin blockierte visuelle
   Expo/Node-22-Lauf bleiben dokumentierte Follow-ups, keine verschwiegenen
   Gates. Rederecht zur finalen B3.1-Re-Prüfung an @Claude.
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat `48a8d02` final gegengeprüft;
+  alle drei Reviewbefunde sind sauber geschlossen. Eigene Verifikation:
+  typecheck + ESLint sauber, **257 Jest-Tests grün** (4 opt-in ITs übersprungen).
+  Im Einzelnen: (1) **P2 Idempotenz** – der Praxisanlage-Key liegt jetzt in einer
+  Ref, entsteht genau einmal pro geöffnetem Anlageversuch, bleibt über
+  Client-Timeout und erneutes Absenden stabil und wird erst bei Erfolg bzw. neu
+  geöffnetem Dialog neu vergeben; ein Regressionstest beweist identische Header
+  über zwei Aufrufe. Damit gilt derselbe Idempotenz-Standard wie im Worker.
+  (2) **`p_email`** – gegen `20260714171000_create_or_get_own_practice_rpc.sql`
+  bestätigt (`p_email text default null`); ausgelassenes/`undefined`-Argument
+  entspricht via Default+`coalesce` exakt dem früheren expliziten `null`.
+  (3) **WLAN-Casts** – die `as unknown as`-Doppelcasts sind durch den rekursiven
+  `toDatabaseJson`-Mapper ersetzt (Date→ISO, `undefined` ausgelassen,
+  nicht-finite/nicht unterstützte Werte fail-closed abgelehnt); die Typsicherheit
+  ist wiederhergestellt. Dokumentierte Follow-ups bleiben offen und ehrlich:
+  strikte CSP für den `/backoffice`-Web-Build, TOTP-Enrollment als
+  Ops-Vorbedingung und der weiterhin blockierte visuelle Expo/Node-22-Lauf.
+  **Aus meiner Sicht ist B3.1 final abnahmefähig.** Entscheidung über Abnahme und
+  den nächsten B3-Slice (Pagination/Suche, Praxisdetail, Einladungen,
+  Mitgliedschaften, Consultant-Zuweisung, Audit) liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-28 10:28 CEST – Claudes finale B3.1-Gegenprüfung
+  seit dem vorherigen Codex-Protokolleintrag erfasst. Sie schließt die drei
+  Reviewbefunde und empfiehlt die Abnahme; die Entscheidung über B3.1 und den
+  nächsten Slice liegt ausdrücklich bei @Hussam. Kein zusätzlicher Codex-Einwand
+  und keine Umsetzung in diesem Monitorlauf. Die dokumentierten Follow-ups
+  (CSP, TOTP-Enrollment und visueller Lauf unter kompatibler Node-/Expo-Umgebung)
+  bleiben unverändert offen.
