@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4885,3 +4885,46 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Datenschutztext, Fehlerzuständen und der Entscheidung, B3.5-Zuweisungen erst
   mit vollständigem DB-/Worker-Auditvertrag zu bauen.
   **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat B3.4 (`64b2fed`) gegengeprüft.
+  Der Slice ist reines Client-Wiring (neue Route `app/backoffice/audit.tsx`,
+  Navigation aus der Praxisübersicht, ein API-Wrapper, ein Typ, ein Test); der
+  Endpunkt `/api/backoffice/audit` stammt aus B1/B2. Eigene Verifikation:
+  `npm run verify` sauber, **265 Jest-Tests grün** (4 opt-in ITs übersprungen).
+  (1) **Scope** – serverseitig dicht: `handleBackofficeAudit` erzwingt
+  `requireBackofficeActor` → `resolveStaffScope` (null → 403) → Support → 403
+  (`audit.read` nur Admin/Consultant); Consultant wird per
+  `practice_id=in.(scope.practiceIds)` begrenzt, leerer Scope liefert `{events:[]}`,
+  nur Admin (`practiceIds==="all"`) sieht alles. Das Client-Wrapper reicht keinen
+  Scope-Parameter durch – die Grenze ist nicht vom UI aus aufweitbar. Der
+  `select` (`id, actor_user_id, action, target_type, target_id, practice_id,
+  result, request_id, created_at`) deckt sich exakt mit `BackofficeAuditEvent`.
+  (2) **Datenschutztext** – die Zusage „sechs Monate, danach irreversible
+  Anonymisierung, Legal Hold ausgenommen" ist real gedeckt:
+  `anonymize_backoffice_audit_events` (Migration `20260727113000`) nullt
+  `actor_user_id`/`target_id`/`practice_id`/`request_id` und ersetzt
+  `action`/`target_type`/`metadata` (irreversibel), Grenze 183 Tage ≈ 6 Monate,
+  und die Eligible-Query schließt aktive Sperren via
+  `legal_hold_until is null or legal_hold_until <= now()` aus. Der Worker plant
+  den Lauf per `ctx.waitUntil(runBackofficeAuditRetention)`. Kein leeres
+  Versprechen.
+  (3) **Fehlerzustände** – Support/fehlende Berechtigung erzeugt serverseitig 403
+  → `audit.isError` → neutraler Text („Rolle besitzt möglicherweise keine
+  Audit-Berechtigung oder die Verbindung ist fehlgeschlagen") ununterscheidbar von
+  einem Verbindungsfehler; leere Liste und Ladezustand sind getrennt behandelt.
+  (4) **MFA-Zwang** – die Seite lässt nur `aal2` durch (`signed_out` → Login,
+  `aal1` → MFA), konsistent mit Index/Detail.
+  (5) **B3.5-Entscheidung** – ich teile sie: Zuweisung/Widerruf gehören hinter
+  atomare Security-Definer-RPCs, die Autorisierung, Idempotenz und **genau ein**
+  Audit-Ereignis bündeln – genau das Muster aller B2/B3-Mutationen. Eine direkte
+  Service-Role-Tabellenmutation wäre nicht abnahmefähig. Den Audit-Slice
+  vorzuziehen war richtig, weil er unabhängig und ohne neuen Schreibpfad ist.
+  **Aus meiner Sicht ist B3.4 code-seitig abnahmefähig; keine blockierenden
+  Befunde.** Zwei kosmetische, nicht-blockierende Beobachtungen: (a) die
+  Client-Suche filtert nur die serverseitige 200-Zeilen-Seite – ältere Ereignisse
+  jenseits des Limits sind nicht suchbar (serverseitige Suche/Pagination ist ein
+  Folge-Thema, sobald Audit-Volumen wächst); (b) der Query-Key
+  `["backoffice-audit"]` wird nach Mutationen (Einladung/Mitgliedschaft) nicht
+  invalidiert, sodass eine frische Aktion erst nach Refetch/Remount erscheint –
+  reine UX, kein Korrektheits- oder Sicherheitsthema. Entscheidung über finale
+  Abnahme und den Start von B3.5 liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
