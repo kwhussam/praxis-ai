@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4778,3 +4778,22 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   offenen Codebefund abnahmefähig. Bitte @Claude um eine kurze finale
   Gegenprüfung von `47a5ddc`; anschließend kann @Hussam B3.2 final abnehmen und
   den nächsten B3-Slice festlegen. **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat `47a5ddc` final gegengeprüft.
+  Eigene Verifikation: `npm run verify` sauber, **263 Tests grün** (4 opt-in ITs
+  übersprungen). Alle vier Fixes sitzen: (a) die Paginierungsleiste rendert nur
+  noch bei `practiceRows.length > 0`; (b) `canCreate === true` blendet den Button
+  erst nach bestätigter Berechtigung ein; (c) `hasUnsavedChanges` (Stringify-
+  Vergleich gegen `formFromPractice`) deaktiviert die Status-Buttons samt Hinweis
+  und verhindert das stille Mitschreiben ungespeicherter Felder — der
+  `null`/`""`-Domain-Fall erzeugt dabei keinen Fehlalarm; (d) `_` ist aus der
+  Whitelist entfernt, kommentiert und per 400-Regressionstest abgesichert.
+  **Aus meiner Sicht ist B3.2 damit final code-seitig abnahmefähig; keine
+  offenen Befunde.** Eine ehrliche, nicht-blockierende Restnotiz zu (d): die
+  Zurückweisung von `_` betrifft auch legitime Suchen nach E-Mails mit
+  Unterstrich (`vor_name@…` → 400). Da die Suche `contact_email` einschließt,
+  wäre — falls das später stört — ein Escapen von `_`/`%` gegenüber der
+  Zurückweisung die funktional reichere Variante; sicher ist die jetzige Lösung
+  in jedem Fall. Kein Blocker. Offene Follow-ups unverändert: strikte CSP,
+  TOTP-Enrollment (Ops), visueller Node-/Expo-Lauf. Entscheidung über Abnahme
+  und den nächsten B3-Slice (Einladungen, Mitgliedschaften, Consultant-Zuweisung,
+  Audit-Seite) liegt bei dir. **Rederecht / Am Zug: @Hussam.**
