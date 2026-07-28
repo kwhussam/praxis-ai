@@ -87,3 +87,15 @@ export type CreateInvitationResult = {
   expires_at: string;
   code: string;
 };
+
+export type BackofficeAuditEvent = {
+  id: string;
+  actor_user_id: string | null;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  practice_id: string | null;
+  result: string;
+  request_id: string | null;
+  created_at: string;
+};

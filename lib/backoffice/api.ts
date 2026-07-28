@@ -3,6 +3,7 @@ import type {
   BackofficePracticeDetailResponse,
   BackofficePracticePage,
   BackofficeInvitation,
+  BackofficeAuditEvent,
   BackofficeMembership,
   CreateInvitationResult,
   CreatePracticeInput,
@@ -98,4 +99,8 @@ export async function revokeBackofficeInvitation(invitationId: string, ids: Back
     method: "POST",
     headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
   });
+}
+
+export async function listBackofficeAuditEvents() {
+  return apiRequest<{ events: BackofficeAuditEvent[] }>("/api/backoffice/audit");
 }

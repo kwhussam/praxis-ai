@@ -6,7 +6,7 @@ export default function BackofficeLayout() {
       <Stack.Screen name="login" />
       <Stack.Screen name="mfa" />
       <Stack.Screen name="index" />
+      <Stack.Screen name="audit" />
     </Stack>
   );
 }
-

@@ -126,7 +126,7 @@ export default function BackofficeDashboard() {
         <View style={[styles.navigation, compact && styles.navigationCompact]}>
           <NavItem icon="business-outline" label="Praxen" active compact={compact} />
           <NavItem icon="people-outline" label="Benutzer" disabled compact={compact} />
-          <NavItem icon="shield-checkmark-outline" label="Audit" disabled compact={compact} />
+          <NavItem icon="shield-checkmark-outline" label="Audit" onPress={() => router.push("/backoffice/audit" as never)} compact={compact} />
         </View>
         {!compact ? (
           <Pressable
@@ -261,8 +261,8 @@ export default function BackofficeDashboard() {
   );
 }
 
-function NavItem({ icon, label, active, disabled, compact }: { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; disabled?: boolean; compact?: boolean }) {
-  return <View style={[styles.navItem, active && styles.navItemActive, disabled && styles.navItemDisabled]}><Ionicons color={active ? "#42D3B3" : "#9FB3C8"} name={icon} size={20} />{!compact ? <Text style={[styles.navText, active && styles.navTextActive]}>{label}</Text> : null}</View>;
+function NavItem({ icon, label, active, disabled, compact, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; active?: boolean; disabled?: boolean; compact?: boolean; onPress?: () => void }) {
+  return <Pressable accessibilityRole={onPress ? "link" : undefined} disabled={disabled} onPress={onPress} style={[styles.navItem, active && styles.navItemActive, disabled && styles.navItemDisabled]}><Ionicons color={active ? "#42D3B3" : "#9FB3C8"} name={icon} size={20} />{!compact ? <Text style={[styles.navText, active && styles.navTextActive]}>{label}</Text> : null}</Pressable>;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

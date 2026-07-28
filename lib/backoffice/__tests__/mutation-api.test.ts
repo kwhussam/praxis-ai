@@ -17,6 +17,7 @@ import {
   createBackofficePractice,
   getBackofficePractice,
   listBackofficeInvitations,
+  listBackofficeAuditEvents,
   listBackofficeMemberships,
   listBackofficePractices,
   revokeBackofficeInvitation,
@@ -91,6 +92,12 @@ describe("B3 create-practice idempotency", () => {
     expect(inviteOptions?.body).toMatchObject({ targetEmail: "owner@example.test", intendedRole: "practice_owner", deliveryChannel: "in_person_code" });
     expect(inviteOptions?.headers).toEqual({ "Idempotency-Key": "invite-1", "X-Request-Id": "request-invite-1" });
     expect(getCalls()[callsBefore + 3][0]).toBe("/api/backoffice/invitations/invitation-1/revoke");
+  });
+
+  it("loads audit events only through the server-authorized endpoint", async () => {
+    const callsBefore = getCalls().length;
+    await listBackofficeAuditEvents();
+    expect(getCalls()[callsBefore]).toEqual(["/api/backoffice/audit"]);
   });
 });
 
