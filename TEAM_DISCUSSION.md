@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4104,6 +4104,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-027 | 2026-07-27 | B2 ist mit dem gehärteten Admin-API-Vertrag freigegeben: 10-stelliger HMAC-Code, 7 Tage TTL, Redeem in B4, atomare Mutation+Audit, explizite Capabilities und B1a-konforme Rollenauflösung. | Die service-role-basierte API darf keine Offline-Codeprüfung, unauditierten Teilerfolg oder alte Autorisierungsquelle eröffnen. | @Hussam |
 | E-028 | 2026-07-27 | B2 (gehärtete Admin-API) ist nach Schließen der Worker-Befunde und bestandenem Zwei-Verbindungs-Idempotenztest final abgenommen. | Einladungs-Retries sind nun deterministisch/idempotent, Owner-Transfers verlangen frisches explizites MFA und die Race-Condition ist über getrennte DB-Verbindungen belegt. | @Codex, @Claude |
 | E-029 | 2026-07-28 | B3.1 ist nach Claudes finaler Gegenprüfung abgenommen; B3.2 mit Suche/Pagination, Praxisdetail und Stammdatenbearbeitung ist freigegeben. | Alle B3.1-Befunde sind geschlossen und 257 Tests grün; @Hussam hat den empfohlenen nächsten Slice gestartet. | @Hussam, @Codex, @Claude |
+| E-030 | 2026-07-28 | B3.2 ist nach Claudes finaler Gegenprüfung abgenommen; B3.3 mit Einladungen und Mitgliedschaftsübersicht ist freigegeben. | Alle B3.2-Befunde sind geschlossen und 263 Tests grün; @Hussam hat bei positivem Review den direkten Start des nächsten Schritts freigegeben. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4137,7 +4138,8 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B2 umsetzen: gehärtete Admin-API | @Claude, @Codex | 2026-07-27 | Erledigt – final abgenommen (E-028) nach Worker-Korrekturen `d4daec9` und Zwei-Verbindungs-Test `aed3218`; Redeem/Accept bleibt planmäßig B4 |
 | Versionierung generierter Supabase-Datenbanktypen entscheiden | @Hussam | 2026-07-27 | Erledigt mit B3.1 – Datei wird von `createClient<Database>` genutzt und ab `1780031` versioniert |
 | B3.1 umsetzen: Web-Backoffice-Grundlage, AAL2/TOTP, Praxisliste und Praxisanlage | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-029): `1780031` + `48a8d02`, 257 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
-| B3.2 umsetzen: serverseitige Suche/Pagination, Praxisdetail und Stammdatenbearbeitung | @Codex, @Claude | 2026-07-28 | Implementiert in `c46a735`; 262 Tests grün, Gegenprüfung und visueller Lauf offen |
+| B3.2 umsetzen: serverseitige Suche/Pagination, Praxisdetail und Stammdatenbearbeitung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-030): `c46a735` + `47a5ddc`, 263 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
+| B3.3 umsetzen: Einladungen und Mitgliedschaftsübersicht in der Praxisdetailseite | @Codex, @Claude | 2026-07-28 | Implementiert in `2957c0e`; vollständige Verifikation mit 264 Tests grün, Gegenprüfung durch @Claude offen |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4797,3 +4799,24 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   TOTP-Enrollment (Ops), visueller Node-/Expo-Lauf. Entscheidung über Abnahme
   und den nächsten B3-Slice (Einladungen, Mitgliedschaften, Consultant-Zuweisung,
   Audit-Seite) liegt bei dir. **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-28 – @Hussam hat bei positivem Review den Start
+  des nächsten Schritts freigegeben. Nach Claudes Gegenprüfung ohne offenen
+  B3.2-Befund gilt B3.2 als final abgenommen (E-030). @Codex hat den nächsten
+  begrenzten Slice **B3.3** in `2957c0e` umgesetzt: Auf der Praxisdetailseite
+  können berechtigte Admins und zugewiesene Consultants persönliche
+  Einmalcode-Einladungen für Inhaber, Praxis-Manager, Prüfer oder Leser
+  erstellen, bestehende Einladungen einsehen und offene Einladungen widerrufen.
+  Der Klartextcode wird nur aus der unmittelbaren Worker-Antwort angezeigt und
+  nie erneut aus der Datenbank geladen. Ein identischer Retry hält
+  Idempotency-Key, Request-ID, normalisierte E-Mail, Rolle und den expliziten
+  Sieben-Tage-Ablaufzeitpunkt stabil; eine geänderte Nutzlast beginnt dagegen
+  einen neuen Versuch. Aktive Mitgliedschaften werden getrennt angezeigt;
+  Support lädt wegen fehlender Capability weder Einladungen noch
+  Mitgliedschaften. Direkte Membership-Erteilung per Benutzer-UUID wurde
+  bewusst nicht als Endnutzer-UI exponiert: reguläres Onboarding läuft über die
+  Einladung, deren Redeem/Accept weiterhin planmäßig B4 gehört. Vollständige
+  Verifikation: ESLint und TypeScript sauber, **264 Jest-Tests grün** (4 opt-in
+  ITs übersprungen). Consultant-Zuweisung und Audit-Seite bleiben getrennte
+  Folgeslices. Bitte @Claude um Gegenprüfung insbesondere von Rollenmodell,
+  Retry-/Secret-Vertrag, Capability-Grenze und UI-Zuständen.
+  **Rederecht / Am Zug: @Claude.**
