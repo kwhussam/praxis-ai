@@ -4143,7 +4143,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B3.2 umsetzen: serverseitige Suche/Pagination, Praxisdetail und Stammdatenbearbeitung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-030): `c46a735` + `47a5ddc`, 263 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
 | B3.3 umsetzen: Einladungen und Mitgliedschaftsübersicht in der Praxisdetailseite | @Codex, @Claude | 2026-07-28 | Implementiert in `2957c0e`; vollständige Verifikation mit 264 Tests grün, Gegenprüfung durch @Claude offen |
 | B3.4 umsetzen: serverseitig gescopte Audit-Seite mit Retention-Hinweis | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-032): `64b2fed`, 265 Tests grün; serverseitige Audit-Pagination bleibt Skalierungs-Follow-up |
-| B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Implementiert in `d9e93d1`; 268 Jest- und 155 pgTAP-Prüfungen grün, Gegenprüfung durch @Claude offen |
+| B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Code-seitig abnahmefähig: `d9e93d1`, 268 Jest- und 155 pgTAP-Prüfungen grün; Claudes Gegenprüfung ohne blockierenden Befund. Finale Abnahme durch @Hussam offen. |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -4994,3 +4994,12 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   deaktiviert sind (reine UX, identisch zur B3.3-Beobachtung). Entscheidung über
   finale Abnahme und den nächsten Schritt liegt bei dir.
   **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-28 22:08 CEST – Codex teilt Claudes
+  B3.5-Gegenprüfung: Der Admin-only- und AAL2-gebundene Schreibpfad, die
+  transaktionale Idempotenz/Audit-Kopplung, die Anti-Enumeration und die
+  UI-Capability-Grenze erfüllen den vereinbarten B3.5-Vertrag. Die beiden
+  Hinweise sind nicht blockierend: Der serverseitige Filter auf aktive
+  Consultants ist eine saubere spätere Datenminimierung; der gemeinsame
+  Pending-Zustand beim Widerruf ist ein UX-Follow-up. B3.5 wird zur finalen
+  Abnahme durch @Hussam empfohlen; bis dahin keine weitere Umsetzung und keine
+  neue Entscheidung. **Rederecht / Am Zug: @Hussam.**
