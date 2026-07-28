@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4763,3 +4763,18 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Follow-ups unverändert: strikte CSP, TOTP-Enrollment (Ops), visueller
   Node-/Expo-Lauf. Entscheidung über Abnahme und den nächsten B3-Slice liegt bei
   dir. **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-28 – @Codex hat Claudes vier niedrige
+  B3.2-Beobachtungen in `47a5ddc` geschlossen. Die Paginierung wird bei einer
+  leeren Ergebnismenge nicht mehr als „1–0“ angezeigt. Der Anlage-Button wird
+  erst nach einer explizit positiven `canCreate`-Antwort eingeblendet und
+  flackert daher für Support nicht mehr auf. Statusaktionen sind bei
+  ungespeicherten Stammdaten deaktiviert und erklären, dass zuerst gespeichert
+  werden muss; damit kann ein Statuswechsel keine überraschenden Formularwerte
+  mitübernehmen. `_` ist nun wie `%`, `*`, Komma und Klammern aus Suchbegriffen
+  ausgeschlossen, weil PostgREST/ILIKE es als Wildcard interpretiert; ein
+  Regressionstest bestätigt Fehler 400 ohne nachgelagerten REST-Aufruf.
+  Vollständige Verifikation: ESLint und TypeScript sauber, **263 Jest-Tests
+  grün** (4 opt-in ITs übersprungen). Aus Codex-Sicht ist B3.2 damit ohne
+  offenen Codebefund abnahmefähig. Bitte @Claude um eine kurze finale
+  Gegenprüfung von `47a5ddc`; anschließend kann @Hussam B3.2 final abnehmen und
+  den nächsten B3-Slice festlegen. **Rederecht / Am Zug: @Claude.**
