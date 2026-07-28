@@ -461,6 +461,31 @@ describe("Server-side read scoping", () => {
 
     const detail = await call(request(`/api/backoffice/practices/${assigned}`, { token: aal2Token() }));
     expect(detail.status).toBe(200);
-    expect(((await detail.json()) as { permissions: unknown }).permissions).toEqual({ canManage: false });
+    expect(((await detail.json()) as { permissions: unknown }).permissions).toEqual({ canManage: false, canManageAssignments: false });
+  });
+});
+
+describe("Consultant assignment administration", () => {
+  const practiceId = "88888888-8888-4888-8888-888888888888";
+  const assignmentId = "99999999-9999-4999-8999-999999999999";
+
+  it("keeps consultant directory and assignment list admin-only", async () => {
+    installWorld({ staffRole: "security_consultant", assignments: [practiceId] });
+    expect((await call(request("/api/backoffice/consultants", { token: aal2Token() }))).status).toBe(403);
+    expect((await call(request(`/api/backoffice/practices/${practiceId}/consultant-assignments`, { token: aal2Token() }))).status).toBe(403);
+  });
+
+  it("passes the session actor and caller-owned ids to atomic assignment RPCs", async () => {
+    const world = installWorld({ rpcResults: {
+      backoffice_assign_consultant: { ok: true, assignment_id: assignmentId },
+      backoffice_revoke_consultant_assignment: { ok: true, assignment_id: assignmentId }
+    } });
+    const headers = { "idempotency-key": "assignment-key", "x-request-id": "assignment-request" };
+    const grant = await call(request(`/api/backoffice/practices/${practiceId}/consultant-assignments`, { method: "POST", token: aal2Token(), headers, body: { consultantUserId: "22222222-2222-4222-8222-222222222222", purpose: "Quartalsprüfung", actorId: "attacker" } }));
+    expect(grant.status).toBe(200);
+    const grantCall = world.calls.find((entry) => entry.url.includes("backoffice_assign_consultant"));
+    expect(grantCall?.body).toMatchObject({ p_actor: world.user?.id, p_idempotency_key: "assignment-key", p_request_id: "assignment-request", p_practice_id: practiceId });
+    const revoke = await call(request(`/api/backoffice/consultant-assignments/${assignmentId}/revoke`, { method: "POST", token: aal2Token(), headers }));
+    expect(revoke.status).toBe(200);
   });
 });

@@ -37,7 +37,7 @@ export type BackofficePracticePage = {
 
 export type BackofficePracticeDetailResponse = {
   practice: BackofficePracticeDetail;
-  permissions: { canManage: boolean };
+  permissions: { canManage: boolean; canManageAssignments: boolean };
 };
 
 export type CreatePracticeInput = {
@@ -98,4 +98,9 @@ export type BackofficeAuditEvent = {
   result: string;
   request_id: string | null;
   created_at: string;
+};
+export type BackofficeConsultant = { user_id: string; email: string; status: "active" | "suspended" };
+export type BackofficeConsultantAssignment = {
+  id: string; staff_user_id: string; email: string; assignment_purpose: string | null;
+  status: "active" | "revoked"; assigned_at: string; revoked_at: string | null;
 };

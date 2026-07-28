@@ -13,14 +13,18 @@ jest.mock("@/lib/api/client", () => {
 
 import { apiRequest } from "@/lib/api/client";
 import {
+  assignBackofficeConsultant,
   createBackofficeInvitation,
   createBackofficePractice,
   getBackofficePractice,
   listBackofficeInvitations,
   listBackofficeAuditEvents,
+  listBackofficeConsultants,
+  listBackofficeConsultantAssignments,
   listBackofficeMemberships,
   listBackofficePractices,
   revokeBackofficeInvitation,
+  revokeBackofficeConsultantAssignment,
   updateBackofficePractice,
   type BackofficeMutationIds
 } from "@/lib/backoffice/api";
@@ -98,6 +102,19 @@ describe("B3 create-practice idempotency", () => {
     const callsBefore = getCalls().length;
     await listBackofficeAuditEvents();
     expect(getCalls()[callsBefore]).toEqual(["/api/backoffice/audit"]);
+  });
+
+  it("uses admin-only consultant endpoints with stable mutation identifiers", async () => {
+    const callsBefore = getCalls().length;
+    const ids = { idempotencyKey: "assignment-1", requestId: "request-assignment-1" };
+    await listBackofficeConsultants();
+    await listBackofficeConsultantAssignments("practice-1");
+    await assignBackofficeConsultant("practice-1", "consultant-1", "Quartalsprüfung", ids);
+    await revokeBackofficeConsultantAssignment("assignment-1", ids);
+    expect(getCalls()[callsBefore][0]).toBe("/api/backoffice/consultants");
+    expect(getCalls()[callsBefore + 1][0]).toBe("/api/backoffice/practices/practice-1/consultant-assignments");
+    expect(getCalls()[callsBefore + 2][1]?.headers).toEqual({ "Idempotency-Key": "assignment-1", "X-Request-Id": "request-assignment-1" });
+    expect(getCalls()[callsBefore + 3][0]).toBe("/api/backoffice/consultant-assignments/assignment-1/revoke");
   });
 });
 

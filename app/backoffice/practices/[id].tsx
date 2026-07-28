@@ -5,16 +5,20 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 import {
+  assignBackofficeConsultant,
   createBackofficeInvitation,
   getBackofficePractice,
   listBackofficeInvitations,
   listBackofficeMemberships,
+  listBackofficeConsultants,
+  listBackofficeConsultantAssignments,
   revokeBackofficeInvitation,
+  revokeBackofficeConsultantAssignment,
   updateBackofficePractice,
   type BackofficeMutationIds
 } from "@/lib/backoffice/api";
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
-import type { BackofficeInvitation, BackofficeMembership, BackofficePracticeDetail, BackofficePracticeDetailResponse, OnboardingStatus, PracticeMemberRole, UpdatePracticeInput } from "@/lib/backoffice/types";
+import type { BackofficeConsultant, BackofficeConsultantAssignment, BackofficeInvitation, BackofficeMembership, BackofficePracticeDetail, BackofficePracticeDetailResponse, OnboardingStatus, PracticeMemberRole, UpdatePracticeInput } from "@/lib/backoffice/types";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
@@ -50,9 +54,13 @@ export default function BackofficePracticeDetailScreen() {
   const [inviteRole, setInviteRole] = useState<PracticeMemberRole>("practice_owner");
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [selectedConsultant, setSelectedConsultant] = useState("");
+  const [assignmentPurpose, setAssignmentPurpose] = useState("");
   const mutationIds = useRef<BackofficeMutationIds>(newMutationIds());
   const invitationAttempt = useRef<{ fingerprint: string; expiresAt: string; ids: BackofficeMutationIds } | null>(null);
   const revokeIds = useRef<Record<string, BackofficeMutationIds>>({});
+  const assignmentAttempt = useRef<{ fingerprint: string; ids: BackofficeMutationIds } | null>(null);
+  const assignmentRevokeIds = useRef<Record<string, BackofficeMutationIds>>({});
 
   useEffect(() => {
     void getBackofficeAuthState()
@@ -73,6 +81,9 @@ export default function BackofficePracticeDetailScreen() {
   const canLoadAccess = authReady && typeof id === "string" && id.length > 0 && detailResponse?.permissions.canManage === true;
   const invitations = useQuery<{ invitations: BackofficeInvitation[] }>({ queryKey: ["backoffice-invitations", id], queryFn: () => listBackofficeInvitations(id ?? ""), enabled: canLoadAccess });
   const memberships = useQuery<{ memberships: BackofficeMembership[] }>({ queryKey: ["backoffice-memberships", id], queryFn: () => listBackofficeMemberships(id ?? ""), enabled: canLoadAccess });
+  const canManageAssignments = detailResponse?.permissions.canManageAssignments === true;
+  const consultants = useQuery<{ consultants: BackofficeConsultant[] }>({ queryKey: ["backoffice-consultants"], queryFn: listBackofficeConsultants, enabled: authReady && canManageAssignments });
+  const assignments = useQuery<{ assignments: BackofficeConsultantAssignment[] }>({ queryKey: ["backoffice-consultant-assignments", id], queryFn: () => listBackofficeConsultantAssignments(id ?? ""), enabled: authReady && canManageAssignments });
 
   useEffect(() => {
     if (detailResponse?.practice) setForm(formFromPractice(detailResponse.practice));
@@ -109,6 +120,23 @@ export default function BackofficePracticeDetailScreen() {
       return queryClient.invalidateQueries({ queryKey: ["backoffice-invitations", id] });
     }
   });
+  const assignConsultant = useMutation({
+    mutationFn: ({ userId, purpose, ids }: { userId: string; purpose: string; ids: BackofficeMutationIds }) => assignBackofficeConsultant(id ?? "", userId, purpose, ids),
+    onSuccess: async () => {
+      assignmentAttempt.current = null; setSelectedConsultant(""); setAssignmentPurpose("");
+      await queryClient.invalidateQueries({ queryKey: ["backoffice-consultant-assignments", id] });
+    }
+  });
+  const revokeAssignment = useMutation({
+    mutationFn: (assignmentId: string) => {
+      assignmentRevokeIds.current[assignmentId] ??= newMutationIds();
+      return revokeBackofficeConsultantAssignment(assignmentId, assignmentRevokeIds.current[assignmentId]);
+    },
+    onSuccess: async (_result, assignmentId) => {
+      delete assignmentRevokeIds.current[assignmentId];
+      await queryClient.invalidateQueries({ queryKey: ["backoffice-consultant-assignments", id] });
+    }
+  });
 
   async function invite() {
     const email = inviteEmail.trim().toLowerCase();
@@ -129,6 +157,14 @@ export default function BackofficePracticeDetailScreen() {
     try {
       await createInvitation.mutateAsync({ email, role: inviteRole, expiresAt: invitationAttempt.current.expiresAt, ids: invitationAttempt.current.ids });
     } catch { /* rendered below; identical input safely reuses the attempt */ }
+  }
+
+  async function assign() {
+    if (!selectedConsultant) return;
+    const purpose = assignmentPurpose.trim();
+    const fingerprint = `${selectedConsultant}\u0000${purpose}`;
+    if (assignmentAttempt.current?.fingerprint !== fingerprint) assignmentAttempt.current = { fingerprint, ids: newMutationIds() };
+    try { await assignConsultant.mutateAsync({ userId: selectedConsultant, purpose, ids: assignmentAttempt.current.ids }); } catch { /* rendered below */ }
   }
 
   async function save(status?: OnboardingStatus) {
@@ -171,6 +207,8 @@ export default function BackofficePracticeDetailScreen() {
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(formFromPractice(practice));
   const invitationRows = (invitations.data?.invitations ?? []) as BackofficeInvitation[];
   const activeMemberships = ((memberships.data?.memberships ?? []) as BackofficeMembership[]).filter((item) => item.status === "active");
+  const consultantRows = ((consultants.data?.consultants ?? []) as BackofficeConsultant[]).filter((item) => item.status === "active");
+  const activeAssignments = ((assignments.data?.assignments ?? []) as BackofficeConsultantAssignment[]).filter((item) => item.status === "active");
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -258,6 +296,27 @@ export default function BackofficePracticeDetailScreen() {
               <Text style={styles.listHeading}>Aktive Mitgliedschaften</Text>
               {memberships.isLoading ? <ActivityIndicator color="#147D6B" /> : activeMemberships.length ? activeMemberships.map((item) => <View key={item.id} style={styles.accessRow}><View><Text style={styles.accessPrimary}>{ROLE_LABEL[item.role]}</Text><Text style={styles.accessSecondary}>Benutzer {shortId(item.user_id)} · seit {new Date(item.granted_at).toLocaleDateString("de-DE")}</Text></View></View>) : <Text style={styles.emptyText}>Keine aktive Mitgliedschaft.</Text>}
               {invitations.isError || memberships.isError ? <Text style={styles.formError}>Zugänge konnten nicht geladen werden.</Text> : null}
+            </View>
+          </View>
+        </View>
+      ) : null}
+      {canManageAssignments ? (
+        <View style={styles.accessSection}>
+          <Text style={styles.cardTitle}>Security-Consultants zuweisen</Text>
+          <View style={[styles.accessGrid, compact && styles.gridCompact]}>
+            <View style={styles.card}>
+              <Text style={styles.sectionCopy}>Nur aktive Plattform-Consultants können zugewiesen werden. Die Zuweisung begrenzt ihren Zugriff auf diese Praxis.</Text>
+              <Text style={styles.fieldLabel}>Consultant auswählen</Text>
+              <View style={styles.roleRow}>{consultantRows.map((item) => <Pressable key={item.user_id} onPress={() => setSelectedConsultant(item.user_id)} style={[styles.roleChip, selectedConsultant === item.user_id && styles.roleChipActive]}><Text style={[styles.roleChipText, selectedConsultant === item.user_id && styles.roleChipTextActive]}>{item.email}</Text></Pressable>)}</View>
+              {!consultants.isLoading && consultantRows.length === 0 ? <Text style={styles.emptyText}>Keine aktiven Consultants verfügbar.</Text> : null}
+              <Field disabled={assignConsultant.isPending} label="Zweck (optional)" value={assignmentPurpose} onChange={setAssignmentPurpose} />
+              <Pressable disabled={!selectedConsultant || assignConsultant.isPending} onPress={() => void assign()} style={[styles.primaryButton, (!selectedConsultant || assignConsultant.isPending) && styles.disabled]}><Text style={styles.primaryButtonText}>Consultant zuweisen</Text></Pressable>
+              {assignConsultant.isError ? <Text style={styles.formError}>Zuweisung konnte nicht gespeichert werden.</Text> : null}
+            </View>
+            <View style={styles.card}>
+              <Text style={styles.listHeading}>Aktive Zuweisungen</Text>
+              {assignments.isLoading ? <ActivityIndicator color="#147D6B" /> : activeAssignments.length ? activeAssignments.map((item) => <View key={item.id} style={styles.accessRow}><View style={styles.accessRowText}><Text style={styles.accessPrimary}>{item.email}</Text><Text style={styles.accessSecondary}>{item.assignment_purpose || "Kein Zweck angegeben"} · seit {new Date(item.assigned_at).toLocaleDateString("de-DE")}</Text></View><Pressable disabled={revokeAssignment.isPending} onPress={() => void revokeAssignment.mutateAsync(item.id)}><Text style={styles.dangerText}>Entziehen</Text></Pressable></View>) : <Text style={styles.emptyText}>Keine aktive Consultant-Zuweisung.</Text>}
+              {consultants.isError || assignments.isError || revokeAssignment.isError ? <Text style={styles.formError}>Consultant-Zugänge konnten nicht vollständig verarbeitet werden.</Text> : null}
             </View>
           </View>
         </View>

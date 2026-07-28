@@ -4,6 +4,8 @@ import type {
   BackofficePracticePage,
   BackofficeInvitation,
   BackofficeAuditEvent,
+  BackofficeConsultant,
+  BackofficeConsultantAssignment,
   BackofficeMembership,
   CreateInvitationResult,
   CreatePracticeInput,
@@ -103,4 +105,21 @@ export async function revokeBackofficeInvitation(invitationId: string, ids: Back
 
 export async function listBackofficeAuditEvents() {
   return apiRequest<{ events: BackofficeAuditEvent[] }>("/api/backoffice/audit");
+}
+
+export async function listBackofficeConsultants() {
+  return apiRequest<{ consultants: BackofficeConsultant[] }>("/api/backoffice/consultants");
+}
+export async function listBackofficeConsultantAssignments(practiceId: string) {
+  return apiRequest<{ assignments: BackofficeConsultantAssignment[] }>(`/api/backoffice/practices/${practiceId}/consultant-assignments`);
+}
+export async function assignBackofficeConsultant(practiceId: string, consultantUserId: string, purpose: string, ids: BackofficeMutationIds) {
+  return apiRequest<{ ok: true; assignment_id: string }>(`/api/backoffice/practices/${practiceId}/consultant-assignments`, {
+    method: "POST", body: { consultantUserId, purpose }, headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
+  });
+}
+export async function revokeBackofficeConsultantAssignment(assignmentId: string, ids: BackofficeMutationIds) {
+  return apiRequest<{ ok: true }>(`/api/backoffice/consultant-assignments/${assignmentId}/revoke`, {
+    method: "POST", headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
+  });
 }

@@ -604,6 +604,10 @@ app.get("/api/backoffice/practices/:id/memberships", async (c) => handleBackoffi
 app.post("/api/backoffice/practices/:id/memberships", async (c) => handleBackofficeGrantMembership(c));
 app.post("/api/backoffice/practices/:id/memberships/revoke", async (c) => handleBackofficeRevokeMembership(c));
 app.get("/api/backoffice/audit", async (c) => handleBackofficeAudit(c));
+app.get("/api/backoffice/consultants", async (c) => handleBackofficeListConsultants(c));
+app.get("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeListConsultantAssignments(c));
+app.post("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeAssignConsultant(c));
+app.post("/api/backoffice/consultant-assignments/:id/revoke", async (c) => handleBackofficeRevokeConsultantAssignment(c));
 
 const SYSTEM_PROMPT = `
 Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
@@ -3194,6 +3198,8 @@ const BACKOFFICE_RATE_LIMITS: Record<string, { windowMinutes: number; limit: num
   "invitation.revoke": { windowMinutes: 1, limit: 60 },
   "membership.grant": { windowMinutes: 1, limit: 60 },
   "membership.revoke": { windowMinutes: 1, limit: 60 },
+  "assignment.grant": { windowMinutes: 1, limit: 30 },
+  "assignment.revoke": { windowMinutes: 1, limit: 30 },
   "ownership.transfer": { windowMinutes: 60, limit: 5 }
 };
 
@@ -3524,7 +3530,7 @@ async function handleBackofficePracticeDetail(c: Context<{ Bindings: Env }>) {
     { method: "GET" }
   );
   if (!rows[0]) return c.json({ error: "not_found" }, 404);
-  return c.json({ practice: rows[0], permissions: { canManage: scope.role !== "support" } });
+  return c.json({ practice: rows[0], permissions: { canManage: scope.role !== "support", canManageAssignments: scope.role === "platform_admin" } });
 }
 
 async function handleBackofficeListInvitations(c: Context<{ Bindings: Env }>) {
@@ -3583,6 +3589,61 @@ async function handleBackofficeAudit(c: Context<{ Bindings: Env }>) {
   }
   const rows = await supabaseRest<unknown[]>(c.env, path, { method: "GET" });
   return c.json({ events: rows });
+}
+
+async function requirePlatformAdmin(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (scope?.role !== "platform_admin") return c.json({ error: "forbidden" }, 403);
+  return actor;
+}
+
+async function handleBackofficeListConsultants(c: Context<{ Bindings: Env }>) {
+  const actor = await requirePlatformAdmin(c);
+  if (actor instanceof Response) return actor;
+  const rows = await supabaseRest<unknown[]>(c.env, "/rest/v1/rpc/backoffice_list_consultants", {
+    method: "POST", prefer: "return=representation", body: { p_actor: actor.id }
+  });
+  return c.json({ consultants: rows });
+}
+
+async function handleBackofficeListConsultantAssignments(c: Context<{ Bindings: Env }>) {
+  const actor = await requirePlatformAdmin(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ error: "not_found" }, 404);
+  const rows = await supabaseRest<unknown[]>(c.env, "/rest/v1/rpc/backoffice_list_consultant_assignments", {
+    method: "POST", prefer: "return=representation", body: { p_actor: actor.id, p_practice_id: practiceId }
+  });
+  return c.json({ assignments: rows });
+}
+
+async function handleBackofficeAssignConsultant(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "assignment.grant"))) return c.json({ ok: false, error: "rate_limited" }, 429);
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_assign_consultant", {
+    p_actor: actor.id, p_request_id: backofficeRequestId(c, body), p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_practice_id: practiceId, p_consultant_user_id: stringFieldOrNull(body.consultantUserId), p_purpose: stringFieldOrNull(body.purpose)
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+async function handleBackofficeRevokeConsultantAssignment(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const assignmentId = c.req.param("id");
+  if (!assignmentId || !isUuid(assignmentId)) return c.json({ ok: false, error: "not_found" }, 404);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "assignment.revoke"))) return c.json({ ok: false, error: "rate_limited" }, 429);
+  const body = await parseJsonBody(c);
+  const result = await callBackofficeRpc(c.env, "backoffice_revoke_consultant_assignment", {
+    p_actor: actor.id, p_request_id: backofficeRequestId(c, body), p_idempotency_key: resolveIdempotencyKey(c, body), p_assignment_id: assignmentId
+  });
+  return respondBackofficeResult(c, result, { collapseNotFound: true });
 }
 
 // ---- Mutation endpoints (rate-limited, actor from session) ----------------
