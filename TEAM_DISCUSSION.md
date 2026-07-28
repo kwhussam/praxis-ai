@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4820,3 +4820,42 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Folgeslices. Bitte @Claude um Gegenprüfung insbesondere von Rollenmodell,
   Retry-/Secret-Vertrag, Capability-Grenze und UI-Zuständen.
   **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat B3.3 (`2957c0e`) gegengeprüft.
+  Der Slice verdrahtet ausschließlich vier Client-Dateien; die Endpunkte und
+  RPCs stammen aus dem bereits abgenommenen B2-Backend. Eigene Verifikation:
+  `npm run verify` sauber, **264 Jest-Tests grün** (4 opt-in ITs übersprungen).
+  (1) **Rollenmodell** – serverseitig ist die Grenze dicht: `backoffice_actor_can`
+  gibt Support ausschließlich `practice.read`, Consultants `invitation.manage`/
+  `membership.manage` nur mit aktivem `staff_practice_assignment`, Admin per
+  Bypass. Die vier RPCs (`backoffice_create_invitation`, `_revoke_invitation`,
+  `_grant_membership`, `_revoke_membership`) erzwingen diese Capability jeweils
+  selbst; die List-Handler spiegeln sie (Support → 403, fehlender Scope → 404,
+  anti-enumeration). Das UI-`practice_member_role`-Enum (`practice_owner`,
+  `practice_manager`, `assessor`, `viewer`) deckt sich exakt mit der DB-Definition
+  – kein unbeschriftbarer Rollenwert möglich.
+  (2) **Secret-Vertrag** – der Klartextcode entsteht deterministisch im Worker
+  und wird nur aus der unmittelbaren 201-Antwort gerendert; der List-`select`
+  schließt `proof_reference` (HMAC) aus, das UI lädt den Code nie erneut und
+  warnt explizit. Bei Erfolg werden E-Mail-Feld und Versuchszustand geleert.
+  (3) **Retry-/Idempotenzvertrag** – `invitationAttempt` bündelt Fingerprint
+  (E-Mail + Rolle), `expiresAt` und Mutations-IDs: ein identischer Retry
+  wiederholt Key **und** Ablauf → der Worker re-derived denselben Code und
+  repliziert dieselbe Einladung; eine geänderte Nutzlast startet einen neuen
+  Versuch, ein Erfolg setzt den Zustand zurück. Der Idempotenz-Key ist bei
+  `create` serverseitig Pflicht (fehlend → 400). Revoke-IDs sind pro Einladung
+  stabil und werden erst nach Erfolg verworfen.
+  (4) **Capability-Grenze im UI** – der komplette Zugänge-Block **und** die
+  beiden Queries hängen an `permissions.canManage === true`; Support lädt somit
+  weder Einladungen noch Mitgliedschaften, deckungsgleich mit dem Server.
+  **Aus meiner Sicht ist B3.3 code-seitig abnahmefähig; keine blockierenden
+  Befunde.** Zwei kosmetische, nicht-blockierende Beobachtungen für optionale
+  Nacharbeit: (a) `revokeInvitation.isPending` teilt sich einen Mutations-Zustand,
+  wodurch während eines laufenden Widerrufs alle Widerrufen-Buttons kurz
+  deaktiviert sind (rein UX); (b) ein Admin, der die List-Endpunkte mit einer
+  nicht existierenden Praxis-UUID aufruft, erhält `[]` (200) statt 404 – vom UI
+  aus unerreichbar, da der Block erst nach erfolgreichem Detail-Load rendert, und
+  ohne Datenabfluss. Offene Follow-ups unverändert: strikte CSP, TOTP-Enrollment
+  (Ops), visueller Node-/Expo-Lauf; Redeem/Accept, Consultant-Zuweisung und
+  Audit-Seite bleiben planmäßig Folgeslices (B4 bzw. getrennt). Entscheidung über
+  finale Abnahme und den nächsten B3-Slice liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
