@@ -13,9 +13,13 @@ jest.mock("@/lib/api/client", () => {
 
 import { apiRequest } from "@/lib/api/client";
 import {
+  createBackofficeInvitation,
   createBackofficePractice,
   getBackofficePractice,
+  listBackofficeInvitations,
+  listBackofficeMemberships,
   listBackofficePractices,
+  revokeBackofficeInvitation,
   updateBackofficePractice,
   type BackofficeMutationIds
 } from "@/lib/backoffice/api";
@@ -70,10 +74,28 @@ describe("B3 create-practice idempotency", () => {
       patch: { legal_name: "Muster GmbH", display_name: "Muster", contact_email: "mina@example.test" }
     });
   });
+
+  it("uses scoped invitation and membership endpoints without exposing server secrets", async () => {
+    const callsBefore = getCalls().length;
+    const ids = { idempotencyKey: "invite-1", requestId: "request-invite-1" };
+    await listBackofficeInvitations("practice-1");
+    await listBackofficeMemberships("practice-1");
+    await createBackofficeInvitation("practice-1", "owner@example.test", "practice_owner", "2026-08-04T00:00:00.000Z", ids);
+    await revokeBackofficeInvitation("invitation-1", ids);
+
+    expect(getCalls()[callsBefore][0]).toBe("/api/backoffice/practices/practice-1/invitations");
+    expect(getCalls()[callsBefore + 1][0]).toBe("/api/backoffice/practices/practice-1/memberships");
+    const [invitePath, inviteOptions] = getCalls()[callsBefore + 2];
+    expect(invitePath).toBe("/api/backoffice/practices/practice-1/invitations");
+    expect(inviteOptions?.method).toBe("POST");
+    expect(inviteOptions?.body).toMatchObject({ targetEmail: "owner@example.test", intendedRole: "practice_owner", deliveryChannel: "in_person_code" });
+    expect(inviteOptions?.headers).toEqual({ "Idempotency-Key": "invite-1", "X-Request-Id": "request-invite-1" });
+    expect(getCalls()[callsBefore + 3][0]).toBe("/api/backoffice/invitations/invitation-1/revoke");
+  });
 });
 
 function getCalls() {
   return (apiRequest as unknown as {
-    mock: { calls: Array<[string, { headers?: Record<string, string>; body?: Record<string, unknown> }?]> };
+    mock: { calls: Array<[string, { method?: string; headers?: Record<string, string>; body?: Record<string, unknown> }?]> };
   }).mock.calls;
 }

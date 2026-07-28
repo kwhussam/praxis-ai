@@ -62,3 +62,28 @@ export type CreatePracticeResult = {
 };
 
 export type UpdatePracticeInput = Omit<CreatePracticeInput, "practiceKind">;
+
+export type PracticeMemberRole = "practice_owner" | "practice_manager" | "assessor" | "viewer";
+export type BackofficeInvitation = {
+  id: string;
+  target_email: string;
+  intended_role: PracticeMemberRole;
+  delivery_channel: "in_person_code" | "email_link";
+  status: "pending" | "accepted" | "expired" | "revoked";
+  expires_at: string;
+  created_at: string;
+};
+export type BackofficeMembership = {
+  id: string;
+  user_id: string;
+  role: PracticeMemberRole;
+  status: "active" | "revoked";
+  granted_at: string;
+  revoked_at: string | null;
+};
+export type CreateInvitationResult = {
+  ok: true;
+  invitation_id: string;
+  expires_at: string;
+  code: string;
+};
