@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4728,3 +4728,38 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   `ERR_CONNECTION_REFUSED`; keine visuelle Abnahme behauptet. Rederecht zur
   B3.2-Gegenprüfung an @Claude, insbesondere für Tenant-Scoping, PostgREST-
   Filter, Status-/Idempotenzvertrag und responsive Detail-UI.
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat B3.2 (`c46a735`) gegengeprüft.
+  Eigene Verifikation: `npm run verify` (ESLint + TypeScript + Jest) sauber,
+  **262 Tests grün** (4 opt-in ITs übersprungen). Die vier von @Codex benannten
+  Prüfschwerpunkte sind sauber:
+  (1) **Tenant-Scoping** – Liste und Detail bleiben strikt über `resolveStaffScope`
+  im Admin-/Assignment-Scope; leerer Consultant-Scope kurzschließt vor jedem
+  REST-Aufruf (Test bestätigt: kein `/rest/v1/practices`-Call). Detail nutzt
+  Anti-Enumeration (`not_found` bei fehlender Zuweisung), Support erhält
+  `canManage:false`/`canCreate:false`.
+  (2) **PostgREST-Filter/Injection** – `isSafeBackofficeSearch` lässt nur
+  `\p{L}\p{N}@._- ` und Leerzeichen zu (≤100 Zeichen), der `or=(…)`-Ausdruck wird
+  zusätzlich vollständig `encodeURIComponent`-kodiert; der Injection-Test
+  (`search=…,owner_id.eq.not-null`) liefert 400 ohne REST-Aufruf.
+  `parseBoundedInteger` erzwingt Ziffern + sichere Grenzen (limit 10–100,
+  offset 0–10 000).
+  (3) **Status-/Idempotenzvertrag** – Statuswechsel läuft ausschließlich über
+  `backoffice_update_practice`; die zulässigen Übergänge sind serverseitig in
+  `backoffice_valid_practice_transition` gepinnt, die UI exponiert bewusst nur die
+  reversible Teilmenge `active ↔ suspended`. Der Idempotenz-Key liegt in einer
+  Ref, bleibt über einen fehlgeschlagenen Retry stabil und wird erst bei Erfolg
+  neu vergeben – korrekt und gegenläufig zum früheren B3.1-Create-Fehler.
+  (4) **Responsive Detail-UI** – zweispaltiges Grid bricht unter 1050 px sauber
+  auf eine Spalte um; Support-Sicht ist durchgängig read-only.
+  **Aus meiner Sicht ist B3.2 code-seitig abnahmefähig.** Keine blockierenden
+  Befunde. Vier niedrige, nicht-blockierende Beobachtungen für optionale
+  Nacharbeit durch @Codex: (a) Paginierungs-Label zeigt bei leerer Seite
+  „Einträge 1–0" und die Leiste rendert neben dem Empty-State – kosmetisch;
+  (b) `canCreate`-Button blinkt für Support während des Ladens kurz auf (Server
+  bleibt die eigentliche Grenze) – kosmetisch; (c) ein Statuswechsel committet
+  zugleich ungespeicherte Formularänderungen atomar mit – sicher, aber potenziell
+  überraschend; (d) `_` im Suchbegriff wirkt als ILIKE-Einzelzeichen-Wildcard
+  (Über-Matching, kein Sicherheitsproblem, da bereits tenant-scoped). Offene
+  Follow-ups unverändert: strikte CSP, TOTP-Enrollment (Ops), visueller
+  Node-/Expo-Lauf. Entscheidung über Abnahme und den nächsten B3-Slice liegt bei
+  dir. **Rederecht / Am Zug: @Hussam.**
