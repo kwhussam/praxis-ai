@@ -164,7 +164,35 @@ describe("Backoffice auth gating", () => {
     installWorld({ restRows: { practices: [{ id: "p1" }] } });
     const res = await call(request("/api/backoffice/practices", { token: aal2Token() }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ practices: [{ id: "p1" }] });
+    expect(await res.json()).toEqual({
+      practices: [{ id: "p1" }],
+      page: { offset: 0, limit: 25, hasMore: false, nextOffset: null },
+      permissions: { canCreate: true }
+    });
+  });
+
+  it("applies bounded server-side search and pagination to the practice query", async () => {
+    const world = installWorld({ restRows: { practices: Array.from({ length: 26 }, (_, id) => ({ id })) } });
+    const res = await call(
+      request("/api/backoffice/practices?search=Berlin&limit=25&offset=50", { token: aal2Token() })
+    );
+    expect(res.status).toBe(200);
+    const practicesCall = world.calls.find((entry) => entry.url.includes("/rest/v1/practices?"));
+    expect(practicesCall?.url).toContain("limit=26&offset=50");
+    expect(practicesCall?.url).toContain("or=");
+    const payload = (await res.json()) as { practices: unknown[]; page: Record<string, unknown> };
+    expect(payload.practices).toHaveLength(25);
+    expect(payload.page).toEqual({ offset: 50, limit: 25, hasMore: true, nextOffset: 75 });
+  });
+
+  it("rejects unsafe or out-of-range practice-list query parameters", async () => {
+    const world = installWorld();
+    const res = await call(
+      request("/api/backoffice/practices?search=Berlin%2Cowner_id.eq.not-null&limit=500", { token: aal2Token() })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_query" });
+    expect(world.calls.some((entry) => entry.url.includes("/rest/v1/practices?"))).toBe(false);
   });
 });
 
@@ -400,7 +428,11 @@ describe("Server-side read scoping", () => {
     const world = installWorld({ staffRole: "security_consultant", assignments: [] });
     const res = await call(request("/api/backoffice/practices", { token: aal2Token() }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ practices: [] });
+    expect(await res.json()).toEqual({
+      practices: [],
+      page: { offset: 0, limit: 25, hasMore: false, nextOffset: null },
+      permissions: { canCreate: true }
+    });
     expect(world.calls.some((c) => c.url.includes("/rest/v1/practices?"))).toBe(false);
   });
 
@@ -408,5 +440,20 @@ describe("Server-side read scoping", () => {
     installWorld({ staffRole: "support" });
     const res = await call(request("/api/backoffice/audit", { token: aal2Token() }));
     expect(res.status).toBe(403);
+  });
+
+  it("returns read-only UI permissions to support for assigned practices", async () => {
+    const assigned = "77777777-7777-4777-8777-777777777777";
+    installWorld({
+      staffRole: "support",
+      assignments: [assigned],
+      restRows: { practices: [{ id: assigned, display_name: "Support view" }] }
+    });
+    const list = await call(request("/api/backoffice/practices", { token: aal2Token() }));
+    expect(((await list.json()) as { permissions: unknown }).permissions).toEqual({ canCreate: false });
+
+    const detail = await call(request(`/api/backoffice/practices/${assigned}`, { token: aal2Token() }));
+    expect(detail.status).toBe(200);
+    expect(((await detail.json()) as { permissions: unknown }).permissions).toEqual({ canManage: false });
   });
 });

@@ -1,6 +1,6 @@
-import type { CreatePracticeInput } from "@/lib/backoffice/types";
+import type { CreatePracticeInput, UpdatePracticeInput } from "@/lib/backoffice/types";
 
-export function validatePracticeInput(input: CreatePracticeInput) {
+export function validatePracticeInput(input: CreatePracticeInput | UpdatePracticeInput) {
   const required = [
     input.legalName,
     input.displayName,

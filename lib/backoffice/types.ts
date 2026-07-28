@@ -8,7 +8,36 @@ export type BackofficePracticeSummary = {
   onboarding_status: OnboardingStatus;
   contact_email: string;
   domain: string | null;
+  city: string;
   created_at: string;
+};
+
+export type BackofficePracticeDetail = BackofficePracticeSummary & {
+  practice_kind: PracticeKind;
+  contact_first_name: string;
+  contact_last_name: string;
+  contact_phone: string;
+  street: string;
+  postal_code: string;
+  country_code: string;
+  owner_id: string | null;
+  updated_at: string;
+};
+
+export type BackofficePracticePage = {
+  practices: BackofficePracticeSummary[];
+  page: {
+    offset: number;
+    limit: number;
+    hasMore: boolean;
+    nextOffset: number | null;
+  };
+  permissions: { canCreate: boolean };
+};
+
+export type BackofficePracticeDetailResponse = {
+  practice: BackofficePracticeDetail;
+  permissions: { canManage: boolean };
 };
 
 export type CreatePracticeInput = {
@@ -32,3 +61,4 @@ export type CreatePracticeResult = {
   onboarding_status: OnboardingStatus;
 };
 
+export type UpdatePracticeInput = Omit<CreatePracticeInput, "practiceKind">;

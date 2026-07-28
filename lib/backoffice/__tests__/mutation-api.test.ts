@@ -12,7 +12,13 @@ jest.mock("@/lib/api/client", () => {
 });
 
 import { apiRequest } from "@/lib/api/client";
-import { createBackofficePractice, type BackofficeMutationIds } from "@/lib/backoffice/api";
+import {
+  createBackofficePractice,
+  getBackofficePractice,
+  listBackofficePractices,
+  updateBackofficePractice,
+  type BackofficeMutationIds
+} from "@/lib/backoffice/api";
 import type { CreatePracticeInput } from "@/lib/backoffice/types";
 
 const input: CreatePracticeInput = {
@@ -41,4 +47,33 @@ describe("B3 create-practice idempotency", () => {
     expect(calls[0][1]?.headers).toEqual({ "Idempotency-Key": "attempt-1", "X-Request-Id": "request-1" });
     expect(calls[1][1]?.headers).toEqual(calls[0][1]?.headers);
   });
+
+  it("encodes server-side list search and pagination parameters", async () => {
+    const callsBefore = getCalls().length;
+    await listBackofficePractices({ search: "Praxis Berlin", offset: 25, limit: 25 });
+    const [path] = getCalls()[callsBefore];
+    expect(path).toBe("/api/backoffice/practices?search=Praxis+Berlin&offset=25&limit=25");
+  });
+
+  it("uses the scoped detail endpoint and maps update fields to the Worker contract", async () => {
+    const callsBefore = getCalls().length;
+    const ids: BackofficeMutationIds = { idempotencyKey: "update-1", requestId: "request-update-1" };
+    await getBackofficePractice("practice-1");
+    await updateBackofficePractice("practice-1", input, ids, "suspended");
+
+    expect(getCalls()[callsBefore][0]).toBe("/api/backoffice/practices/practice-1");
+    const [path, options] = getCalls()[callsBefore + 1];
+    expect(path).toBe("/api/backoffice/practices/practice-1");
+    expect(options?.headers).toEqual({ "Idempotency-Key": "update-1", "X-Request-Id": "request-update-1" });
+    expect(options?.body).toMatchObject({
+      newStatus: "suspended",
+      patch: { legal_name: "Muster GmbH", display_name: "Muster", contact_email: "mina@example.test" }
+    });
+  });
 });
+
+function getCalls() {
+  return (apiRequest as unknown as {
+    mock: { calls: Array<[string, { headers?: Record<string, string>; body?: Record<string, unknown> }?]> };
+  }).mock.calls;
+}

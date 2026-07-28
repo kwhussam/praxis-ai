@@ -3461,19 +3461,49 @@ function scopeAllows(scope: StaffScope, practiceId: string): boolean {
 async function handleBackofficeListPractices(c: Context<{ Bindings: Env }>) {
   const actor = await requireBackofficeActor(c);
   if (actor instanceof Response) return actor;
+  const pageSize = parseBoundedInteger(c.req.query("limit"), 25, 10, 100);
+  const offset = parseBoundedInteger(c.req.query("offset"), 0, 0, 10_000);
+  const rawSearch = c.req.query("search")?.trim() ?? "";
+  if (pageSize === null || offset === null || rawSearch.length > 100 || !isSafeBackofficeSearch(rawSearch)) {
+    return c.json({ error: "invalid_query" }, 400);
+  }
   const scope = await resolveStaffScope(c.env, actor.id);
   if (!scope) return c.json({ error: "forbidden" }, 403);
   if (scope.practiceIds !== "all" && scope.practiceIds.length === 0) {
-    return c.json({ practices: [] });
+    return c.json({
+      practices: [],
+      page: { offset, limit: pageSize, hasMore: false, nextOffset: null },
+      permissions: { canCreate: scope.role !== "support" }
+    });
   }
 
   let path =
-    "/rest/v1/practices?select=id,display_name,legal_name,onboarding_status,contact_email,domain,created_at&order=created_at.desc&limit=200";
+    `/rest/v1/practices?select=id,display_name,legal_name,onboarding_status,contact_email,domain,city,created_at&order=created_at.desc,id.desc&limit=${pageSize + 1}&offset=${offset}`;
   if (scope.practiceIds !== "all") {
     path += `&id=in.(${scope.practiceIds.map(encodeURIComponent).join(",")})`;
   }
+  if (rawSearch) {
+    const pattern = `*${rawSearch}*`;
+    path += `&or=${encodeURIComponent(`(display_name.ilike.${pattern},legal_name.ilike.${pattern},contact_email.ilike.${pattern},domain.ilike.${pattern},city.ilike.${pattern})`)}`;
+  }
   const rows = await supabaseRest<unknown[]>(c.env, path, { method: "GET" });
-  return c.json({ practices: rows });
+  const hasMore = rows.length > pageSize;
+  return c.json({
+    practices: rows.slice(0, pageSize),
+    page: { offset, limit: pageSize, hasMore, nextOffset: hasMore ? offset + pageSize : null },
+    permissions: { canCreate: scope.role !== "support" }
+  });
+}
+
+function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number | null {
+  if (value === undefined || value === "") return fallback;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+}
+
+function isSafeBackofficeSearch(value: string) {
+  return value === "" || /^[\p{L}\p{N}@._\- ]+$/u.test(value);
 }
 
 async function handleBackofficePracticeDetail(c: Context<{ Bindings: Env }>) {
@@ -3492,7 +3522,7 @@ async function handleBackofficePracticeDetail(c: Context<{ Bindings: Env }>) {
     { method: "GET" }
   );
   if (!rows[0]) return c.json({ error: "not_found" }, 404);
-  return c.json({ practice: rows[0] });
+  return c.json({ practice: rows[0], permissions: { canManage: scope.role !== "support" } });
 }
 
 async function handleBackofficeListInvitations(c: Context<{ Bindings: Env }>) {

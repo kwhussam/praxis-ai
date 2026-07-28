@@ -253,6 +253,26 @@ Kompatibilitätsverweis nur über eine transaktionale serverseitige Funktion.
 - Noch folgende B3-Slices: serverseitige Pagination/Suche, Praxisdetail,
   Einladungs-/Mitgliederverwaltung, Consultant-Zuweisung und Audit-Ansicht.
 
+### B3.2 – Praxisnavigation und Stammdaten (umgesetzt, Gegenprüfung offen)
+
+- serverseitige, begrenzte Suche nach Name, E-Mail, Domain und Ort innerhalb
+  des autorisierten Staff-Scopes; Suchsyntax, Offset und Seitengröße werden im
+  Worker strikt validiert.
+- limit+1-Pagination mit `hasMore`/`nextOffset`, ohne globalen Service-Role-
+  Fetch und ohne clientseitiges Nachfiltern fremder Mandanten.
+- Praxisdetailseite mit Profil, Onboarding-Status, Ansprechpartner und
+  vollständigen Stammdaten; nicht zugewiesene Praxis und fehlende Praxis bleiben
+  nach außen identisch.
+- Stammdatenänderungen laufen ausschließlich über
+  `backoffice_update_practice`, mit stabilen Idempotenz-/Request-IDs pro
+  Bearbeitungsversuch und anschließendem Query-Refresh.
+- Support erhält explizite Read-only-Permissions; Admin und zugewiesene
+  Consultants dürfen bearbeiten. Als direkte Statusaktionen werden in diesem
+  Slice nur `active ↔ suspended` angeboten. Einladung/Aktivierung folgt B3.3/B4;
+  irreversible Archivierung erhält später einen eigenen Bestätigungsdialog.
+- Noch folgende B3-Slices: Einladungs-/Mitgliederverwaltung,
+  Consultant-Zuweisung und Audit-Ansicht.
+
 ### Bewusst nicht im ersten Schnitt
 
 - Fragebogen, WLAN-Scan oder Berichtserstellung im Browser

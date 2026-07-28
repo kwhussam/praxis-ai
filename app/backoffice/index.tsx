@@ -17,7 +17,7 @@ import {
 import { supabase } from "@/lib/api/supabase";
 import { createBackofficePractice, listBackofficePractices, type BackofficeMutationIds } from "@/lib/backoffice/api";
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
-import type { BackofficePracticeSummary, CreatePracticeInput, OnboardingStatus } from "@/lib/backoffice/types";
+import type { BackofficePracticeSummary, BackofficePracticePage, CreatePracticeInput, OnboardingStatus } from "@/lib/backoffice/types";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const EMPTY_FORM: CreatePracticeInput = {
@@ -50,6 +50,8 @@ export default function BackofficeDashboard() {
   const compact = width < 980;
   const [authReady, setAuthReady] = useState(false);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [offset, setOffset] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState<CreatePracticeInput>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
@@ -65,9 +67,17 @@ export default function BackofficeDashboard() {
       .catch(() => router.replace("/backoffice/login" as never));
   }, [router]);
 
-  const practices = useQuery<BackofficePracticeSummary[]>({
-    queryKey: ["backoffice-practices"],
-    queryFn: listBackofficePractices,
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setOffset(0);
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const practices = useQuery<BackofficePracticePage>({
+    queryKey: ["backoffice-practices", debouncedSearch, offset],
+    queryFn: () => listBackofficePractices({ search: debouncedSearch, offset, limit: 25 }),
     enabled: authReady
   });
   const createPractice = useMutation({
@@ -80,16 +90,7 @@ export default function BackofficeDashboard() {
       await queryClient.invalidateQueries({ queryKey: ["backoffice-practices"] });
     }
   });
-  const practiceRows = useMemo<BackofficePracticeSummary[]>(() => practices.data ?? [], [practices.data]);
-
-  const filtered = useMemo<BackofficePracticeSummary[]>(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return practiceRows;
-    return practiceRows.filter((practice) =>
-      [practice.display_name, practice.legal_name, practice.contact_email, practice.domain ?? ""]
-        .some((value) => value.toLowerCase().includes(needle))
-    );
-  }, [practiceRows, search]);
+  const practiceRows = useMemo<BackofficePracticeSummary[]>(() => practices.data?.practices ?? [], [practices.data]);
 
   async function submitPractice() {
     const validationError = validatePracticeInput(form);
@@ -145,14 +146,16 @@ export default function BackofficeDashboard() {
             <Text style={styles.heading}>Praxen</Text>
             <Text style={styles.headingCopy}>Onboarding und Zugänge zentral verwalten.</Text>
           </View>
-          <Pressable onPress={() => beginCreateAttempt(setForm, setFormError, setShowCreate, createAttemptIds)} style={styles.primaryButton}>
-            <Ionicons color="#FFFFFF" name="add" size={20} />
-            <Text style={styles.primaryButtonText}>Neue Praxis</Text>
-          </Pressable>
+          {practices.data?.permissions.canCreate !== false ? (
+            <Pressable onPress={() => beginCreateAttempt(setForm, setFormError, setShowCreate, createAttemptIds)} style={styles.primaryButton}>
+              <Ionicons color="#FFFFFF" name="add" size={20} />
+              <Text style={styles.primaryButtonText}>Neue Praxis</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.statsRow}>
-          <Stat label="Praxen gesamt" value={String(practiceRows.length)} />
+          <Stat label="Auf dieser Seite" value={String(practiceRows.length)} />
           <Stat label="Im Onboarding" value={String(practiceRows.filter((item) => item.onboarding_status !== "active").length)} />
           <Stat label="Aktiv" value={String(practiceRows.filter((item) => item.onboarding_status === "active").length)} />
         </View>
@@ -166,15 +169,20 @@ export default function BackofficeDashboard() {
           </View>
           {practices.isLoading ? <ActivityIndicator color="#147D6B" style={styles.loader} /> : null}
           {practices.isError ? <Text style={styles.errorBox}>Praxen konnten nicht geladen werden. Bitte Session und Berechtigung prüfen.</Text> : null}
-          {!practices.isLoading && !practices.isError && filtered.length === 0 ? (
+          {!practices.isLoading && !practices.isError && practiceRows.length === 0 ? (
             <View style={styles.empty}>
               <Ionicons color="#9FB3C8" name="business-outline" size={34} />
               <Text style={styles.emptyTitle}>Keine Praxen gefunden</Text>
               <Text style={styles.emptyCopy}>Lege die erste Praxis an oder passe die Suche an.</Text>
             </View>
           ) : null}
-          {filtered.map((practice) => (
-            <View key={practice.id} style={[styles.row, compact && styles.rowCompact]}>
+          {practiceRows.map((practice) => (
+            <Pressable
+              accessibilityRole="link"
+              key={practice.id}
+              onPress={() => router.push(`/backoffice/practices/${practice.id}` as never)}
+              style={({ pressed }) => [styles.row, compact && styles.rowCompact, pressed && styles.rowPressed]}
+            >
               <View style={styles.practiceIdentity}>
                 <View style={styles.avatar}><Text style={styles.avatarText}>{practice.display_name.slice(0, 2).toUpperCase()}</Text></View>
                 <View>
@@ -189,8 +197,19 @@ export default function BackofficeDashboard() {
               <View style={[styles.status, statusStyle(practice.onboarding_status)]}>
                 <Text style={styles.statusText}>{STATUS_LABEL[practice.onboarding_status]}</Text>
               </View>
-            </View>
+            </Pressable>
           ))}
+          {practices.data ? (
+            <View style={styles.pagination}>
+              <Pressable disabled={offset === 0} onPress={() => setOffset(Math.max(0, offset - 25))} style={[styles.pageButton, offset === 0 && styles.pageButtonDisabled]}>
+                <Text style={styles.pageButtonText}>Zurück</Text>
+              </Pressable>
+              <Text style={styles.pageLabel}>Einträge {offset + 1}–{offset + practiceRows.length}</Text>
+              <Pressable disabled={!practices.data.page.hasMore} onPress={() => setOffset(practices.data?.page.nextOffset ?? offset)} style={[styles.pageButton, !practices.data.page.hasMore && styles.pageButtonDisabled]}>
+                <Text style={styles.pageButtonText}>Weiter</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -300,7 +319,8 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: "row", gap: 14, marginTop: 28 }, stat: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 12, borderWidth: 1, flex: 1, padding: 20 }, statValue: { color: "#102A43", fontSize: 28, fontWeight: "800" }, statLabel: { color: "#627D98", fontSize: 13, marginTop: 5 },
   tableCard: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 14, borderWidth: 1, marginTop: 22, overflow: "hidden" }, toolbar: { borderBottomColor: "#E8EEF4", borderBottomWidth: 1, padding: 16 }, searchBox: { alignItems: "center", backgroundColor: "#F7F9FC", borderColor: "#D9E2EC", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 8, maxWidth: 430, paddingHorizontal: 13 }, searchInput: { color: "#102A43", flex: 1, fontSize: 14, height: 42 }, loader: { margin: 50 }, errorBox: { color: "#B42318", padding: 24 },
   empty: { alignItems: "center", padding: 56 }, emptyTitle: { color: "#334E68", fontSize: 17, fontWeight: "700", marginTop: 14 }, emptyCopy: { color: "#829AB1", fontSize: 13, marginTop: 5 },
-  row: { alignItems: "center", borderBottomColor: "#EDF2F7", borderBottomWidth: 1, flexDirection: "row", gap: 24, justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 15 }, rowCompact: { alignItems: "flex-start" }, practiceIdentity: { alignItems: "center", flex: 1.3, flexDirection: "row", gap: 12 }, avatar: { alignItems: "center", backgroundColor: "#DDF5EF", borderRadius: 9, height: 40, justifyContent: "center", width: 40 }, avatarText: { color: "#147D6B", fontSize: 13, fontWeight: "800" }, practiceName: { color: "#243B53", fontSize: 14, fontWeight: "700" }, practiceLegal: { color: "#829AB1", fontSize: 12, marginTop: 3 }, rowMeta: { flex: 1 }, metaValue: { color: "#486581", fontSize: 13 }, metaLabel: { color: "#9FB3C8", fontSize: 12, marginTop: 3 },
+  row: { alignItems: "center", borderBottomColor: "#EDF2F7", borderBottomWidth: 1, flexDirection: "row", gap: 24, justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 15 }, rowCompact: { alignItems: "flex-start" }, rowPressed: { backgroundColor: "#F7FAFC" }, practiceIdentity: { alignItems: "center", flex: 1.3, flexDirection: "row", gap: 12 }, avatar: { alignItems: "center", backgroundColor: "#DDF5EF", borderRadius: 9, height: 40, justifyContent: "center", width: 40 }, avatarText: { color: "#147D6B", fontSize: 13, fontWeight: "800" }, practiceName: { color: "#243B53", fontSize: 14, fontWeight: "700" }, practiceLegal: { color: "#829AB1", fontSize: 12, marginTop: 3 }, rowMeta: { flex: 1 }, metaValue: { color: "#486581", fontSize: 13 }, metaLabel: { color: "#9FB3C8", fontSize: 12, marginTop: 3 },
+  pagination: { alignItems: "center", flexDirection: "row", justifyContent: "flex-end", gap: 14, padding: 16 }, pageButton: { borderColor: "#CBD5E1", borderRadius: 8, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 9 }, pageButtonDisabled: { opacity: 0.4 }, pageButtonText: { color: "#334E68", fontSize: 13, fontWeight: "700" }, pageLabel: { color: "#627D98", fontSize: 12 },
   status: { borderRadius: 99, paddingHorizontal: 11, paddingVertical: 6 }, status_draft: { backgroundColor: "#EEF2F6" }, status_invited: { backgroundColor: "#FFF3D6" }, status_active: { backgroundColor: "#DDF5EF" }, status_suspended: { backgroundColor: "#FDE8E7" }, status_archived: { backgroundColor: "#EEF2F6" }, statusText: { color: "#486581", fontSize: 11, fontWeight: "800" },
   loadingPage: { alignItems: "center", backgroundColor: "#F4F7FB", flex: 1, justifyContent: "center" }, overlay: { backgroundColor: "rgba(10, 37, 64, 0.42)", bottom: 0, left: 0, position: "absolute", right: 0, top: 0, zIndex: 5 }, drawer: { alignSelf: "flex-end", backgroundColor: "#FFFFFF", minHeight: "100%", padding: 30, width: 560 }, drawerHeader: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between" }, drawerTitle: { color: "#102A43", fontSize: 28, fontWeight: "800", marginTop: 7 }, iconButton: { alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, height: 38, justifyContent: "center", width: 38 },
   sectionTitle: { color: "#334E68", fontSize: 14, fontWeight: "800", marginBottom: 12, marginTop: 28 }, kindRow: { flexDirection: "row", gap: 10 }, kindButton: { alignItems: "center", borderColor: "#D9E2EC", borderRadius: 9, borderWidth: 1, flex: 1, flexDirection: "row", gap: 9, padding: 13 }, kindButtonActive: { backgroundColor: "#F0FBF8", borderColor: "#42A995" }, radio: { borderColor: "#9FB3C8", borderRadius: 9, borderWidth: 1, height: 16, width: 16 }, radioActive: { backgroundColor: "#147D6B", borderColor: "#147D6B", borderWidth: 4 }, kindText: { color: "#334E68", flex: 1, fontSize: 13, fontWeight: "600" },
