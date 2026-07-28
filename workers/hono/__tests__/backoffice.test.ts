@@ -194,6 +194,13 @@ describe("Backoffice auth gating", () => {
     expect(await res.json()).toEqual({ error: "invalid_query" });
     expect(world.calls.some((entry) => entry.url.includes("/rest/v1/practices?"))).toBe(false);
   });
+
+  it("rejects ILIKE wildcard characters instead of silently over-matching", async () => {
+    const world = installWorld();
+    const res = await call(request("/api/backoffice/practices?search=Praxis_Name", { token: aal2Token() }));
+    expect(res.status).toBe(400);
+    expect(world.calls.some((entry) => entry.url.includes("/rest/v1/practices?"))).toBe(false);
+  });
 });
 
 describe("Actor identity", () => {

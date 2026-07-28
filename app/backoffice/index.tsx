@@ -146,7 +146,7 @@ export default function BackofficeDashboard() {
             <Text style={styles.heading}>Praxen</Text>
             <Text style={styles.headingCopy}>Onboarding und Zugänge zentral verwalten.</Text>
           </View>
-          {practices.data?.permissions.canCreate !== false ? (
+          {practices.data?.permissions.canCreate === true ? (
             <Pressable onPress={() => beginCreateAttempt(setForm, setFormError, setShowCreate, createAttemptIds)} style={styles.primaryButton}>
               <Ionicons color="#FFFFFF" name="add" size={20} />
               <Text style={styles.primaryButtonText}>Neue Praxis</Text>
@@ -199,7 +199,7 @@ export default function BackofficeDashboard() {
               </View>
             </Pressable>
           ))}
-          {practices.data ? (
+          {practices.data && practiceRows.length > 0 ? (
             <View style={styles.pagination}>
               <Pressable disabled={offset === 0} onPress={() => setOffset(Math.max(0, offset - 25))} style={[styles.pageButton, offset === 0 && styles.pageButtonDisabled]}>
                 <Text style={styles.pageButtonText}>Zurück</Text>

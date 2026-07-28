@@ -3503,7 +3503,9 @@ function parseBoundedInteger(value: string | undefined, fallback: number, min: n
 }
 
 function isSafeBackofficeSearch(value: string) {
-  return value === "" || /^[\p{L}\p{N}@._\- ]+$/u.test(value);
+  // `%`, `_`, `*`, commas and parentheses are deliberately excluded because
+  // PostgREST/ILIKE interprets them as wildcards or filter syntax.
+  return value === "" || /^[\p{L}\p{N}@.\- ]+$/u.test(value);
 }
 
 async function handleBackofficePracticeDetail(c: Context<{ Bindings: Env }>) {

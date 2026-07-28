@@ -107,6 +107,7 @@ export default function BackofficePracticeDetailScreen() {
   const practice = detailResponse.practice;
   const canManage = detailResponse.permissions.canManage;
   const statusActions = SAFE_STATUS_ACTIONS[practice.onboarding_status] ?? [];
+  const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(formFromPractice(practice));
 
   return (
     <ScrollView contentContainerStyle={styles.page}>
@@ -161,10 +162,11 @@ export default function BackofficePracticeDetailScreen() {
             {canManage && statusActions.length > 0 ? (
               <View style={styles.statusActions}>
                 {statusActions.map((status) => (
-                  <Pressable disabled={update.isPending} key={status} onPress={() => void save(status)} style={styles.secondaryButton}>
+                  <Pressable disabled={update.isPending || hasUnsavedChanges} key={status} onPress={() => void save(status)} style={[styles.secondaryButton, hasUnsavedChanges && styles.disabled]}>
                     <Text style={styles.secondaryButtonText}>{STATUS_LABEL[status]}</Text>
                   </Pressable>
                 ))}
+                {hasUnsavedChanges ? <Text style={styles.statusHint}>Bitte zuerst die Stammdaten speichern, bevor du den Status änderst.</Text> : null}
               </View>
             ) : null}
           </View>
@@ -216,6 +218,6 @@ const styles = StyleSheet.create({
   headingRow: { alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 30 }, headingRowCompact: { alignItems: "flex-start", flexDirection: "column", gap: 20 }, kicker: { color: "#147D6B", fontSize: 11, fontWeight: "900", letterSpacing: 1.4 }, heading: { color: "#102A43", fontSize: 34, fontWeight: "800", marginTop: 8 }, subheading: { color: "#627D98", fontSize: 14, marginTop: 5 }, primaryButton: { alignItems: "center", backgroundColor: "#147D6B", borderRadius: 9, justifyContent: "center", minHeight: 46, minWidth: 180, paddingHorizontal: 18 }, primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" }, disabled: { opacity: 0.5 },
   grid: { alignItems: "flex-start", flexDirection: "row", gap: 22, marginTop: 28 }, gridCompact: { alignItems: "stretch", flexDirection: "column" }, card: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 14, borderWidth: 1, flex: 1, padding: 24 }, cardTitle: { color: "#243B53", fontSize: 17, fontWeight: "800", marginBottom: 18 }, sideColumn: { gap: 16, width: 330 }, sideColumnCompact: { width: "100%" },
   field: { marginBottom: 14 }, fieldGrow: { flex: 1 }, fieldLabel: { color: "#486581", fontSize: 12, fontWeight: "700", marginBottom: 7 }, input: { borderColor: "#CBD5E1", borderRadius: 8, borderWidth: 1, color: "#102A43", fontSize: 14, height: 44, paddingHorizontal: 12 }, inputDisabled: { backgroundColor: "#F7F9FC", color: "#627D98" }, twoColumns: { flexDirection: "row", gap: 12 }, formError: { color: "#B42318", fontSize: 13, lineHeight: 20, marginTop: 8 },
-  meta: { borderBottomColor: "#EDF2F7", borderBottomWidth: 1, paddingVertical: 12 }, metaLabel: { color: "#829AB1", fontSize: 11, fontWeight: "700", textTransform: "uppercase" }, metaValue: { color: "#334E68", fontSize: 14, fontWeight: "700", marginTop: 5 }, statusActions: { gap: 9, marginTop: 20 }, secondaryButton: { alignItems: "center", borderColor: "#CBD5E1", borderRadius: 8, borderWidth: 1, justifyContent: "center", minHeight: 42, paddingHorizontal: 14 }, secondaryButtonText: { color: "#486581", fontSize: 13, fontWeight: "800" },
+  meta: { borderBottomColor: "#EDF2F7", borderBottomWidth: 1, paddingVertical: 12 }, metaLabel: { color: "#829AB1", fontSize: 11, fontWeight: "700", textTransform: "uppercase" }, metaValue: { color: "#334E68", fontSize: 14, fontWeight: "700", marginTop: 5 }, statusActions: { gap: 9, marginTop: 20 }, statusHint: { color: "#627D98", fontSize: 12, lineHeight: 18 }, secondaryButton: { alignItems: "center", borderColor: "#CBD5E1", borderRadius: 8, borderWidth: 1, justifyContent: "center", minHeight: 42, paddingHorizontal: 14 }, secondaryButtonText: { color: "#486581", fontSize: 13, fontWeight: "800" },
   noticeCard: { backgroundColor: "#ECF9F6", borderColor: "#B9E8DC", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 12, padding: 18 }, noticeText: { flex: 1 }, noticeTitle: { color: "#185F52", fontSize: 13, fontWeight: "800" }, noticeCopy: { color: "#39766C", fontSize: 12, lineHeight: 18, marginTop: 5 }, errorTitle: { color: "#102A43", fontSize: 24, fontWeight: "800" }, errorCopy: { color: "#627D98", fontSize: 14, marginBottom: 20, marginTop: 8, textAlign: "center" }
 });
