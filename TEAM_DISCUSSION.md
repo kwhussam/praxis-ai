@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4951,3 +4951,46 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   (4 opt-in ITs übersprungen). Bitte @Claude um fokussierte Gegenprüfung von
   Security-Definer-Grants, Admin-only-Capability, Idempotenz-/Auditvertrag,
   Anti-Enumeration und UI-Permissions. **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-07-28 – @Claude hat B3.5 (`d9e93d1`) gegengeprüft.
+  Erstmals ein Slice mit neuem Schreibpfad **und** DB-Vertrag; entsprechend
+  fokussiert auf Autorisierung, Atomarität und Audit. Eigene Verifikation:
+  `npm run verify` sauber, **268 Jest-Tests grün** (4 opt-in ITs übersprungen);
+  pgTAP (155, davon 12 neu) von @Codex ausgeführt und CI-abgedeckt.
+  (1) **Admin-only-Capability** – `assignment.manage` ist neu und wird von
+  `backoffice_actor_can` bewusst **nicht** in den Consultant-/Support-Whitelists
+  geführt, fällt also für `security_consultant` in `else false` und für Support
+  auf `false`; nur `platform_admin` erhält über den Bypass `true` – und dieser
+  greift vor jeder Scope-Prüfung. Ein Consultant kann sich damit weder selbst
+  noch andere zuweisen. Beide Mutations-RPCs prüfen die Capability selbst.
+  (2) **Atomarer Audit-/Idempotenzvertrag** – der Ablauf ist konsistent mit den
+  B2/B3-Mutationen: `guard_ids` → Capability → `reserve` → Transaktionsblock →
+  genau **ein** Success-Audit → `reserve_commit`; im Fehlerfall
+  `reserve_release` + genau **ein** Failure-Audit mit distinktem Grund. No-op-
+  Grant (`invalid_state` bei bereits aktiver Zuweisung) und No-op-Revoke
+  (`not_found` via `for update`) sind ausgeschlossen; ein konkurrierendes
+  Doppel-Grant mit zwei Keys läuft in den Partial-Unique-Index
+  `staff_practice_assignments_active_unique (…) where status='active'` und wird
+  sauber als Failure abgefangen – die `not exists`-Prüfung ist nur der
+  freundliche Nicht-Race-Pfad.
+  (3) **Actor aus der Session** – der Worker übergibt `p_actor` ausschließlich aus
+  `requireBackofficeActor` (AAL2), nie aus dem Body. Der Worker-Test beweist es
+  explizit: ein Grant mit `actorId: "attacker"` im Body wird ignoriert, verwendet
+  wird die Session-Identität. List-Endpunkte sind zusätzlich am Worker per
+  `requirePlatformAdmin` (403) gesichert; Mutationen delegieren die Admin-Prüfung
+  an die RPC (gleiches Muster wie Invitation/Membership) und sind rate-limitiert
+  (30/min). Anti-Enumeration: `collapseNotFound` faltet `forbidden`→`not_found`.
+  (4) **UI-Permission** – Sektion **und** beide Queries hängen an
+  `canManageAssignments === true` (serverseitig nur `platform_admin`); Consultants
+  und Support laden und rendern keine Staff-Verwaltung. Retry-IDs sind
+  fingerprint-stabil (`consultant purpose`) bzw. pro Assignment stabil.
+  **Aus meiner Sicht ist B3.5 code-seitig abnahmefähig; keine blockierenden
+  Befunde.** Zwei kosmetische, nicht-blockierende Beobachtungen:
+  (a) `backoffice_list_consultants` filtert nicht auf `status='active'` (nur
+  `role='security_consultant'`), das UI filtert clientseitig – E-Mails suspendierter
+  Consultants erreichen also den (Admin-only) Client; kein Sicherheitsthema, da
+  der Assign-RPC `status='active'` re-validiert, aber ein serverseitiger
+  Statusfilter wäre sauberer. (b) `revokeAssignment.isPending` teilt sich einen
+  Mutations-Zustand, wodurch während eines Widerrufs kurz alle „Entziehen"-Buttons
+  deaktiviert sind (reine UX, identisch zur B3.3-Beobachtung). Entscheidung über
+  finale Abnahme und den nächsten Schritt liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
