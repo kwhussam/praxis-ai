@@ -1,0 +1,24 @@
+appId: ai.praxisshield.app
+name: 12-invitation-auth-handoff
+---
+- runFlow: ../subflows/bootstrap.yaml
+- tapOn:
+    id: auth-open-invitation
+- extendedWaitUntil:
+    visible:
+      id: invitation-code
+    timeout: 30000
+- tapOn:
+    id: invitation-code
+- inputText: "ABCDEFGHJK"
+- tapOn:
+    id: invitation-submit
+- extendedWaitUntil:
+    visible: "Bitte zuerst einloggen und den Code danach einlösen."
+    timeout: 30000
+- tapOn: "Zum Login"
+- extendedWaitUntil:
+    visible: "Einladung abschließen"
+    timeout: 30000
+- assertVisible:
+    id: auth-email

@@ -4,10 +4,11 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { colors } from "@/constants/colors";
 import { AppConfig } from "@/lib/config/environment";
+import { getPendingInvitationCode } from "@/lib/auth/pending-invitation";
 import { initDemoSession, initSession, useSessionStore } from "@/lib/store/session";
 
 export default function Index() {
-  const [target, setTarget] = useState<"/(auth)/login" | "/(auth)/onboarding" | "/(tabs)/dashboard" | null>(null);
+  const [target, setTarget] = useState<"/(auth)/login" | "/(auth)/onboarding" | "/(auth)/redeem-invitation" | "/(tabs)/dashboard" | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -20,9 +21,10 @@ export default function Index() {
           return;
         }
 
-        const practice = await initSession();
+        const [practice, pendingInvitation] = await Promise.all([initSession(), getPendingInvitationCode()]);
         if (!mounted) return;
-        setTarget(practice ? "/(tabs)/dashboard" : useSessionStore.getState().session ? "/(auth)/onboarding" : "/(auth)/login");
+        if (pendingInvitation) setTarget(useSessionStore.getState().session ? "/(auth)/redeem-invitation" : "/(auth)/login");
+        else setTarget(practice ? "/(tabs)/dashboard" : useSessionStore.getState().session ? "/(auth)/onboarding" : "/(auth)/login");
       } catch {
         if (mounted) setTarget("/(auth)/login");
       }

@@ -8,8 +8,9 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { requestPasswordReset } from "@/lib/auth/password-reset";
+import { getPendingInvitationCode } from "@/lib/auth/pending-invitation";
 import { supabase } from "@/lib/supabase/client";
-import { useSessionStore, type Practice } from "@/lib/store/session";
+import { loadAccessiblePracticeForUser, useSessionStore } from "@/lib/store/session";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function LoginScreen() {
   const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [hasPendingInvitation, setHasPendingInvitation] = useState(false);
   const normalizedEmail = email.trim();
   const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
   const passwordLongEnough = password.length >= 8;
@@ -33,6 +35,8 @@ export default function LoginScreen() {
   useEffect(() => {
     if (requestedMode === "register") setMode("register");
   }, [requestedMode]);
+
+  useEffect(() => { void getPendingInvitationCode().then((code) => setHasPendingInvitation(Boolean(code))); }, []);
 
   async function handleSubmit() {
     setLoading(true);
@@ -53,11 +57,13 @@ export default function LoginScreen() {
 
         if (data.session && data.user) {
           setSession(data.session);
-          router.replace("/(auth)/onboarding");
+          router.replace(hasPendingInvitation ? "/(auth)/redeem-invitation" : "/(auth)/onboarding");
           return;
         }
 
-        const signUpNotice = "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.";
+        const signUpNotice = hasPendingInvitation
+          ? "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail und melden Sie sich danach an, um die Einladung abzuschließen."
+          : "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.";
         setNotice(signUpNotice);
         AccessibilityInfo.announceForAccessibility(signUpNotice);
         setMode("login");
@@ -73,7 +79,11 @@ export default function LoginScreen() {
       if (!data.session || !data.user) throw new Error("Login fehlgeschlagen: Keine Supabase-Session erhalten.");
 
       setSession(data.session);
-      const practice = await loadPracticeForUser(data.user.id);
+      if (hasPendingInvitation) {
+        router.replace("/(auth)/redeem-invitation");
+        return;
+      }
+      const practice = await loadAccessiblePracticeForUser(data.user.id);
 
       if (!practice) {
         router.replace("/(auth)/onboarding");
@@ -124,9 +134,11 @@ export default function LoginScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>{mode === "login" ? "Willkommen zurück" : "Praxis kostenlos anlegen"}</Text>
+        <Text style={styles.title}>{hasPendingInvitation ? "Einladung abschließen" : mode === "login" ? "Willkommen zurück" : "Praxis kostenlos anlegen"}</Text>
         <Text style={styles.copy}>
-          {mode === "login"
+          {hasPendingInvitation
+            ? "Melde dich an oder erstelle ein Konto mit der E-Mail-Adresse, an die deine Einladung gesendet wurde."
+            : mode === "login"
             ? "Melde dich als Praxis oder White-Label-Partner an."
             : "Lege einen Zugang an und starte danach den ersten Praxis-Check."}
         </Text>
@@ -212,14 +224,14 @@ export default function LoginScreen() {
         ) : null}
         <AnimatedButton
           disabled={!canSubmit}
-          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : "Praxis kostenlos anlegen"}
+          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : hasPendingInvitation ? "Konto für Einladung anlegen" : "Praxis kostenlos anlegen"}
           onPress={handleSubmit}
           style={styles.button}
           testID="auth-submit"
         />
         <AnimatedButton
           disabled={loading}
-          label={mode === "login" ? "Praxis kostenlos anlegen" : "Einloggen"}
+          label={mode === "login" ? hasPendingInvitation ? "Noch kein Konto? Jetzt anlegen" : "Praxis kostenlos anlegen" : "Einloggen"}
           onPress={() => {
             setError(null);
             setNotice(null);
@@ -229,32 +241,18 @@ export default function LoginScreen() {
           style={styles.secondaryButton}
           testID="auth-switch-mode"
         />
+        {!hasPendingInvitation ? (
+          <AnimatedButton
+            label="Einladungscode einlösen"
+            onPress={() => router.push("/(auth)/redeem-invitation")}
+            variant="ghost"
+            style={styles.secondaryButton}
+            testID="auth-open-invitation"
+          />
+        ) : null}
       </GlassCard>
     </Screen>
   );
-}
-
-async function loadPracticeForUser(userId: string): Promise<Practice | null> {
-  const { data, error } = await supabase
-    .from("practices")
-    .select("id,name,domain,email,plan,white_label_partner_id")
-    .eq("owner_id", userId)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) return null;
-
-  return {
-    id: data.id,
-    name: data.name,
-    domain: data.domain ?? undefined,
-    email: data.email ?? undefined,
-    plan:
-      data.plan === "audit" || data.plan === "monitoring" || data.plan === "compliance"
-        ? data.plan
-        : "free",
-    whiteLabelPartnerId: data.white_label_partner_id ?? undefined
-  };
 }
 
 const styles = StyleSheet.create({

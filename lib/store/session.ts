@@ -59,17 +59,28 @@ export async function initSession() {
     return null;
   }
 
-  const { data: practice, error } = await supabase
-    .from("practices")
-    .select("id,name,domain,email,plan,white_label_partner_id")
-    .eq("owner_id", session.user.id)
-    .maybeSingle();
-
-  if (error) throw error;
-  const normalizedPractice = normalizePractice(practice);
+  const normalizedPractice = await loadAccessiblePracticeForUser(session.user.id);
   if (normalizedPractice) useSessionStore.getState().setPractice(normalizedPractice);
   else useSessionStore.getState().clearPractice();
   return normalizedPractice;
+}
+
+export async function loadAccessiblePracticeForUser(userId: string): Promise<Practice | null> {
+  const { data: owned, error: ownerError } = await supabase.from("practices")
+    .select("id,name,domain,email,plan,white_label_partner_id").eq("owner_id", userId).maybeSingle();
+  if (ownerError) throw ownerError;
+  const ownedPractice = normalizePractice(owned);
+  if (ownedPractice) return ownedPractice;
+
+  const { data: memberships, error: membershipError } = await supabase.from("practice_memberships")
+    .select("practice_id").eq("user_id", userId).eq("status", "active").order("granted_at", { ascending: false }).limit(1);
+  if (membershipError) throw membershipError;
+  const practiceId = memberships?.[0]?.practice_id;
+  if (!practiceId) return null;
+  const { data: memberPractice, error: practiceError } = await supabase.from("practices")
+    .select("id,name,domain,email,plan,white_label_partner_id").eq("id", practiceId).maybeSingle();
+  if (practiceError) throw practiceError;
+  return normalizePractice(memberPractice);
 }
 
 export function initDemoSession() {

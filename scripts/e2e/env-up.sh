@@ -124,6 +124,7 @@ set +a
 LOCAL_SUPABASE_URL="${API_URL:-http://127.0.0.1:54321}"
 LOCAL_SUPABASE_ANON_KEY="${ANON_KEY:-${PUBLISHABLE_KEY:-}}"
 LOCAL_SUPABASE_SERVICE_ROLE_KEY="${SERVICE_ROLE_KEY:-${SECRET_KEY:-}}"
+LOCAL_BACKOFFICE_INVITE_HMAC_SECRET="local-e2e-invite-secret-0123456789-abcdef"
 
 if [[ -z "$LOCAL_SUPABASE_ANON_KEY" || -z "$LOCAL_SUPABASE_SERVICE_ROLE_KEY" ]]; then
   echo "Supabase status did not expose local anon/service-role keys." >&2
@@ -137,6 +138,7 @@ fi
   printf 'export TEST_PRACTICE_A_EMAIL=%q\n' "owner-a@example.test"
   printf 'export TEST_PRACTICE_A_PASSWORD=%q\n' "Local-E2E-2026!"
   printf 'export TEST_PRACTICE_B_ID=%q\n' "20000000-0000-4000-8000-0000000000b1"
+  printf 'export BACKOFFICE_INVITE_HMAC_SECRET=%q\n' "$LOCAL_BACKOFFICE_INVITE_HMAC_SECRET"
 } > "$RUNTIME_ENV"
 
 set -a
@@ -164,6 +166,7 @@ nohup npx wrangler dev \
   --var "SUPABASE_URL:$SUPABASE_URL" \
   --var "SUPABASE_ANON_KEY:$SUPABASE_ANON_KEY" \
   --var "SUPABASE_SERVICE_ROLE_KEY:$SUPABASE_SERVICE_ROLE_KEY" \
+  --var "BACKOFFICE_INVITE_HMAC_SECRET:$BACKOFFICE_INVITE_HMAC_SECRET" \
   > "$WORKER_LOG" 2>&1 < /dev/null &
 WORKER_PID=$!
 echo "$WORKER_PID" > "$WORKER_PID_FILE"

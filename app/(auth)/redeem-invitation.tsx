@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { KeyRound } from "lucide-react-native";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -9,6 +9,9 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { ApiError } from "@/lib/api/client";
 import { newRedeemIds, redeemInvitation, shouldResetRedeemAttempt, type RedeemIds } from "@/lib/api/invitations";
+import { clearPendingInvitationCode, getPendingInvitationCode, savePendingInvitationCode } from "@/lib/auth/pending-invitation";
+import { supabase } from "@/lib/supabase/client";
+import { loadAccessiblePracticeForUser, useSessionStore } from "@/lib/store/session";
 
 const CODE_LENGTH = 10;
 
@@ -36,6 +39,9 @@ export default function RedeemInvitationScreen() {
   const [needsLogin, setNeedsLogin] = useState(false);
   // Stabile Idempotenz-IDs je Code: ein Retry desselben Codes wiederholt den Key.
   const attempt = useRef<{ code: string; ids: RedeemIds } | null>(null);
+  const setPractice = useSessionStore((state) => state.setPractice);
+
+  useEffect(() => { void getPendingInvitationCode().then((pendingCode) => { if (pendingCode) setCode(pendingCode); }); }, []);
 
   const normalized = normalizeCode(code);
   const canSubmit = normalized.length === CODE_LENGTH && !pending;
@@ -47,12 +53,20 @@ export default function RedeemInvitationScreen() {
     setNeedsLogin(false);
     if (attempt.current?.code !== normalized) attempt.current = { code: normalized, ids: newRedeemIds() };
     try {
-      await redeemInvitation(normalized, attempt.current.ids);
+      await savePendingInvitationCode(normalized);
+      const result = await redeemInvitation(normalized, attempt.current.ids);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("redeem_session_missing");
+      const practice = await loadAccessiblePracticeForUser(user.id);
+      if (!practice || practice.id !== result.practice_id) throw new Error("redeemed_practice_not_accessible");
+      setPractice(practice);
+      await clearPendingInvitationCode();
       router.replace("/(tabs)/dashboard");
     } catch (err) {
       const mapped = messageForError(err);
       setError(mapped.text);
       setNeedsLogin(mapped.needsLogin);
+      if (mapped.needsLogin) await savePendingInvitationCode(normalized);
       if (shouldResetRedeemAttempt(err)) attempt.current = null;
     } finally {
       setPending(false);
@@ -81,6 +95,7 @@ export default function RedeemInvitationScreen() {
           placeholder="z. B. ABCD-EFGH-JK"
           placeholderTextColor={colors.muted}
           style={styles.input}
+          testID="invitation-code"
           value={code}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -89,9 +104,10 @@ export default function RedeemInvitationScreen() {
           onPress={() => void redeem()}
           disabled={!canSubmit}
           style={styles.submit}
+          testID="invitation-submit"
         />
         {needsLogin ? (
-          <AnimatedButton label="Zum Login" onPress={() => router.push("/(auth)/login")} variant="ghost" style={styles.secondary} />
+          <AnimatedButton label="Zum Login" onPress={() => router.replace("/(auth)/login")} variant="ghost" style={styles.secondary} />
         ) : (
           <AnimatedButton label="Zurück" onPress={() => router.back()} variant="ghost" style={styles.secondary} />
         )}
