@@ -4109,6 +4109,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-032 | 2026-07-28 | B3.4 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; B3.5 implementiert Consultant-Zuweisungen ausschließlich über atomare Admin-RPCs. | Serverseitige Audit-Pagination bleibt ein Skalierungs-Follow-up; Assignment-Grant/Revoke müssen Authz, Idempotenz, Mutation und genau ein Audit-Ereignis transaktional bündeln. | @Hussam, @Codex, @Claude |
 | E-033 | 2026-07-29 | B3.5 und B4a sind final abgenommen; B4b setzt den Einladungsflow über Registrierung/Login bis zur dauerhaften Praxis-Session um. | @Hussam hat die empfohlene Reihenfolge bestätigt; eingeladene Rollen dürfen weder eine zweite Praxis anlegen noch nach App-Neustart ins freie Onboarding fallen. | @Hussam, @Codex, @Claude |
 | E-034 | 2026-07-29 | B4b ist nach Implementierung und Claudes Gegenprüfung fachlich und code-seitig abgenommen; der native Maestro-Lauf sowie zwei nicht-blockierende Client-Randfälle werden als Follow-ups geführt. | @Hussam übernimmt die gemeinsame Empfehlung: Der XCTest-Infrastrukturblocker verhindert keine fachliche Abnahme; ungültige persistierte Codes und die spätere Mehrpraxis-Navigation bleiben transparent offen. | @Hussam, @Codex, @Claude |
+| E-035 | 2026-07-29 | B5a ist final abgenommen und B5b wurde als begrenzter Backend-Slice freigegeben; App-Redemption/UI und Hosted-Auth-Konfiguration bleiben getrennte Gates. | @Hussam folgt der gemeinsamen Empfehlung nach Claudes Gegenprüfung; der sicherheitskritische Worker-/DB-Pfad darf auf dem geprüften Vertrag aufbauen, ohne eine noch nicht belegte Zehn-Minuten-TTL oder sofortige Access-JWT-Invalidierung zu behaupten. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4132,8 +4133,9 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
-| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
-| B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Vertrag `23b8588` von @Claude ohne Blocker gegengeprüft (`4c6116f`) und final abnahmefähig; wartet auf @Hussams Abnahme/B5b-Freigabe |
+| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | In Arbeit: B5b-Backend in `d623307`; App-Redemption/UI und Hosted-OTP-/JWT-Gates offen |
+| B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Final abgenommen (E-035): `23b8588` + Härtung `037c978`, Gegenprüfung `4c6116f` |
+| B5b: Admin-Reset-Backend mit eigener Audit-/Rate-Limit-Grenze implementieren | @Codex, @Claude | 2026-07-29 | Implementiert in `d623307`; 285 Jest- und 186 pgTAP-Prüfungen grün, Gegenprüfung durch @Claude offen |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
@@ -4717,6 +4719,35 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   den nächsten B3-Slice (Pagination/Suche, Praxisdetail, Einladungen,
   Mitgliedschaften, Consultant-Zuweisung, Audit) liegt bei dir.
   **Rederecht / Am Zug: @Hussam.**
+- **Entscheidung und Umsetzung:** 2026-07-29 – @Hussam hat die gemeinsame
+  Empfehlung angenommen: **B5a ist final abgenommen und B5b als begrenzter
+  Backend-Slice freigegeben (E-035).** @Codex hat B5b in `d623307` umgesetzt.
+  Die neue admin-only Route
+  `POST /api/backoffice/practices/:id/password-resets` verlangt AAL2 mit
+  frischem explizitem MFA-Step-up, aktive `platform_admin`-Autorisierung,
+  serverseitig belegte Praxiszugehörigkeit des Zielkontos, einen expliziten
+  Idempotenz-Key sowie eine syntaktisch gültige vertrauenswürdige
+  `CF-Connecting-IP`. Sie bleibt fail-closed, solange die Deployment-Assertion
+  `PASSWORD_RESET_OTP_TTL_SECONDS=600` nicht gesetzt ist. Akteur, Ziel und IP
+  werden separat begrenzt; Ziel-/IP-Schlüssel erreichen die DB nur als
+  SHA-256-Hash und werden nach 24 Stunden automatisch gelöscht. Der
+  Recovery-Code wird über GoTrue `generate_link` erzeugt, genau einmal
+  zurückgegeben und erscheint weder in DB-RPCs, Audit, Idempotenzresultat noch
+  Logs. Ein Erfolgs-Retry liefert bewusst `409 reset_already_issued` statt eines
+  Secret-Replays. Die neue Tabelle `password_reset_audit_events` ist
+  append-only, per `FORCE RLS` ausschließlich für Plattform-Admins lesbar und
+  wird nach mindestens 183 Tagen irreversibel anonymisiert; Legal Holds bleiben
+  dokumentationspflichtig. Die tägliche bestehende Audit-Retention ruft auch
+  die neue begrenzte Anonymisierungs-RPC auf. Generierte DB-Typen und RLS-Matrix
+  sind aktualisiert. Verifikation: vollständiger lokaler Supabase-Reset sauber,
+  **186 pgTAP-Prüfungen in acht Dateien grün**, `npm run verify` mit ESLint,
+  TypeScript und **285 Jest-Tests grün** (vier opt-in Tests übersprungen).
+  Bewusst nicht enthalten: App-Codeeingabe/Passwortabschluss, globaler Logout
+  nach Passwortänderung, Backoffice-UI sowie Hosted-Umstellung auf 600 Sekunden
+  und JWT-TTL-Regression. @Claude, bitte prüfe insbesondere Capability/Step-up,
+  Zielbindung, dreidimensionales Rate-Limit und 24h-Cleanup,
+  Idempotenz ohne Secret-Replay, GoTrue-Rohantwort, atomare Finalisierung/Audit,
+  RLS/Retention sowie den Fail-closed-TTL-Guard. **Rederecht / Am Zug: @Claude.**
 - **Zuletzt geprüft:** 2026-07-28 10:28 CEST – Claudes finale B3.1-Gegenprüfung
   seit dem vorherigen Codex-Protokolleintrag erfasst. Sie schließt die drei
   Reviewbefunde und empfiehlt die Abnahme; die Entscheidung über B3.1 und den
