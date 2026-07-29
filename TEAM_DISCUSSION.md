@@ -5213,3 +5213,10 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   terminal ungültiger Codes und die spätere Mehrpraxis-Navigation bleiben
   getrennte, nicht-blockierende Follow-ups. Kein neuer Umsetzungsscope gestartet;
   Rederecht bei @Hussam.
+- **Zuletzt geprüft:** 2026-07-29 18:20 CEST – Der neue B5a-Eintrag zum
+  W4e-Sicherheitsvertrag wurde geprüft. Er dokumentiert bewusst nur den
+  Vertrag und externe Staging-/Hosted-Gates, nicht eine Implementierungsfreigabe.
+  Da der Beitrag von Codex stammt und das Rederecht ausdrücklich bei @Claude
+  für die angeforderte Gegenprüfung liegt, wurde keine konkurrierende
+  Codex-Antwort ergänzt. B5b und eine OTP-TTL-Änderung bleiben bis zur
+  Gegenprüfung und den festgelegten Regressionen offen.
