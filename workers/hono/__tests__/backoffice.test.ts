@@ -524,6 +524,20 @@ describe("Invitation redeem", () => {
     expect(redeemCall?.body).toMatchObject({ p_user: ownerId, p_invitation_id: invitationId, p_idempotency_key: "redeem-key", p_request_id: "redeem-request" });
     // The plaintext code must never reach the database layer.
     expect(JSON.stringify(redeemCall?.body)).not.toContain(code);
+    const candidateCall = world.calls.find((entry) => entry.url.includes("/rest/v1/practice_invitations?"));
+    expect(candidateCall?.url).toContain("status=in.(pending,accepted)");
+  });
+
+  it("allows an accepted invitation candidate to reach the RPC for idempotent lost-response replay", async () => {
+    const proof = await computeProof(baseEnv.BACKOFFICE_INVITE_HMAC_SECRET, code, practiceId, email);
+    const world = installWorld({
+      user: { id: ownerId, email },
+      restRows: { practice_invitations: [{ id: invitationId, practice_id: practiceId, proof_reference: proof, status: "accepted" }] },
+      rpcResults: { redeem_practice_invitation: { ok: true, practice_id: practiceId, membership_id: "m-1", role: "practice_owner", status: "active" } }
+    });
+    const res = await call(request("/api/invitations/redeem", { method: "POST", token: userToken(), headers: { "idempotency-key": "same-key" }, body: { code } }));
+    expect(res.status).toBe(200);
+    expect(world.calls.some((entry) => entry.url.includes("redeem_practice_invitation"))).toBe(true);
   });
 
   it("rejects a wrong code as invalid_or_expired and never calls the RPC", async () => {

@@ -8,7 +8,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { ApiError } from "@/lib/api/client";
-import { newRedeemIds, redeemInvitation, type RedeemIds } from "@/lib/api/invitations";
+import { newRedeemIds, redeemInvitation, shouldResetRedeemAttempt, type RedeemIds } from "@/lib/api/invitations";
 
 const CODE_LENGTH = 10;
 
@@ -53,8 +53,7 @@ export default function RedeemInvitationScreen() {
       const mapped = messageForError(err);
       setError(mapped.text);
       setNeedsLogin(mapped.needsLogin);
-      // Nach einem echten Fehlschlag darf ein neuer Versuch einen frischen Key nutzen.
-      attempt.current = null;
+      if (shouldResetRedeemAttempt(err)) attempt.current = null;
     } finally {
       setPending(false);
     }

@@ -3695,13 +3695,14 @@ async function handleRedeemInvitation(c: Context<{ Bindings: Env }>) {
     return c.json({ ok: false, error: "invalid_or_expired" }, 400);
   }
 
-  // Kandidaten: offene, nicht abgelaufene Einladungen an genau diese E-Mail. Der
-  // Proof bindet (practice, email, code), daher wird er je Kandidat rekonstruiert
-  // und konstant-zeitig verglichen; ein Nicht-Treffer ist von "kein Kandidat"
-  // nach außen ununterscheidbar (immer invalid_or_expired).
+  // Kandidaten: offene ODER bereits akzeptierte Einladungen an genau diese
+  // E-Mail. Akzeptierte Einladungen müssen enthalten bleiben, damit ein Retry
+  // nach erfolgreicher DB-Mutation aber verlorener HTTP-Antwort den gespeicherten
+  // Idempotenz-Erfolg erneut abrufen kann. Die RPC entscheidet autoritativ über
+  // Status und Ablauf; ein Nicht-Treffer bleibt nach außen ununterscheidbar.
   const candidates = await supabaseRest<Array<{ id: string; practice_id: string; proof_reference: string | null }>>(
     c.env,
-    `/rest/v1/practice_invitations?select=id,practice_id,proof_reference&status=eq.pending&target_email=eq.${encodeURIComponent(email)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`,
+    `/rest/v1/practice_invitations?select=id,practice_id,proof_reference&status=in.(pending,accepted)&target_email=eq.${encodeURIComponent(email)}&limit=200`,
     { method: "GET" }
   );
   let invitationId: string | null = null;

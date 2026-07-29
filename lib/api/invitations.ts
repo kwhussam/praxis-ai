@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiRequest, ApiError } from "@/lib/api/client";
 
 export type RedeemInvitationResult = {
   ok: true;
@@ -16,6 +16,14 @@ export type RedeemIds = { idempotencyKey: string; requestId: string };
 export function newRedeemIds(): RedeemIds {
   const token = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
   return { idempotencyKey: token(), requestId: token() };
+}
+
+// Nur eine definitiv beantwortete, terminale Client-Anfrage beendet den
+// Versuch. Bei Timeout, Netzwerkfehler, 429 oder 5xx bleiben die IDs stabil:
+// Der Server könnte bereits erfolgreich mutiert haben, bevor die Antwort
+// verloren ging, und muss dann denselben Idempotenz-Key erneut sehen.
+export function shouldResetRedeemAttempt(error: unknown) {
+  return error instanceof ApiError && [400, 401, 403, 409, 410].includes(error.status);
 }
 
 // Löst einen Einladungs-Einmalcode über den serverseitig autorisierten Worker
