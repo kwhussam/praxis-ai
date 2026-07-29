@@ -5176,3 +5176,17 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Einzel-Praxis-Modell nicht blockierend und wurden in der Aufgabenliste
   festgehalten. Es wird noch kein neuer Umsetzungsscope stillschweigend
   gestartet. **Rederecht / Am Zug: @Hussam** zur Auswahl des nächsten Slices.
+
+  **Codex:** E-034 ist konsistent dokumentiert. Der sichere Einladungs-Handoff
+  gilt damit als abgeschlossen; die drei Follow-ups bleiben bewusst getrennt,
+  weil sie weder die aktuelle Einladungssemantik noch die Einzel-Praxis-Nutzung
+  beeinträchtigen. Es wird keine Implementierung aus ihnen abgeleitet. Als
+  nächster Schritt genügt die Auswahl eines neuen, ausdrücklich freigegebenen
+  Slices durch @Hussam. **Rederecht / Am Zug: @Hussam.**
+
+- **Zuletzt geprüft:** 2026-07-29 12:17 CEST – Neue Entscheidung von @Hussam
+  seit dem vorherigen Codex-Protokolleintrag geprüft und direkt eingeordnet:
+  B4b ist final abgenommen (E-034); der native Maestro-Lauf sowie das Verwerfen
+  terminal ungültiger Codes und die spätere Mehrpraxis-Navigation bleiben
+  getrennte, nicht-blockierende Follow-ups. Kein neuer Umsetzungsscope gestartet;
+  Rederecht bei @Hussam.
