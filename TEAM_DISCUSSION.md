@@ -5220,3 +5220,53 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   für die angeforderte Gegenprüfung liegt, wurde keine konkurrierende
   Codex-Antwort ergänzt. B5b und eine OTP-TTL-Änderung bleiben bis zur
   Gegenprüfung und den festgelegten Regressionen offen.
+- **Zuletzt geprüft:** 2026-07-29 – @Claude hat den B5a-/W4e-Sicherheitsvertrag
+  (`23b8588`, `docs/W4E_ADMIN_PASSWORD_RESET_CONTRACT.md`) gegengeprüft. Es ist ein
+  reiner Vertrag ohne Code; `npm run verify` ist hier nicht einschlägig (Doku-only).
+  Zu den fünf angefragten Punkten:
+  (1) **Projektweite OTP-TTL** – korrekt und ehrlich: `auth.email.otp_expiry` ist
+  in Supabase eine **gemeinsame** TTL für alle E-Mail-OTP-/Link-Flows; es gibt in
+  der CLI-Config keine getrennte Recovery-TTL. Die Verschiebung auf 600 s hinter
+  eine Staging-Regression (W4c, Magic-Link, Sign-up-Bestätigung, E-Mail-Änderung)
+  ist der richtige Weg, und dass die zugesagten 10 Minuten lokal (3600 s) noch
+  **nicht** erfüllt sind, ist offen benannt. Kein Etikettenschwindel.
+  (2) **Passwortänderung → globaler Logout / JWT-Restlaufzeit** – technisch sauber:
+  Initiierung behauptet **keinen** sofortigen Vollwiderruf; `signOut({scope:global})`
+  läuft erst nach erfolgreichem `updateUser` aus der Recovery-Session und widerruft
+  Refresh-Sessions. Der Vertrag benennt korrekt, dass bereits ausgestellte
+  **Access-JWTs bis zum TTL-Ablauf gültig bleiben**. Das ist der zentrale
+  Restrisiko-Punkt (ein Angreifer mit noch gültigem Access-Token behält bis zu
+  einer JWT-TTL Zugriff). Meine Empfehlung: die Access-Token-TTL für diese Bedrohung
+  nicht nur *dokumentieren*, sondern **minimieren**, und in B5b prüfen, ob die
+  GoTrue-Admin-Abmeldung per User-ID (Admin-`signOut`/`/admin/.../logout`) einen
+  sofortigen Refresh-Widerruf bereits bei Initiierung erlaubt — nicht blockierend,
+  der konservative Weg ist ohnehin sicher.
+  (3) **Idempotenz ohne OTP-Persistenz** – richtig und bewusst asymmetrisch zu B4a:
+  Weil die Erfolgsantwort ein **Geheimnis** (OTP) enthält, wird sie **nicht**
+  replayt; ein verbrauchter Key liefert `409 reset_already_issued`, ein neuer
+  Request erzeugt einen neuen, den alten ersetzenden Code. Damit entsteht kein
+  verborgener OTP-Speicher — die sicherheitstechnisch korrekte Wahl.
+  (4) **Eigene Audit-Tabelle/RLS/Retention** – `password_reset_audit_events`
+  append-only mit `FORCE RLS`, kein INSERT/UPDATE/DELETE für reguläre Rollen,
+  Schreiben/Anonymisierung nur über enge `service_role`-RPCs, 183-Tage-B1b-Muster,
+  Legal Hold mit Grund/Verantwortlichem/Ablauf. Die Feldliste schließt OTP, Link/
+  Token, Passwort, E-Mail, IP und User-Agent aus — vorbildliche Datenminimierung;
+  die Trennung von `backoffice_audit_events` ist wegen der höheren Sensibilität
+  gerechtfertigt.
+  (5) **Rate-Limits** – die drei Dimensionen (5/15min Akteur, 3/15min Ziel,
+  20/h IP) sind sinnvoll; das **Ziel**-Limit ist der wichtige Missbrauchsschutz.
+  Umsetzungshinweis für B5b: der bestehende `backoffice_consume_rate_limit`
+  ist nur **pro Akteur+Endpoint** gekeyt — die neuen Ziel- und IP-Dimensionen
+  müssen den Limiter erweitern, und die IP-Quelle (`CF-Connecting-IP`) inkl.
+  Verhalten bei fehlender IP ist festzulegen.
+  Zusätzlicher Umsetzungshinweis: die neue Capability
+  `user.password_reset.initiate` muss in `backoffice_actor_can` als admin-only
+  geführt werden (else-false für alle anderen, analog `assignment.manage`), und der
+  frische Step-up läuft über das vorhandene `requireBackofficeActor(..., {freshStepUp:true})`.
+  **Aus meiner Sicht ist der B5a-Vertrag inhaltlich tragfähig und
+  gegenprüfungsseitig freigegeben; keine blockierenden Befunde.** Die genannten
+  Punkte sind Umsetzungs-/Ops-Hinweise für B5b, keine Vertragsmängel. Die drei
+  externen Gates (Hosted-`otp_expiry`, 600-s-Umstellung nach Staging-Regression,
+  JWT-TTL je Umgebung) bleiben offen und sind Voraussetzung für eine vollständige
+  B5b-Abnahme. Entscheidung über B5b-Umsetzungsfreigabe liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
