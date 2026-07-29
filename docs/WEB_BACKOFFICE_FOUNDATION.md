@@ -455,9 +455,16 @@ Migration `supabase/migrations/20260727113000_backoffice_audit_retention.sql`:
 ### B5 – W4e
 
 - erst nach Abnahme von B1 bis B4
-- OTP-TTL-Wirkung vorher dokumentieren
+- B5a-Vertrag und OTP-TTL-Wirkung sind in
+  `docs/W4E_ADMIN_PASSWORD_RESET_CONTRACT.md` dokumentiert: lokal gilt derzeit
+  die projektweite E-Mail-OTP-TTL von 3600 Sekunden; der Zielwert 600 Sekunden
+  benötigt vor Hosted-Änderung eine Staging-Regression aller betroffenen
+  E-Mail-Auth-Flows
 - admin-initiierten Reset mit verpflichtendem Sitzungswiderruf und
-  append-only RLS-Audit ergänzen
+  eigener append-only RLS-Audit-Tabelle ergänzen
+- vollständiger Sitzungswiderruf erfolgt nach erfolgreicher Passwortänderung
+  über die Recovery-Session; bereits ausgestellte Access-JWTs bleiben höchstens
+  bis zu ihrer konfigurierten JWT-TTL gültig
 
 ## 10. Abnahmekriterien
 

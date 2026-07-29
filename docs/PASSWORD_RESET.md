@@ -1,5 +1,10 @@
 # Password reset (W4c)
 
+The separate admin-initiated branch (W4e/B5) is specified in
+`docs/W4E_ADMIN_PASSWORD_RESET_CONTRACT.md`. It deliberately does not change
+this self-service W4c flow until the shared email-OTP TTL has passed staging
+regression tests.
+
 End-to-end "forgot password" flow for the mobile app. A user requests a reset
 link, opens it on the device, lands in the app through a deep link, and sets a
 new password against a short-lived recovery session.
