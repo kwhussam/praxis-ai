@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Claude
+> **Rederecht / Am Zug:** @Hussam
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -5116,6 +5116,42 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Infrastrukturblocker bleibt das letzte B4b-Gate. Bitte @Claude um Code-
   Gegenprüfung insbesondere von Pending-Code-Lebenszyklus, Doppelanlage-Schutz,
   Membership-Sessionauflösung und Auth-Routing. **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-07-29 – @Claude hat B4b (`af32b82`) gegengeprüft.
+  Eigene Verifikation: `npm run verify` sauber, **281 Jest-Tests grün** (4 opt-in
+  ITs übersprungen); pgTAP unberührt (keine Migration geändert).
+  (1) **Pending-Code-Sicherheit** – `lib/auth/pending-invitation.ts` legt den Code
+  ausschließlich in **SecureStore** ab (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`,
+  gerätegebunden, nicht iCloud-synchron), mit rein flüchtigem Memory-Fallback
+  wenn SecureStore fehlt – keine unverschlüsselte Persistenz, kein MMKV. Format
+  wird bei Save **und** Read gegen exakt Crockford-Base32 (`[0-9A-HJKMNP-TV-Z]{10}`,
+  ohne I/L/O/U) validiert. CLAUDE.md-Constraint eingehalten.
+  (2) **Membership-Sessionauflösung** – `loadAccessiblePracticeForUser` prüft erst
+  `owner_id`, dann die jüngste **aktive** `practice_membership`; widerrufene sind
+  ausgeschlossen und die zweite Praxis-Abfrage bleibt RLS-gescopet. Damit legen
+  Manager/Prüfer/Leser nach Neustart keine neue Praxis mehr an. Login, Redeem und
+  `initSession` teilen sich diese eine Quelle (kein Drift mehr).
+  (3) **Auth-Routing & Doppelanlage-Schutz** – `app/index` routet bei pendingem
+  Code sessionabhängig zu Redeem bzw. Login; nach erfolgreichem Redeem wird die
+  Praxis geladen und **`practice.id === result.practice_id` abgeglichen**, bevor
+  der Code gelöscht und das Dashboard geöffnet wird. Der Code wird vor dem
+  Netzcall gesichert, was den 401→Login→zurück-zu-Redeem-Handoff trägt.
+  **Aus meiner Sicht ist B4b code-seitig abnahmefähig; keine blockierenden
+  Befunde.** Zwei nicht-blockierende Beobachtungen: (a) `savePendingInvitationCode`
+  läuft zu Beginn **jedes** Redeem-Versuchs, gelöscht wird der Code aber nur bei
+  Erfolg. Ein formal gültiger, aber falscher oder abgelaufener Code bleibt damit
+  in SecureStore, und `app/index` routet den Nutzer bei jedem Start erneut in den
+  Redeem-Screen (Feld ist zwar editierbar, aber es fehlt ein „Verwerfen"). Sauberer
+  wäre, bei terminalen Nicht-Auth-Fehlern (400/409/410) `clearPendingInvitationCode()`
+  aufzurufen und die Persistenz nur für den 401/needsLogin-Handoff zu halten.
+  (b) `loadAccessiblePracticeForUser` liefert bei Owner-Vorrang bzw. der Einzel-
+  Praxis-Annahme (limit 1) für einen bereits ownenden Nutzer, der eine Nicht-Owner-
+  Einladung einlöst, nicht die neu beigetretene Praxis → der Post-Redeem-Abgleich
+  wirft, obwohl die Mitgliedschaft serverseitig korrekt (und auditiert) angelegt
+  wurde; reiner Client-Navigationsrand im Einzel-Praxis-Modell. Beides kein
+  Sicherheits-/Korrektheitsblocker. Der **native Maestro-Lauf** ist wie von @Codex
+  offen dokumentiert weiterhin durch den XCTest-Treiber-/Simulator-Infrablocker
+  ungedeckt – das bleibt das letzte B4b-Gate und ist keine Codefrage. Entscheidung
+  über finale Abnahme liegt bei dir. **Rederecht / Am Zug: @Hussam.**
 
 - **Zuletzt geprüft:** 2026-07-29 11:16 CEST – Claudes Re-Prüfung von B4a
   (`3b376b2`) bestätigt, dass der Lost-Response-Retry jetzt den gespeicherten
