@@ -38,6 +38,7 @@ type Env = {
   BACKOFFICE_INVITE_HMAC_SECRET?: string;
   // Max age (seconds) of the most recent auth factor for owner-transfer step-up.
   BACKOFFICE_STEPUP_MAX_AGE_S?: string;
+  PASSWORD_RESET_OTP_TTL_SECONDS?: string;
 };
 
 type FindingSeverity = "critical" | "warning" | "info";
@@ -608,6 +609,7 @@ app.get("/api/backoffice/consultants", async (c) => handleBackofficeListConsulta
 app.get("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeListConsultantAssignments(c));
 app.post("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeAssignConsultant(c));
 app.post("/api/backoffice/consultant-assignments/:id/revoke", async (c) => handleBackofficeRevokeConsultantAssignment(c));
+app.post("/api/backoffice/practices/:id/password-resets", async (c) => handleBackofficePasswordReset(c));
 app.post("/api/invitations/redeem", async (c) => handleRedeemInvitation(c));
 
 const SYSTEM_PROMPT = `
@@ -2681,6 +2683,17 @@ async function runBackofficeAuditRetention(env: Env) {
   } catch (error) {
     console.error("backoffice_audit_retention_failed", { failure: safeErrorLog(error) });
   }
+  try {
+    await supabaseRest(env, "/rest/v1/rpc/anonymize_password_reset_audit_events", {
+      method: "POST",
+      body: {
+        retention_days: BACKOFFICE_AUDIT_RETENTION_DAYS,
+        batch_size: BACKOFFICE_AUDIT_RETENTION_BATCH_SIZE
+      }
+    });
+  } catch (error) {
+    console.error("credential_recovery_audit_retention_failed", { failure: safeErrorLog(error) });
+  }
 }
 
 function monitoringConcurrencyLimit(env: Env) {
@@ -3204,7 +3217,8 @@ const BACKOFFICE_RATE_LIMITS: Record<string, { windowMinutes: number; limit: num
   // Redeem wird vom eingeladenen App-Nutzer aufgerufen; eng genug gegen
   // Code-Bruteforce, großzügig genug für ein paar Fehlversuche/Retries.
   "invitation.redeem": { windowMinutes: 5, limit: 10 },
-  "ownership.transfer": { windowMinutes: 60, limit: 5 }
+  "ownership.transfer": { windowMinutes: 60, limit: 5 },
+  "user.password_reset.initiate": { windowMinutes: 15, limit: 5 }
 };
 
 const BACKOFFICE_ERROR_STATUS: Record<string, number> = {
@@ -3921,6 +3935,146 @@ async function handleBackofficeTransferOwnership(c: Context<{ Bindings: Env }>) 
     p_new_owner: stringFieldOrNull(body.newOwner)
   });
   return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+function validCloudflareClientIp(value: string | undefined): value is string {
+  if (!value || value.length > 45 || !/^[0-9a-fA-F:.]+$/.test(value)) return false;
+  if (value.includes(".")) {
+    const octets = value.split(".");
+    return octets.length === 4 && octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255);
+  }
+  if (!value.includes(":")) return false;
+  try {
+    // The URL parser performs full IPv6 syntax validation in Workers and Node.
+    return new URL(`http://[${value}]/`).hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function consumePasswordResetDimensionLimit(
+  env: Env,
+  dimension: "target" | "ip",
+  subject: string,
+  windowMinutes: number,
+  limit: number
+) {
+  const allowed = await supabaseRest<boolean>(env, "/rest/v1/rpc/password_reset_consume_rate_limit", {
+    method: "POST",
+    prefer: "return=representation",
+    body: { p_dimension: dimension, p_subject_hash: await sha256Text(subject), p_window_minutes: windowMinutes, p_limit: limit }
+  });
+  return allowed === true;
+}
+
+async function handleBackofficePasswordReset(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c, { freshStepUp: true });
+  if (actor instanceof Response) return actor;
+  const practiceId = c.req.param("id");
+  if (!practiceId || !isUuid(practiceId)) return c.json({ ok: false, error: "not_found" }, 404);
+
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope || scope.role !== "platform_admin") return c.json({ ok: false, error: "not_found" }, 404);
+  if (Number(c.env.PASSWORD_RESET_OTP_TTL_SECONDS) !== 600) {
+    return c.json({ ok: false, error: "backoffice_not_configured" }, 500);
+  }
+
+  const clientIp = c.req.header("cf-connecting-ip");
+  if (!validCloudflareClientIp(clientIp)) return c.json({ ok: false, error: "invalid_client_context" }, 400);
+  const body = await parseJsonBody(c);
+  const targetUserId = stringFieldOrNull(body.targetUserId);
+  const identityVerification = stringFieldOrNull(body.identityVerification);
+  const idempotencyKey = c.req.header("idempotency-key") ?? stringFieldOrNull(body.idempotencyKey);
+  const requestId = backofficeRequestId(c, body);
+  if (!targetUserId || !isUuid(targetUserId) || !["in_person", "phone_verified"].includes(identityVerification ?? "")) {
+    return c.json({ ok: false, error: "invalid_request" }, 400);
+  }
+  if (!idempotencyKey || idempotencyKey.length > 200 || (requestId && requestId.length > 200)) {
+    return c.json({ ok: false, error: "idempotency_key_required" }, 400);
+  }
+
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "user.password_reset.initiate"))
+    || !(await consumePasswordResetDimensionLimit(c.env, "target", targetUserId, 15, 3))
+    || !(await consumePasswordResetDimensionLimit(c.env, "ip", clientIp, 60, 20))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
+  const practices = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/practices?select=id,owner_id&id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    { method: "GET" }
+  );
+  const practice = asRecordOrNull(practices[0]);
+  let belongsToPractice = practice?.owner_id === targetUserId;
+  if (!belongsToPractice && practice) {
+    const memberships = await supabaseRest<unknown[]>(
+      c.env,
+      `/rest/v1/practice_memberships?select=id&practice_id=eq.${encodeURIComponent(practiceId)}&user_id=eq.${encodeURIComponent(targetUserId)}&status=eq.active&limit=1`,
+      { method: "GET" }
+    );
+    belongsToPractice = memberships.length > 0;
+  }
+  if (!practice || !belongsToPractice) return c.json({ ok: false, error: "not_found" }, 404);
+
+  const requestHash = await sha256Json({ practiceId, targetUserId, identityVerification });
+  const reservation = asRecordOrNull(await supabaseRest<unknown>(c.env, "/rest/v1/rpc/backoffice_reserve", {
+    method: "POST",
+    prefer: "return=representation",
+    body: { p_actor: actor.id, p_action: "user.password_reset.initiate", p_key: idempotencyKey, p_hash: requestHash }
+  }));
+  if (reservation?.conflict) return c.json({ ok: false, error: "idempotency_conflict" }, 409);
+  if (reservation?.replay) return c.json({ ok: false, error: "reset_already_issued" }, 409);
+  if (!reservation?.reserved) return c.json({ ok: false, error: "idempotency_in_progress" }, 409);
+
+  const resetRequestId = crypto.randomUUID();
+  const auditFailure = async (errorCode: string) => {
+    await supabaseRest(c.env, "/rest/v1/rpc/password_reset_release_with_failure", {
+      method: "POST",
+      body: {
+        p_actor: actor.id, p_key: idempotencyKey, p_reset_request_id: resetRequestId,
+        p_target_user_id: targetUserId, p_practice_id: practiceId,
+        p_identity_verification: identityVerification, p_request_id: requestId, p_error_code: errorCode
+      }
+    });
+  };
+
+  try {
+    const authUser = asRecordOrNull(await supabaseRest<unknown>(
+      c.env,
+      `/auth/v1/admin/users/${encodeURIComponent(targetUserId)}`,
+      { method: "GET" }
+    ));
+    if (typeof authUser?.email !== "string" || !authUser.email) {
+      await auditFailure("target_not_found");
+      return c.json({ ok: false, error: "not_found" }, 404);
+    }
+    const generated = asRecordOrNull(await supabaseRest<unknown>(c.env, "/auth/v1/admin/generate_link", {
+      method: "POST",
+      body: { type: "recovery", email: authUser.email }
+    }));
+    // GoTrue's raw /admin/generate_link response exposes email_otp at the top
+    // level; supabase-js only wraps it under data.properties in its transform.
+    const code = generated?.email_otp;
+    if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      await auditFailure("upstream_error");
+      return c.json({ ok: false, error: "upstream_error" }, 502);
+    }
+    const expiresAt = new Date(Date.now() + 600_000).toISOString();
+    await supabaseRest(c.env, "/rest/v1/rpc/password_reset_finalize", {
+      method: "POST",
+      prefer: "return=representation",
+      body: {
+        p_actor: actor.id, p_key: idempotencyKey, p_reset_request_id: resetRequestId,
+        p_target_user_id: targetUserId, p_practice_id: practiceId,
+        p_identity_verification: identityVerification, p_request_id: requestId, p_expires_at: expiresAt
+      }
+    });
+    return c.json({ resetRequestId, code, expiresAt }, 201);
+  } catch (error) {
+    try { await auditFailure("upstream_error"); } catch { /* primary error wins */ }
+    console.error("credential_recovery_initiate_failed", { failure: safeErrorLog(error) });
+    return c.json({ ok: false, error: "upstream_error" }, 502);
+  }
 }
 
 async function supabaseRest<T>(

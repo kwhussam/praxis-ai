@@ -820,6 +820,98 @@ export type Database = {
           },
         ]
       }
+      password_reset_audit_events: {
+        Row: {
+          actor_user_id: string | null
+          anonymized_at: string | null
+          created_at: string
+          error_code: string | null
+          expires_at: string | null
+          id: string
+          identity_verification: string | null
+          legal_hold_reason: string | null
+          legal_hold_set_at: string | null
+          legal_hold_set_by: string | null
+          legal_hold_until: string | null
+          practice_id: string | null
+          request_id: string | null
+          reset_request_id: string
+          result: string
+          retention_until: string
+          target_user_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          anonymized_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          expires_at?: string | null
+          id?: string
+          identity_verification?: string | null
+          legal_hold_reason?: string | null
+          legal_hold_set_at?: string | null
+          legal_hold_set_by?: string | null
+          legal_hold_until?: string | null
+          practice_id?: string | null
+          request_id?: string | null
+          reset_request_id: string
+          result: string
+          retention_until?: string
+          target_user_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          anonymized_at?: string | null
+          created_at?: string
+          error_code?: string | null
+          expires_at?: string | null
+          id?: string
+          identity_verification?: string | null
+          legal_hold_reason?: string | null
+          legal_hold_set_at?: string | null
+          legal_hold_set_by?: string | null
+          legal_hold_until?: string | null
+          practice_id?: string | null
+          request_id?: string | null
+          reset_request_id?: string
+          result?: string
+          retention_until?: string
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "password_reset_audit_events_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      password_reset_rate_limit: {
+        Row: {
+          count: number
+          dimension: string
+          subject_hash: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          dimension: string
+          subject_hash: string
+          updated_at?: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          dimension?: string
+          subject_hash?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       platform_staff: {
         Row: {
           created_at: string | null
@@ -1450,6 +1542,10 @@ export type Database = {
         Args: { batch_size?: number; retention_days?: number }
         Returns: number
       }
+      anonymize_password_reset_audit_events: {
+        Args: { batch_size?: number; retention_days?: number }
+        Returns: number
+      }
       audit_partner_practice_access: {
         Args: {
           p_action: string
@@ -1466,6 +1562,17 @@ export type Database = {
       backoffice_actor_can: {
         Args: { p_actor: string; p_capability: string; p_practice_id?: string }
         Returns: boolean
+      }
+      backoffice_assign_consultant: {
+        Args: {
+          p_actor: string
+          p_consultant_user_id: string
+          p_idempotency_key: string
+          p_practice_id: string
+          p_purpose?: string
+          p_request_id: string
+        }
+        Returns: Json
       }
       backoffice_consume_rate_limit: {
         Args: {
@@ -1538,6 +1645,26 @@ export type Database = {
         Returns: string
       }
       backoffice_hash: { Args: { p_payload: Json }; Returns: string }
+      backoffice_list_consultant_assignments: {
+        Args: { p_actor: string; p_practice_id: string }
+        Returns: {
+          assigned_at: string
+          assignment_purpose: string
+          email: string
+          id: string
+          revoked_at: string
+          staff_user_id: string
+          status: string
+        }[]
+      }
+      backoffice_list_consultants: {
+        Args: { p_actor: string }
+        Returns: {
+          email: string
+          status: string
+          user_id: string
+        }[]
+      }
       backoffice_reserve: {
         Args: {
           p_action: string
@@ -1559,6 +1686,15 @@ export type Database = {
       backoffice_reserve_release: {
         Args: { p_action: string; p_actor: string; p_key: string }
         Returns: undefined
+      }
+      backoffice_revoke_consultant_assignment: {
+        Args: {
+          p_actor: string
+          p_assignment_id: string
+          p_idempotency_key: string
+          p_request_id: string
+        }
+        Returns: Json
       }
       backoffice_revoke_invitation: {
         Args: {
@@ -1672,7 +1808,51 @@ export type Database = {
       }
       current_user_platform_role: { Args: never; Returns: string }
       partner_role_rank: { Args: { p_role: string }; Returns: number }
+      password_reset_consume_rate_limit: {
+        Args: {
+          p_dimension: string
+          p_limit: number
+          p_subject_hash: string
+          p_window_minutes: number
+        }
+        Returns: boolean
+      }
+      password_reset_finalize: {
+        Args: {
+          p_actor: string
+          p_expires_at: string
+          p_identity_verification: string
+          p_key: string
+          p_practice_id: string
+          p_request_id: string
+          p_reset_request_id: string
+          p_target_user_id: string
+        }
+        Returns: Json
+      }
+      password_reset_release_with_failure: {
+        Args: {
+          p_actor: string
+          p_error_code: string
+          p_identity_verification: string
+          p_key: string
+          p_practice_id: string
+          p_request_id: string
+          p_reset_request_id: string
+          p_target_user_id: string
+        }
+        Returns: undefined
+      }
       practice_member_role_rank: { Args: { p_role: string }; Returns: number }
+      redeem_practice_invitation: {
+        Args: {
+          p_idempotency_key: string
+          p_invitation_id: string
+          p_request_id: string
+          p_user: string
+        }
+        Returns: Json
+      }
       report_check_belongs_to_practice: {
         Args: { p_check_id: string; p_practice_id: string }
         Returns: boolean

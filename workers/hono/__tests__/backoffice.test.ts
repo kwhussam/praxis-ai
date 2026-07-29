@@ -22,6 +22,7 @@ const baseEnv = {
   SUPABASE_SERVICE_ROLE_KEY: "service",
   // Must be >= 32 bytes (BACKOFFICE_INVITE_MIN_SECRET_BYTES) or the code endpoint fails closed.
   BACKOFFICE_INVITE_HMAC_SECRET: "unit-test-secret-0123456789-abcdef-01"
+  ,PASSWORD_RESET_OTP_TTL_SECONDS: "600"
 };
 
 type OutboundCall = { url: string; method: string; body: unknown };
@@ -34,6 +35,8 @@ type World = {
   rateLimitAllowed: boolean;
   rpcResults: Record<string, unknown>;
   restRows: Record<string, unknown[]>;
+  targetAuthUser: { id: string; email?: string } | null;
+  generatedRecoveryCode: string | null;
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -65,6 +68,8 @@ function installWorld(overrides: Partial<World> = {}): World {
     rateLimitAllowed: true,
     rpcResults: {},
     restRows: {},
+    targetAuthUser: { id: "22222222-2222-4222-8222-222222222222", email: "owner@example.test" },
+    generatedRecoveryCode: "123456",
     ...overrides
   };
 
@@ -84,7 +89,18 @@ function installWorld(overrides: Partial<World> = {}): World {
     if (url.includes("/auth/v1/user")) {
       return world.user ? jsonResponse(world.user) : jsonResponse({ error: "unauthorized" }, 401);
     }
+    if (url.includes("/auth/v1/admin/users/")) {
+      return world.targetAuthUser ? jsonResponse(world.targetAuthUser) : jsonResponse({ error: "not_found" }, 404);
+    }
+    if (url.includes("/auth/v1/admin/generate_link")) {
+      return world.generatedRecoveryCode
+        ? jsonResponse({ email_otp: world.generatedRecoveryCode, action_link: "secret-link", hashed_token: "secret-token" })
+        : jsonResponse({ error: "upstream" }, 500);
+    }
     if (url.includes("/rest/v1/rpc/backoffice_consume_rate_limit")) {
+      return jsonResponse(world.rateLimitAllowed);
+    }
+    if (url.includes("/rest/v1/rpc/password_reset_consume_rate_limit")) {
       return jsonResponse(world.rateLimitAllowed);
     }
     const rpcMatch = url.match(/\/rest\/v1\/rpc\/([a-z_]+)/);
@@ -487,6 +503,81 @@ describe("Consultant assignment administration", () => {
     expect(grantCall?.body).toMatchObject({ p_actor: world.user?.id, p_idempotency_key: "assignment-key", p_request_id: "assignment-request", p_practice_id: practiceId });
     const revoke = await call(request(`/api/backoffice/consultant-assignments/${assignmentId}/revoke`, { method: "POST", token: aal2Token(), headers }));
     expect(revoke.status).toBe(200);
+  });
+});
+
+describe("Admin-initiated password reset", () => {
+  const practiceId = "88888888-8888-4888-8888-888888888888";
+  const targetUserId = "22222222-2222-4222-8222-222222222222";
+  const path = `/api/backoffice/practices/${practiceId}/password-resets`;
+  const resetRequest = (headers: Record<string, string> = {}) => request(path, {
+    method: "POST",
+    token: aal2Token(),
+    headers: { "cf-connecting-ip": "203.0.113.8", "idempotency-key": "reset-key", "x-request-id": "reset-request", ...headers },
+    body: { targetUserId, identityVerification: "in_person" }
+  });
+
+  it("is admin-only and requires a fresh explicit MFA step-up", async () => {
+    installWorld({ staffRole: "security_consultant", assignments: [practiceId] });
+    expect((await call(resetRequest())).status).toBe(404);
+
+    installWorld();
+    const stale = makeToken({ aal: "aal2", amr: [{ method: "totp", timestamp: nowSeconds() - 3600 }] });
+    const res = await call(request(path, {
+      method: "POST", token: stale,
+      headers: { "cf-connecting-ip": "203.0.113.8", "idempotency-key": "reset-key" },
+      body: { targetUserId, identityVerification: "in_person" }
+    }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "stepup_required" });
+  });
+
+  it("fails closed without trusted client IP or the 600-second deployment assertion", async () => {
+    installWorld();
+    const noIp = request(path, {
+      method: "POST", token: aal2Token(), headers: { "idempotency-key": "reset-key" },
+      body: { targetUserId, identityVerification: "in_person" }
+    });
+    expect((await call(noIp)).status).toBe(400);
+    installWorld();
+    expect((await call(resetRequest(), { ...baseEnv, PASSWORD_RESET_OTP_TTL_SECONDS: "3600" })).status).toBe(500);
+  });
+
+  it("returns the OTP once while keeping secrets out of DB payloads", async () => {
+    const world = installWorld({
+      restRows: { practices: [{ id: practiceId, owner_id: targetUserId }] },
+      rpcResults: {
+        backoffice_reserve: { reserved: true },
+        password_reset_finalize: { ok: true }
+      }
+    });
+    const res = await call(resetRequest());
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as { code: string; resetRequestId: string; expiresAt: string };
+    expect(payload.code).toBe("123456");
+    expect(payload.resetRequestId).toMatch(/^[0-9a-f-]{36}$/);
+
+    const dbCalls = world.calls.filter((entry) => entry.url.includes("/rest/v1/"));
+    expect(JSON.stringify(dbCalls)).not.toContain(payload.code);
+    expect(JSON.stringify(dbCalls)).not.toContain("secret-link");
+    expect(JSON.stringify(dbCalls)).not.toContain("secret-token");
+    const targetLimit = world.calls.find((entry) =>
+      entry.url.includes("password_reset_consume_rate_limit")
+      && (entry.body as Record<string, unknown>)?.p_dimension === "target"
+    );
+    expect((targetLimit?.body as Record<string, unknown>).p_subject_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(targetLimit?.body)).not.toContain(targetUserId);
+  });
+
+  it("does not replay a secret-bearing success for the same idempotency key", async () => {
+    const world = installWorld({
+      restRows: { practices: [{ id: practiceId, owner_id: targetUserId }] },
+      rpcResults: { backoffice_reserve: { replay: true, result: { ok: true } } }
+    });
+    const res = await call(resetRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ ok: false, error: "reset_already_issued" });
+    expect(world.calls.some((entry) => entry.url.includes("/auth/v1/admin/generate_link"))).toBe(false);
   });
 });
 

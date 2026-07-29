@@ -66,6 +66,8 @@ Practice-membership rank (`practice_member_role_rank`, B1a — coarse RLS read g
 | `staff_practice_assignments` (B1a) | Read | Self (`staff_user_id`) | Limits a `security_consultant` to explicitly assigned practices; management is service_role only. |
 | `practice_invitations` (B1a) | Read | `manager` of the practice | Stores only a hash/provider `proof_reference`, never a cleartext code. Creation/acceptance is service_role only. |
 | `backoffice_audit_events` (B1a/B1b) | Read | `platform_admin` / assigned `security_consultant` | Append-only: no UPDATE/DELETE grant to regular roles; inserts via service_role only. After at least 183 days, a service-role-only bounded RPC irreversibly removes direct/indirect identifiers unless an active documented legal hold applies. |
+| `password_reset_audit_events` (B5b) | Read | `platform_admin` only | Specialized append-only reset audit: no OTP, link/token, email, IP, password or free metadata; regular roles cannot INSERT/UPDATE/DELETE. Service-role-only RPCs finalize events and irreversibly anonymize personal references after at least 183 days, subject to documented legal hold. |
+| `password_reset_rate_limit` (B5b) | None | service-role RPC only | Deny-by-default RLS; stores only dimension + SHA-256 subject hash. Pseudonymous limiter rows are automatically deleted after 24 hours. |
 
 Audit note:
 

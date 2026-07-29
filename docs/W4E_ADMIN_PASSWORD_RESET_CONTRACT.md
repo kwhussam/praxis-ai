@@ -1,7 +1,12 @@
 # W4e/B5a: Vertrag für administrativ initiierten Passwort-Reset
 
 Stand: 2026-07-29  
-Status: B5a-Vertragsentwurf zur Gegenprüfung; noch keine B5b-Implementierung
+Status: B5a final abgenommen; B5b-Backend implementiert, Gegenprüfung offen
+
+Implementierungsstand: Migration `20260729220000_admin_password_reset_backend.sql`
+und Worker-Route `POST /api/backoffice/practices/:practiceId/password-resets`.
+App-Redemption/UI und Hosted-Konfigurationsgates sind nicht Bestandteil dieses
+Backend-Slices.
 
 ## 1. Ziel und Produktgrenze
 
@@ -116,6 +121,11 @@ Schreiben und spätere Anonymisierung erfolgen nur über eng begrenzte
 `service_role`-RPCs. Personenbezug bleibt 183 Tage erhalten und wird danach nach
 dem bestehenden B1b-Muster irreversibel anonymisiert. Ein aktiver Legal Hold
 benötigt Grund, Verantwortlichen und Ablaufdatum.
+
+Die dimensionsbezogenen Rate-Limits speichern ausschließlich SHA-256-Hashes von
+Ziel-ID beziehungsweise vertrauenswürdiger Proxy-IP. Diese pseudonymen
+Betriebsdaten sind kein Auditbeleg und werden im täglichen Retention-Lauf nach
+24 Stunden automatisch gelöscht.
 
 ## 5. Redemption- und Sitzungsvertrag
 

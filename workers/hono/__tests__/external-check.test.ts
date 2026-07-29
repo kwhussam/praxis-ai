@@ -1812,6 +1812,10 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
         expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({ retention_days: 183, batch_size: 500 });
         return Response.json(0);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/anonymize_password_reset_audit_events")) {
+        expect(JSON.parse(String(init?.body ?? "{}"))).toEqual({ retention_days: 183, batch_size: 500 });
+        return Response.json(0);
+      }
       return Response.json({}, { status: 404 });
     }) as typeof fetch;
 
@@ -1823,6 +1827,7 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
       await Promise.all(waitUntilPromises);
 
       expect(calledUrls.some((url) => url.includes("/rest/v1/rpc/anonymize_backoffice_audit_events"))).toBe(true);
+      expect(calledUrls.some((url) => url.includes("/rest/v1/rpc/anonymize_password_reset_audit_events"))).toBe(true);
       expect(calledUrls.some((url) => url.includes("/rest/v1/practices"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
