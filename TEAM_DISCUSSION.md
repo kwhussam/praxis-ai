@@ -4108,6 +4108,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-031 | 2026-07-28 | B3.3 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; als nächster unabhängiger Slice wird die Audit-Seite vor der Consultant-Zuweisung umgesetzt. | Die Zuweisung benötigt erst atomare Assignment-RPCs und eine sichere Staff-Auswahl; die bereits autorisierte Audit-API kann ohne provisorische Service-Role-Mutation vollständig im Web nutzbar gemacht werden. | @Hussam, @Codex, @Claude |
 | E-032 | 2026-07-28 | B3.4 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; B3.5 implementiert Consultant-Zuweisungen ausschließlich über atomare Admin-RPCs. | Serverseitige Audit-Pagination bleibt ein Skalierungs-Follow-up; Assignment-Grant/Revoke müssen Authz, Idempotenz, Mutation und genau ein Audit-Ereignis transaktional bündeln. | @Hussam, @Codex, @Claude |
 | E-033 | 2026-07-29 | B3.5 und B4a sind final abgenommen; B4b setzt den Einladungsflow über Registrierung/Login bis zur dauerhaften Praxis-Session um. | @Hussam hat die empfohlene Reihenfolge bestätigt; eingeladene Rollen dürfen weder eine zweite Praxis anlegen noch nach App-Neustart ins freie Onboarding fallen. | @Hussam, @Codex, @Claude |
+| E-034 | 2026-07-29 | B4b ist nach Implementierung und Claudes Gegenprüfung fachlich und code-seitig abgenommen; der native Maestro-Lauf sowie zwei nicht-blockierende Client-Randfälle werden als Follow-ups geführt. | @Hussam übernimmt die gemeinsame Empfehlung: Der XCTest-Infrastrukturblocker verhindert keine fachliche Abnahme; ungültige persistierte Codes und die spätere Mehrpraxis-Navigation bleiben transparent offen. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4146,7 +4147,10 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B3.4 umsetzen: serverseitig gescopte Audit-Seite mit Retention-Hinweis | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-032): `64b2fed`, 265 Tests grün; serverseitige Audit-Pagination bleibt Skalierungs-Follow-up |
 | B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-033): `d9e93d1`, 268 Jest- und 155 pgTAP-Prüfungen grün |
 | B4a umsetzen: atomarer Einladungs-Redeem/Accept-Backend | @Claude, @Codex | 2026-07-29 | Final abgenommen (E-033): `26719ae` + Retry-Fix `3b376b2`; 168 pgTAP- und 277 Jest-Prüfungen grün |
-| B4b umsetzen: Sign-up-/Login-Cutover und dauerhafte Mitgliedschafts-Session | @Codex, @Claude | 2026-07-29 | Implementiert in `af32b82`; 281 Jest-Tests grün, nativer Maestro-Handoff-Flow vorhanden, XCTest-Treiberstart als finales Gate blockiert |
+| B4b umsetzen: Sign-up-/Login-Cutover und dauerhafte Mitgliedschafts-Session | @Codex, @Claude | 2026-07-29 | Final fachlich/code-seitig abgenommen (E-034): `af32b82`, 281 Jest-Tests grün; nativer Maestro-Lauf bleibt Infrastruktur-Follow-up |
+| B4b Follow-up: terminal ungültige/abgelaufene persistierte Einladung verwerfen oder explizit verwerfbar machen | @Codex, @Claude | Später | Offen – nicht blockierend; verhindert wiederholtes Redeem-Routing nach 400/409/410 |
+| B4b Follow-up: zielgenaue Praxisauflösung nach Redeem im späteren Mehrpraxis-Modell | @Codex, @Claude | Später | Offen – nicht blockierend im aktuellen Einzel-Praxis-Modell |
+| B4b Follow-up: nativen Maestro-Handoff-Flow nach Behebung des XCTest-/Simulator-Infrastrukturproblems ausführen | @Codex, @Claude | Später | Offen – Testflow vorhanden; kein Codeblocker für E-034 |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -5161,3 +5165,14 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   code-seitig abnahmefähig; ebenso bleibt B3.5 zur **finalen Abnahme durch
   @Hussam** offen. Wegen des aktuellen Rederechts wird keine Entscheidung oder
   weitere Umsetzung vorweggenommen.
+- **Entscheidung:** 2026-07-29 – @Hussam hat Claudes Gegenprüfung bestätigt
+  und die vorgeschlagene Einordnung angenommen. **B4b ist damit fachlich und
+  code-seitig final abgenommen (E-034).** Der native Maestro-Lauf bleibt wegen
+  des dokumentierten XCTest-/Simulator-Infrastrukturproblems ein separates
+  Follow-up und blockiert die Abnahme nicht. Ebenfalls separat offen bleiben
+  (1) das Löschen beziehungsweise explizite Verwerfen eines persistenten Codes
+  nach terminalen Redeem-Fehlern und (2) die zielgenaue Praxisnavigation für
+  einen späteren Mehrpraxis-Betrieb. Beide Punkte sind im aktuellen
+  Einzel-Praxis-Modell nicht blockierend und wurden in der Aufgabenliste
+  festgehalten. Es wird noch kein neuer Umsetzungsscope stillschweigend
+  gestartet. **Rederecht / Am Zug: @Hussam** zur Auswahl des nächsten Slices.
