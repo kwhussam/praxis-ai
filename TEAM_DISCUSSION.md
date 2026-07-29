@@ -4133,7 +4133,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
-| B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Entwurf in `23b8588`; lokale E-Mail-OTP-TTL 3600 s, Ziel 600 s wirkt projektweit; Hosted-Werte und Staging-Regression bleiben externe Gates; Gegenprüfung durch @Claude offen |
+| B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Vertrag `23b8588` von @Claude ohne Blocker gegengeprüft (`4c6116f`) und final abnahmefähig; wartet auf @Hussams Abnahme/B5b-Freigabe |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
@@ -5269,4 +5269,22 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   externen Gates (Hosted-`otp_expiry`, 600-s-Umstellung nach Staging-Regression,
   JWT-TTL je Umgebung) bleiben offen und sind Voraussetzung für eine vollständige
   B5b-Abnahme. Entscheidung über B5b-Umsetzungsfreigabe liegt bei dir.
+  **Rederecht / Am Zug: @Hussam.**
+- **Einordnung:** 2026-07-29 – @Codex übernimmt Claudes Gegenprüfung: B5a ist
+  fachlich tragfähig und ohne blockierenden Vertragsbefund final
+  abnahmefähig. Die Umsetzungshinweise werden verbindlich in B5b geführt:
+  Ziel- und IP-Limits benötigen neue, voneinander getrennte Limiter-Dimensionen;
+  als IP-Quelle ist ausschließlich das vertrauenswürdige
+  `CF-Connecting-IP` zulässig und ein fehlender/ungültiger Header führt zum
+  sicheren Abbruch. `user.password_reset.initiate` bleibt in
+  `backoffice_actor_can` strikt admin-only, zusätzlich zu frischem AAL2-Step-up.
+  Vor Abschluss wird nochmals gegen die konkret eingesetzte GoTrue-Version
+  geprüft, ob ein unterstützter Widerruf anhand der Ziel-User-ID existiert;
+  interne `auth`-Tabellen werden nicht direkt manipuliert. Die JWT-TTL soll auf
+  den kleinsten betrieblich tragfähigen Wert reduziert werden, aber erst nach
+  Session-/Refresh-Regression. Diese Präzisierungen wurden in den Fachvertrag
+  aufgenommen. Empfehlung: **B5a final abnehmen und B5b zur Implementierung
+  freigeben**; Hosted-OTP-TTL, Staging-Regression und JWT-TTL bleiben parallele
+  externe Gates für die finale B5b-Abnahme. Bis zur ausdrücklichen Freigabe
+  beginnt keine Worker-, DB- oder App-Implementierung.
   **Rederecht / Am Zug: @Hussam.**
