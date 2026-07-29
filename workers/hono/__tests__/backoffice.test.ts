@@ -87,7 +87,7 @@ function installWorld(overrides: Partial<World> = {}): World {
     if (url.includes("/rest/v1/rpc/backoffice_consume_rate_limit")) {
       return jsonResponse(world.rateLimitAllowed);
     }
-    const rpcMatch = url.match(/\/rest\/v1\/rpc\/(backoffice_[a-z_]+)/);
+    const rpcMatch = url.match(/\/rest\/v1\/rpc\/([a-z_]+)/);
     if (rpcMatch) {
       const fn = rpcMatch[1];
       return jsonResponse(world.rpcResults[fn] ?? { ok: true });
@@ -487,5 +487,73 @@ describe("Consultant assignment administration", () => {
     expect(grantCall?.body).toMatchObject({ p_actor: world.user?.id, p_idempotency_key: "assignment-key", p_request_id: "assignment-request", p_practice_id: practiceId });
     const revoke = await call(request(`/api/backoffice/consultant-assignments/${assignmentId}/revoke`, { method: "POST", token: aal2Token(), headers }));
     expect(revoke.status).toBe(200);
+  });
+});
+
+// Mirrors the Worker's computeInviteProof exactly so the test can produce a
+// proof_reference that the redeem endpoint will accept — without exporting the
+// Worker internals. Same domain string, same HMAC-SHA256 over UTF-8.
+async function computeProof(secret: string, code: string, practiceId: string, email: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`praxisshield/backoffice-invite-proof/v1\n${practiceId}\n${email}\n${code}`)));
+  return `hmac:v1:${[...mac].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}
+
+describe("Invitation redeem", () => {
+  const ownerId = "33333333-3333-4333-8333-333333333333";
+  const practiceId = "77777777-7777-4777-8777-777777777777";
+  const invitationId = "66666666-6666-4666-8666-666666666666";
+  const email = "redeem-owner@example.test";
+  const code = "ABCDEFGHJK";
+  const userToken = () => makeToken({ aal: "aal1", iat: nowSeconds() });
+
+  it("verifies the code proof and calls the atomic RPC with the session user, never the plaintext code", async () => {
+    const proof = await computeProof(baseEnv.BACKOFFICE_INVITE_HMAC_SECRET, code, practiceId, email);
+    const world = installWorld({
+      user: { id: ownerId, email },
+      restRows: { practice_invitations: [{ id: invitationId, practice_id: practiceId, proof_reference: proof }] },
+      rpcResults: { redeem_practice_invitation: { ok: true, practice_id: practiceId, membership_id: "m-1", role: "practice_owner", status: "active" } }
+    });
+    const res = await call(request("/api/invitations/redeem", {
+      method: "POST", token: userToken(),
+      headers: { "idempotency-key": "redeem-key", "x-request-id": "redeem-request" },
+      body: { code, userId: "attacker", practiceId: "attacker-practice" }
+    }));
+    expect(res.status).toBe(200);
+    const redeemCall = world.calls.find((entry) => entry.url.includes("redeem_practice_invitation"));
+    expect(redeemCall?.body).toMatchObject({ p_user: ownerId, p_invitation_id: invitationId, p_idempotency_key: "redeem-key", p_request_id: "redeem-request" });
+    // The plaintext code must never reach the database layer.
+    expect(JSON.stringify(redeemCall?.body)).not.toContain(code);
+  });
+
+  it("rejects a wrong code as invalid_or_expired and never calls the RPC", async () => {
+    const world = installWorld({
+      user: { id: ownerId, email },
+      restRows: { practice_invitations: [{ id: invitationId, practice_id: practiceId, proof_reference: `hmac:v1:${"0".repeat(64)}` }] }
+    });
+    const res = await call(request("/api/invitations/redeem", { method: "POST", token: userToken(), body: { code } }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "invalid_or_expired" });
+    expect(world.calls.some((entry) => entry.url.includes("redeem_practice_invitation"))).toBe(false);
+  });
+
+  it("rejects when no pending invitation matches the session email", async () => {
+    installWorld({ user: { id: ownerId, email }, restRows: { practice_invitations: [] } });
+    const res = await call(request("/api/invitations/redeem", { method: "POST", token: userToken(), body: { code } }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ ok: false, error: "invalid_or_expired" });
+  });
+
+  it("requires an authenticated user", async () => {
+    installWorld({ user: null });
+    const res = await call(request("/api/invitations/redeem", { method: "POST", body: { code } }));
+    expect(res.status).toBe(401);
+  });
+
+  it("fails closed when the invite HMAC secret is missing", async () => {
+    installWorld({ user: { id: ownerId, email } });
+    const envWithoutSecret = { ...baseEnv, BACKOFFICE_INVITE_HMAC_SECRET: undefined };
+    const res = await call(request("/api/invitations/redeem", { method: "POST", token: userToken(), body: { code } }), envWithoutSecret);
+    expect(res.status).toBe(500);
   });
 });

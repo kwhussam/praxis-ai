@@ -608,6 +608,7 @@ app.get("/api/backoffice/consultants", async (c) => handleBackofficeListConsulta
 app.get("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeListConsultantAssignments(c));
 app.post("/api/backoffice/practices/:id/consultant-assignments", async (c) => handleBackofficeAssignConsultant(c));
 app.post("/api/backoffice/consultant-assignments/:id/revoke", async (c) => handleBackofficeRevokeConsultantAssignment(c));
+app.post("/api/invitations/redeem", async (c) => handleRedeemInvitation(c));
 
 const SYSTEM_PROMPT = `
 Du bist ein Cybersecurity-Experte für Arztpraxen in Deutschland.
@@ -3200,6 +3201,9 @@ const BACKOFFICE_RATE_LIMITS: Record<string, { windowMinutes: number; limit: num
   "membership.revoke": { windowMinutes: 1, limit: 60 },
   "assignment.grant": { windowMinutes: 1, limit: 30 },
   "assignment.revoke": { windowMinutes: 1, limit: 30 },
+  // Redeem wird vom eingeladenen App-Nutzer aufgerufen; eng genug gegen
+  // Code-Bruteforce, großzügig genug für ein paar Fehlversuche/Retries.
+  "invitation.redeem": { windowMinutes: 5, limit: 10 },
   "ownership.transfer": { windowMinutes: 60, limit: 5 }
 };
 
@@ -3213,6 +3217,7 @@ const BACKOFFICE_ERROR_STATUS: Record<string, number> = {
   idempotency_in_progress: 409,
   invalid_status_transition: 409,
   invalid_state: 409,
+  expired: 410,
   rate_limited: 429,
   idempotency_key_required: 400,
   idempotency_key_invalid: 400,
@@ -3644,6 +3649,79 @@ async function handleBackofficeRevokeConsultantAssignment(c: Context<{ Bindings:
     p_actor: actor.id, p_request_id: backofficeRequestId(c, body), p_idempotency_key: resolveIdempotencyKey(c, body), p_assignment_id: assignmentId
   });
   return respondBackofficeResult(c, result, { collapseNotFound: true });
+}
+
+// Normalisiert einen eingegebenen Einmalcode (Groß-/Kleinschreibung, Leerzeichen
+// und Trennstriche) auf die Crockford-Base32-Darstellung der Ableitung.
+function normalizeInviteCode(raw: string | null): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/[\s-]+/g, "").toUpperCase();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+// Konstant-zeitiger Stringvergleich für den Proof-Abgleich (kein early-return
+// pro Zeichen), damit der Vergleich kein Timing-Orakel über den Code öffnet.
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Redeem/Accept: der eingeladene App-Nutzer löst seinen Einmalcode ein. Der
+// Klartextcode wird ausschließlich hier gegen die gespeicherte proof_reference
+// geprüft (Secret bleibt im Worker); die eigentliche Mutation und das Audit
+// laufen atomar in der service-role-RPC redeem_practice_invitation.
+async function handleRedeemInvitation(c: Context<{ Bindings: Env }>) {
+  const user = await getAuthenticatedUser(c);
+  if (!user) return c.json({ ok: false, error: "unauthorized" }, 401);
+  const email = user.email?.trim().toLowerCase();
+  // Ohne bindbare E-Mail ist kein Abgleich möglich; generisch wie ein Fehlcode.
+  if (!email) return c.json({ ok: false, error: "invalid_or_expired" }, 400);
+
+  const secret = c.env.BACKOFFICE_INVITE_HMAC_SECRET;
+  if (!secret || secret.length < BACKOFFICE_INVITE_MIN_SECRET_BYTES) {
+    // Fail-closed: ohne ausreichend starken Signierschlüssel kein Proof-Abgleich.
+    console.error("backoffice_invite_hmac_unconfigured");
+    return c.json({ ok: false, error: "server_error" }, 500);
+  }
+  if (!(await consumeBackofficeRateLimit(c.env, user.id, "invitation.redeem"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
+  const body = await parseJsonBody(c);
+  const code = normalizeInviteCode(stringFieldOrNull(body.code));
+  if (!code || code.length !== INVITE_CODE_LENGTH) {
+    return c.json({ ok: false, error: "invalid_or_expired" }, 400);
+  }
+
+  // Kandidaten: offene, nicht abgelaufene Einladungen an genau diese E-Mail. Der
+  // Proof bindet (practice, email, code), daher wird er je Kandidat rekonstruiert
+  // und konstant-zeitig verglichen; ein Nicht-Treffer ist von "kein Kandidat"
+  // nach außen ununterscheidbar (immer invalid_or_expired).
+  const candidates = await supabaseRest<Array<{ id: string; practice_id: string; proof_reference: string | null }>>(
+    c.env,
+    `/rest/v1/practice_invitations?select=id,practice_id,proof_reference&status=eq.pending&target_email=eq.${encodeURIComponent(email)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`,
+    { method: "GET" }
+  );
+  let invitationId: string | null = null;
+  for (const candidate of candidates) {
+    if (!candidate.proof_reference || !isUuid(candidate.practice_id)) continue;
+    const proof = await computeInviteProof(secret, code, candidate.practice_id, email);
+    if (timingSafeEqual(proof, candidate.proof_reference)) {
+      invitationId = candidate.id;
+      break;
+    }
+  }
+  if (!invitationId) return c.json({ ok: false, error: "invalid_or_expired" }, 400);
+
+  const result = await callBackofficeRpc(c.env, "redeem_practice_invitation", {
+    p_user: user.id,
+    p_request_id: backofficeRequestId(c, body),
+    p_idempotency_key: resolveIdempotencyKey(c, body),
+    p_invitation_id: invitationId
+  });
+  return respondBackofficeResult(c, result);
 }
 
 // ---- Mutation endpoints (rate-limited, actor from session) ----------------

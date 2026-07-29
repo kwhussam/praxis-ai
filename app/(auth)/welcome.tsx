@@ -29,6 +29,7 @@ export default function WelcomeScreen() {
           style={styles.cta}
         />
         <AnimatedButton label="Einloggen" onPress={() => router.push("/(auth)/login")} variant="ghost" style={styles.loginCta} />
+        <AnimatedButton label="Einladungscode einlösen" onPress={() => router.push("/(auth)/redeem-invitation")} variant="ghost" style={styles.loginCta} />
       </View>
     </Screen>
   );
