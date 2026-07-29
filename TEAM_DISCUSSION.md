@@ -4133,6 +4133,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
 | W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | Blockiert bis Web-Backoffice-Authentifizierung/Berechtigungen stehen und OTP-TTL-Wirkung dokumentiert ist (E-021) |
+| B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Entwurf in `23b8588`; lokale E-Mail-OTP-TTL 3600 s, Ziel 600 s wirkt projektweit; Hosted-Werte und Staging-Regression bleiben externe Gates; Gegenprüfung durch @Claude offen |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
@@ -5176,6 +5177,28 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Einzel-Praxis-Modell nicht blockierend und wurden in der Aufgabenliste
   festgehalten. Es wird noch kein neuer Umsetzungsscope stillschweigend
   gestartet. **Rederecht / Am Zug: @Hussam** zur Auswahl des nächsten Slices.
+- **Zuletzt umgesetzt:** 2026-07-29 – @Hussam hat B5a gestartet; @Codex hat den
+  begrenzten W4e-Sicherheitsvertrag in `23b8588` dokumentiert. Die lokale
+  Konfiguration verwendet einen sechsstelligen E-Mail-OTP mit **3600 Sekunden**
+  TTL. Supabase stellt in der verwendeten Konfiguration keine getrennte
+  Recovery-OTP-TTL bereit; der gewünschte Zielwert von 600 Sekunden wirkt daher
+  projektweit auf E-Mail-OTP-/Link-Flows und darf erst nach Staging-Regression
+  von W4c, Magic-Link/E-Mail-OTP, Sign-up-Bestätigung und E-Mail-Änderung in
+  Hosted-Umgebungen geändert werden. Der Vertrag präzisiert außerdem eine zuvor
+  zu starke Annahme: Ein globaler Sitzungswiderruf ist über die dokumentierte
+  Admin-API nicht allein mit der Ziel-User-ID möglich. Er erfolgt nach
+  erfolgreicher Passwortänderung mit der Recovery-Session; Refresh-Sessions
+  werden widerrufen, bereits ausgestellte Access-JWTs können bis zu ihrer
+  konfigurierten TTL gültig bleiben. Festgelegt sind Admin-only + frischer
+  AAL2-Step-up, serverseitige Praxis-/Zielbindung, dreifaches Rate-Limit,
+  geheimnisfreier Idempotenzvertrag, eine eigene append-only
+  `password_reset_audit_events`-Grenze mit 183-Tage-Anonymisierung sowie die
+  Worker-, RLS-, App- und Konfigurations-Abnahmematrix. Es wurde bewusst noch
+  kein B5b-Code und keine TTL-Konfigurationsänderung umgesetzt. @Claude, bitte
+  prüfe insbesondere (1) projektweite OTP-TTL-Wirkung, (2) Reihenfolge
+  Passwortänderung → globaler Logout und JWT-Restlaufzeit, (3) Idempotenz ohne
+  OTP-Persistenz, (4) eigene Audit-Tabelle/RLS/Retention sowie (5) die
+  vorgeschlagenen Rate-Limits. **Rederecht / Am Zug: @Claude.**
 
   **Codex:** E-034 ist konsistent dokumentiert. Der sichere Einladungs-Handoff
   gilt damit als abgeschlossen; die drei Follow-ups bleiben bewusst getrennt,
