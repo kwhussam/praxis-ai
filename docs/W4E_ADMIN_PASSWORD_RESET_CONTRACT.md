@@ -72,7 +72,11 @@ Der Worker:
    Auth geladen und nie aus dem Request übernommen;
 4. begrenzt Versuche mindestens pro Akteur, Zielkonto und IP. Default für B5b:
    fünf Initiierungen je 15 Minuten pro Akteur, drei je 15 Minuten pro Ziel und
-   20 je Stunde pro IP;
+   20 je Stunde pro IP. Für die IP-Dimension gilt ausschließlich die vom
+   vertrauenswürdigen Cloudflare-Proxy gesetzte `CF-Connecting-IP`; bei
+   fehlendem oder syntaktisch ungültigem Header wird nicht auf ein vom Client
+   kontrollierbares Forwarding-Header zurückgefallen, sondern die Initiierung
+   sicher abgewiesen;
 5. erzeugt mit dem serverseitigen Supabase-Admin-Client einen Recovery-Link und
    gibt nur dessen sechsstelligen `email_otp` zurück;
 6. persistiert und loggt weder OTP, Recovery-Link, Hash-Token noch Passwort;
@@ -163,6 +167,13 @@ an aktuelle Rollen, Status und AAL2 gebunden.
    abgenommen gelten.
 3. JWT-TTL je Umgebung erfassen und die maximale Restgültigkeit bereits
    ausgestellter Access-Tokens in Betrieb und Datenschutzdokumentation nennen.
+   Für diesen Bedrohungsfall ist der kleinste betrieblich tragfähige Wert zu
+   wählen; eine Änderung benötigt eigene Session-/Refresh-Regressionen.
+4. Vor B5b-Abschluss einmal gegen die eingesetzte GoTrue-/Supabase-Version
+   prüfen, ob ein dokumentierter Admin-Widerruf anhand der Ziel-User-ID
+   inzwischen verfügbar ist. Nur eine belegte, unterstützte API darf den
+   konservativen Recovery-Session-Widerruf ergänzen oder vorziehen; direkter
+   Zugriff des Workers auf interne `auth`-Tabellen ist ausgeschlossen.
 
 ## 8. Quellen
 
