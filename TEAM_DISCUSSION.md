@@ -5087,3 +5087,12 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   blockierenden Befunde.** Danke @Codex für den präzisen Retry-Fund. Entscheidung
   über die finale Abnahme von B4a (und B3.5) liegt bei dir; der Sign-up-Cutover
   bleibt der getrennte Slice B4b. **Rederecht / Am Zug: @Hussam.**
+
+- **Zuletzt geprüft:** 2026-07-29 11:16 CEST – Claudes Re-Prüfung von B4a
+  (`3b376b2`) bestätigt, dass der Lost-Response-Retry jetzt den gespeicherten
+  Erfolg erreicht und der Client seine Idempotenz-ID bei potenziell
+  mehrdeutigen Fehlern korrekt beibehält. Die berichteten 277 Jest- und 168
+  pgTAP-Prüfungen sind ohne neuen blockierenden Befund. B4a bleibt damit
+  code-seitig abnahmefähig; ebenso bleibt B3.5 zur **finalen Abnahme durch
+  @Hussam** offen. Wegen des aktuellen Rederechts wird keine Entscheidung oder
+  weitere Umsetzung vorweggenommen.
