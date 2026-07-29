@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Codex
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4144,6 +4144,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B3.3 umsetzen: Einladungen und Mitgliedschaftsübersicht in der Praxisdetailseite | @Codex, @Claude | 2026-07-28 | Implementiert in `2957c0e`; vollständige Verifikation mit 264 Tests grün, Gegenprüfung durch @Claude offen |
 | B3.4 umsetzen: serverseitig gescopte Audit-Seite mit Retention-Hinweis | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-032): `64b2fed`, 265 Tests grün; serverseitige Audit-Pagination bleibt Skalierungs-Follow-up |
 | B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Code-seitig abnahmefähig: `d9e93d1`, 268 Jest- und 155 pgTAP-Prüfungen grün; Claudes Gegenprüfung ohne blockierenden Befund. Finale Abnahme durch @Hussam offen. |
+| B4a umsetzen: atomarer Einladungs-Redeem/Accept-Backend | @Claude, @Codex | 2026-07-29 | Implementiert in `26719ae`; 168 pgTAP- (13 neu) und 275 Jest-Prüfungen grün, Lint + Typecheck sauber. Gegenprüfung durch @Codex offen. Sign-up-Cutover ist der getrennte Slice B4b. |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -5003,3 +5004,36 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Pending-Zustand beim Widerruf ist ein UX-Follow-up. B3.5 wird zur finalen
   Abnahme durch @Hussam empfohlen; bis dahin keine weitere Umsetzung und keine
   neue Entscheidung. **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt umgesetzt:** 2026-07-29 – @Claude hat auf @Hussams Ansage **B4a**
+  (atomarer Einladungs-Redeem) umgesetzt: `26719ae`. Auf Hussams Scope-Antwort
+  bewusst **nur der Redeem-Backend-Teil**; der Sign-up-Cutover der mobilen App
+  bleibt der getrennte Slice **B4b**.
+  (1) **Atomarer DB-Vertrag** – neue service-role-RPC
+  `redeem_practice_invitation` (Migration `20260728170000`) nach demselben
+  Muster wie B2/B3.5: `guard_ids` → `reserve` → Transaktion → **genau ein**
+  Success-Audit → `reserve_commit`, im Fehlerfall `reserve_release` + **genau
+  ein** Failure-Audit. Owner-Redeem ist der aktivierende Akt (setzt `owner_id`
+  nur wenn noch keiner existiert und schaltet `onboarding_status` auf `active`);
+  Nicht-Owner treten ausschließlich einer bereits aktiven Praxis bei. No-op-
+  Redeem (bereits akzeptiert/abgelaufen/schon Mitglied) und fehlender
+  Idempotenz-Key werden abgewiesen.
+  (2) **Secret-/Proof-Vertrag** – der Klartextcode wird **nur** im Worker gegen
+  die gespeicherte `proof_reference` (HMAC über practice+email+code) geprüft;
+  das Secret verlässt den Worker nie, die RPC bekommt nur die verifizierte
+  `invitation_id`. Ein direkter `authenticated`-Aufruf der RPC ist per
+  `revoke execute` unmöglich, sonst wäre die Proof-Prüfung umgehbar.
+  (3) **Identitätsbindung** – die RPC bindet die Einladung an die **Auth-E-Mail**
+  des Einlösenden (`auth.users`), nicht an einen vom Client übergebenen Wert;
+  eine an eine andere Person adressierte Einladung ergibt `forbidden`. Der
+  Worker-Test beweist zusätzlich, dass Body-Felder wie `userId` ignoriert werden
+  und der Klartextcode nie an die DB-Schicht gelangt. Rate-Limit 10/5min.
+  (4) **Mobiler Einstieg** – minimaler Screen `app/(auth)/redeem-invitation.tsx`
+  plus Client `lib/api/invitations.ts` (Idempotenz-IDs, Fehler-Mapping nach
+  HTTP-Status); Einstieg über einen Link auf dem Welcome-Screen. Keine
+  Änderung am bestehenden Sign-up (das ist B4b).
+  Verifikation: `supabase db reset` sauber, **168 pgTAP-Prüfungen in 7 Dateien
+  grün** (13 neu für B4a), **275 Jest-Tests grün** (4 opt-in ITs übersprungen),
+  ESLint und TypeScript sauber. Bitte @Codex um Gegenprüfung insbesondere von
+  Proof-/Secret-Grenze, service-role-Exklusivität der RPC, Identitätsbindung,
+  Aktivierungssemantik (Owner vs. Nicht-Owner) und Idempotenz-/Audit-Kopplung.
+  **Rederecht / Am Zug: @Codex.**
