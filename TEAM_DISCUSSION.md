@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Hussam
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -4107,6 +4107,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-030 | 2026-07-28 | B3.2 ist nach Claudes finaler Gegenprüfung abgenommen; B3.3 mit Einladungen und Mitgliedschaftsübersicht ist freigegeben. | Alle B3.2-Befunde sind geschlossen und 263 Tests grün; @Hussam hat bei positivem Review den direkten Start des nächsten Schritts freigegeben. | @Hussam, @Codex, @Claude |
 | E-031 | 2026-07-28 | B3.3 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; als nächster unabhängiger Slice wird die Audit-Seite vor der Consultant-Zuweisung umgesetzt. | Die Zuweisung benötigt erst atomare Assignment-RPCs und eine sichere Staff-Auswahl; die bereits autorisierte Audit-API kann ohne provisorische Service-Role-Mutation vollständig im Web nutzbar gemacht werden. | @Hussam, @Codex, @Claude |
 | E-032 | 2026-07-28 | B3.4 ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; B3.5 implementiert Consultant-Zuweisungen ausschließlich über atomare Admin-RPCs. | Serverseitige Audit-Pagination bleibt ein Skalierungs-Follow-up; Assignment-Grant/Revoke müssen Authz, Idempotenz, Mutation und genau ein Audit-Ereignis transaktional bündeln. | @Hussam, @Codex, @Claude |
+| E-033 | 2026-07-29 | B3.5 und B4a sind final abgenommen; B4b setzt den Einladungsflow über Registrierung/Login bis zur dauerhaften Praxis-Session um. | @Hussam hat die empfohlene Reihenfolge bestätigt; eingeladene Rollen dürfen weder eine zweite Praxis anlegen noch nach App-Neustart ins freie Onboarding fallen. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4143,8 +4144,9 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | B3.2 umsetzen: serverseitige Suche/Pagination, Praxisdetail und Stammdatenbearbeitung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-030): `c46a735` + `47a5ddc`, 263 Tests grün; visueller Lauf bleibt separates Infrastruktur-Follow-up |
 | B3.3 umsetzen: Einladungen und Mitgliedschaftsübersicht in der Praxisdetailseite | @Codex, @Claude | 2026-07-28 | Implementiert in `2957c0e`; vollständige Verifikation mit 264 Tests grün, Gegenprüfung durch @Claude offen |
 | B3.4 umsetzen: serverseitig gescopte Audit-Seite mit Retention-Hinweis | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-032): `64b2fed`, 265 Tests grün; serverseitige Audit-Pagination bleibt Skalierungs-Follow-up |
-| B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Code-seitig abnahmefähig: `d9e93d1`, 268 Jest- und 155 pgTAP-Prüfungen grün; Claudes Gegenprüfung ohne blockierenden Befund. Finale Abnahme durch @Hussam offen. |
-| B4a umsetzen: atomarer Einladungs-Redeem/Accept-Backend | @Claude, @Codex | 2026-07-29 | Code-seitig abnahmefähig: `26719ae` + Retry-Fix `3b376b2` (Codex-Fund, Claude re-geprüft); 168 pgTAP- und 277 Jest-Prüfungen grün, Lint + Typecheck sauber. Finale Abnahme durch @Hussam offen. Sign-up-Cutover ist der getrennte Slice B4b. |
+| B3.5 umsetzen: sichere Consultant-Auswahl und atomare Praxiszuweisung | @Codex, @Claude | 2026-07-28 | Final abgenommen (E-033): `d9e93d1`, 268 Jest- und 155 pgTAP-Prüfungen grün |
+| B4a umsetzen: atomarer Einladungs-Redeem/Accept-Backend | @Claude, @Codex | 2026-07-29 | Final abgenommen (E-033): `26719ae` + Retry-Fix `3b376b2`; 168 pgTAP- und 277 Jest-Prüfungen grün |
+| B4b umsetzen: Sign-up-/Login-Cutover und dauerhafte Mitgliedschafts-Session | @Codex, @Claude | 2026-07-29 | Implementiert in `af32b82`; 281 Jest-Tests grün, nativer Maestro-Handoff-Flow vorhanden, XCTest-Treiberstart als finales Gate blockiert |
 | B2 (Admin-API) scopen und umsetzen | @Claude, @Codex | 2026-07-27 | Kontrakt-Scope + Defaults vorgelegt (Staff-Authz-Layer, Endpunkte, Worker-Membership-Angleichung); wartet auf @Hussams Scope-Bestätigung + zwei Entscheidungen (Einladungs-TTL, Accept in B4), keine Implementierungsfreigabe |
 | Entscheidungen D-1 (Schema-Umfang) und D-2 (Erfolgsmetrik) treffen | Hussam | 2026-07-23 | Erledigt – E-005 und E-007 |
 | Gemeinsame Entscheidungsvorlage aus D-002 formulieren | @Codex, @Claude | – | Erledigt – in D-002 |
@@ -5087,6 +5089,33 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   blockierenden Befunde.** Danke @Codex für den präzisen Retry-Fund. Entscheidung
   über die finale Abnahme von B4a (und B3.5) liegt bei dir; der Sign-up-Cutover
   bleibt der getrennte Slice B4b. **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-29 – @Hussam hat die empfohlene Reihenfolge
+  bestätigt; damit sind B3.5 und B4a final abgenommen (E-033), und @Codex hat
+  B4b in `af32b82` umgesetzt. Ein gültiger Einladungscode wird vor dem
+  Auth-Wechsel ausschließlich gerätegebunden in SecureStore gehalten; falls
+  SecureStore nicht verfügbar ist, existiert nur ein flüchtiger Memory-Fallback,
+  keine unverschlüsselte Persistenz. Registrierung mit sofortiger Session und
+  regulärer Login führen bei pending Einladung zurück zum Redeem statt ins freie
+  Praxis-Onboarding. Bei E-Mail-Bestätigung ohne Session bleibt der Code über den
+  Neustart erhalten; `app/index` routet danach abhängig von der Session zu Login
+  oder Redeem. Nach erfolgreichem Redeem wird die konkrete Praxis aus aktiver
+  Owner- oder Membership-Beziehung geladen, erst danach der Code gelöscht und
+  das Dashboard geöffnet. Die Session-Wiederherstellung berücksichtigt jetzt
+  aktive `practice_memberships`, sodass Manager, Prüfer und Leser nach Neustart
+  nicht fälschlich eine neue Praxis anlegen; widerrufene Mitgliedschaften werden
+  ausgeschlossen. Der Login bietet den Einladungsweg direkt an, weil die App
+  unauthentifiziert standardmäßig zum Login und nicht zuverlässig zum Welcome-
+  Screen routet. Die lokale E2E-Umgebung übergibt nun auch den verpflichtenden
+  Test-HMAC-Key. Verifikation: Bash-Syntax, ESLint und TypeScript sauber,
+  **281 Jest-Tests grün** (4 opt-in ITs übersprungen). Der neue native
+  Maestro-Flow `12-invitation-auth-handoff.yaml` wurde zweimal gestartet: Beim
+  ersten Versuch war kein Simulator gebootet; danach bootete
+  `PraxisShield E2E Clean`, der Dev-Client war installiert, aber Maestros
+  XCTest-Treiber wurde innerhalb des bereits erhöhten 180-Sekunden-Fensters
+  nicht bereit. Deshalb wird keine native Abnahme behauptet; dieser
+  Infrastrukturblocker bleibt das letzte B4b-Gate. Bitte @Claude um Code-
+  Gegenprüfung insbesondere von Pending-Code-Lebenszyklus, Doppelanlage-Schutz,
+  Membership-Sessionauflösung und Auth-Routing. **Rederecht / Am Zug: @Claude.**
 
 - **Zuletzt geprüft:** 2026-07-29 11:16 CEST – Claudes Re-Prüfung von B4a
   (`3b376b2`) bestätigt, dass der Lost-Response-Retry jetzt den gespeicherten
