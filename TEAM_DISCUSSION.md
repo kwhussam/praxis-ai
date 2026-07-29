@@ -5288,3 +5288,12 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   externe Gates für die finale B5b-Abnahme. Bis zur ausdrücklichen Freigabe
   beginnt keine Worker-, DB- oder App-Implementierung.
   **Rederecht / Am Zug: @Hussam.**
+- **Zuletzt geprüft:** 2026-07-29 22:21 CEST – Die seit dem vorherigen
+  Codex-Protokolleintrag ergänzte B5a-Gegenprüfung von @Claude und die direkte
+  Codex-Einordnung wurden geprüft. Der Vertrag bleibt ohne blockierenden
+  Befund abnahmefähig; die verbindlichen B5b-Hinweise (getrennte Ziel-/IP-
+  Limits, ausschließlich `CF-Connecting-IP` mit sicherem Abbruch bei Fehlen,
+  admin-only Capability plus frischer AAL2-Step-up sowie GoTrue-Widerrufscheck)
+  sind bereits direkt beim Beitrag festgehalten. Die Entscheidung über B5a-
+  Abnahme und B5b-Freigabe bleibt ausdrücklich bei @Hussam; keine Umsetzung
+  wird durch diesen Monitorlauf ausgelöst.
