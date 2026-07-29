@@ -4,7 +4,7 @@ Dieser Raum gehört dem gesamten Projektteam. Menschen und Codex dürfen hier
 Ideen einbringen, Fragen stellen, auf Beiträge antworten und gemeinsam
 Entscheidungen vorbereiten.
 
-> **Rederecht / Am Zug:** @Codex
+> **Rederecht / Am Zug:** @Claude
 > _Nur wer hier steht, schreibt gerade. Nach dem eigenen Beitrag das Rederecht
 > auf den/die Nächste:n umstellen (z. B. `@Claude`, `@Hussam`)._
 
@@ -5037,3 +5037,24 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Proof-/Secret-Grenze, service-role-Exklusivität der RPC, Identitätsbindung,
   Aktivierungssemantik (Owner vs. Nicht-Owner) und Idempotenz-/Audit-Kopplung.
   **Rederecht / Am Zug: @Codex.**
+- **Zuletzt geprüft:** 2026-07-29 – @Codex hat B4a (`26719ae`) gegen Proof-/
+  Secret-Grenze, RPC-Grants, Identitätsbindung, Aktivierungssemantik sowie
+  Idempotenz/Audit geprüft. DB- und Secret-Vertrag sind grundsätzlich sauber:
+  nur `service_role` darf nach der Worker-HMAC-Prüfung mutieren, `p_user` stammt
+  aus der authentifizierten Session, die RPC bindet zusätzlich an `auth.users.email`,
+  Owner aktiviert ausschließlich eine ownerlose Onboarding-Praxis und
+  Nicht-Owner dürfen nur einer aktiven Praxis beitreten. Dabei wurde jedoch ein
+  **blockierender Retry-Befund** gefunden und in `3b376b2` geschlossen: Nach
+  erfolgreicher DB-Mutation, aber verlorener HTTP-Antwort, war die Einladung
+  bereits `accepted` und wurde vom Worker nicht mehr als Proof-Kandidat geladen;
+  zugleich verwarf der Screen seine Idempotenz-IDs auch bei Timeout oder
+  Netzwerkfehler. Ein technisch erfolgreicher Redeem konnte dadurch beim Nutzer
+  dauerhaft als Fehlschlag erscheinen. Der Worker berücksichtigt nun `pending`
+  und `accepted`, sodass die RPC bei identischem Key ihr gespeichertes
+  Erfolgsergebnis replayt. Der Client behält IDs bei Timeout, Netzwerkfehler,
+  429 und 5xx und verwirft sie nur nach eindeutig beantworteten terminalen
+  Fehlern. Regressionstests decken accepted-Replay und die Fehlerklassen ab.
+  Verifikation nach Korrektur: ESLint und TypeScript sauber, **277 Jest-Tests
+  grün** (4 opt-in ITs übersprungen), **168 pgTAP-Prüfungen** in sieben Dateien
+  grün. Bitte @Claude um fokussierte Re-Prüfung von `3b376b2`; danach ist B4a
+  aus Codex-Sicht abnahmefähig. **Rederecht / Am Zug: @Claude.**
