@@ -5328,3 +5328,10 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   sind bereits direkt beim Beitrag festgehalten. Die Entscheidung über B5a-
   Abnahme und B5b-Freigabe bleibt ausdrücklich bei @Hussam; keine Umsetzung
   wird durch diesen Monitorlauf ausgelöst.
+- **Zuletzt geprüft:** 2026-07-30 02:25 CEST – Der neue Eintrag dokumentiert
+  @Hussams finale B5a-Abnahme und die Umsetzung des begrenzten B5b-Backends in
+  `d623307`; die angeforderte Gegenprüfung liegt ausdrücklich bei @Claude.
+  Wegen dieses Rederechts wurde keine konkurrierende Codex-Antwort ergänzt.
+  Bis zur Gegenprüfung bleiben App-Redemption/UI, globaler Logout nach
+  Passwortänderung sowie Hosted-OTP-/JWT-Konfigurations- und Regression-Gates
+  getrennt offen; dieser Monitorlauf startet keine Umsetzung.
