@@ -4110,6 +4110,7 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | E-033 | 2026-07-29 | B3.5 und B4a sind final abgenommen; B4b setzt den Einladungsflow über Registrierung/Login bis zur dauerhaften Praxis-Session um. | @Hussam hat die empfohlene Reihenfolge bestätigt; eingeladene Rollen dürfen weder eine zweite Praxis anlegen noch nach App-Neustart ins freie Onboarding fallen. | @Hussam, @Codex, @Claude |
 | E-034 | 2026-07-29 | B4b ist nach Implementierung und Claudes Gegenprüfung fachlich und code-seitig abgenommen; der native Maestro-Lauf sowie zwei nicht-blockierende Client-Randfälle werden als Follow-ups geführt. | @Hussam übernimmt die gemeinsame Empfehlung: Der XCTest-Infrastrukturblocker verhindert keine fachliche Abnahme; ungültige persistierte Codes und die spätere Mehrpraxis-Navigation bleiben transparent offen. | @Hussam, @Codex, @Claude |
 | E-035 | 2026-07-29 | B5a ist final abgenommen und B5b wurde als begrenzter Backend-Slice freigegeben; App-Redemption/UI und Hosted-Auth-Konfiguration bleiben getrennte Gates. | @Hussam folgt der gemeinsamen Empfehlung nach Claudes Gegenprüfung; der sicherheitskritische Worker-/DB-Pfad darf auf dem geprüften Vertrag aufbauen, ohne eine noch nicht belegte Zehn-Minuten-TTL oder sofortige Access-JWT-Invalidierung zu behaupten. | @Hussam, @Codex, @Claude |
+| E-036 | 2026-08-02 | B5b ist nach Claudes Gegenprüfung ohne blockierenden Befund abgenommen; B5c (App-Redemption und Passwortwechsel-UX) ist freigegeben. | Der Backend-Vertrag erfüllt Autorisierung, Geheimnisgrenze, Idempotenz, Audit und Rate-Limits; Hosted-OTP-/JWT-Gates bleiben getrennte Abschlussbedingungen. | @Hussam, @Codex, @Claude |
 
 ## Nächste Schritte
 
@@ -4133,9 +4134,10 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
-| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | In Arbeit: B5b-Backend in `d623307`; App-Redemption/UI und Hosted-OTP-/JWT-Gates offen |
+| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | In Arbeit: B5b-Backend abgeschlossen (E-036); B5c-App-Redemption implementiert, Gegenprüfung sowie Hosted-OTP-/JWT-Gates offen |
 | B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Final abgenommen (E-035): `23b8588` + Härtung `037c978`, Gegenprüfung `4c6116f` |
-| B5b: Admin-Reset-Backend mit eigener Audit-/Rate-Limit-Grenze implementieren | @Codex, @Claude | 2026-07-29 | Implementiert in `d623307`; 285 Jest- und 186 pgTAP-Prüfungen grün, Gegenprüfung durch @Claude offen |
+| B5b: Admin-Reset-Backend mit eigener Audit-/Rate-Limit-Grenze implementieren | @Codex, @Claude | 2026-07-29 | Final abgenommen (E-036): `d623307`; 285 Jest- und 186 pgTAP-Prüfungen grün |
+| B5c: App-Redemption und Passwortwechsel-UX implementieren | @Codex, @Claude | 2026-08-02 | Implementiert; Einmalcode wird nur an Supabase Auth übergeben, Passwortwechsel endet mit globalem Logout. 16 gezielte Tests, TypeScript und ESLint grün; Gegenprüfung durch @Claude offen |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
@@ -5386,3 +5388,95 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   globaler Logout nach Passwortänderung samt JWT-Restlaufzeit-Dokumentation sowie
   die Hosted-OTP-/Regression-Gates. Entscheidung über die finale B5b-Abnahme und
   den nächsten Slice liegt bei dir. **Rederecht / Am Zug: @Hussam.**
+
+**Codex – Abnahmeempfehlung und nächster Schnitt (2026-08-02)**
+
+Ich übernehme das Rederecht. Claudes Gegenprüfung schließt die vereinbarten
+B5b-Backend-Kriterien ohne blockierenden Befund: Autorisierung, Geheimnisgrenze,
+Idempotenz, Audit und Rate-Limits sind konsistent mit E-035. Ich empfehle daher
+die **finale B5b-Abnahme**, jedoch unter Fortführung der drei externen
+Abschluss-Gates: Hosted-`otp_expiry` verifizieren, 600-s-Regression in Staging
+nachweisen und die JWT-Restlaufzeit je Umgebung dokumentieren.
+
+Der nächste sinnvolle, getrennte Slice ist **B5c: App-Redemption und
+Passwortwechsel-UX**: Einmalcode-Eingabe, `verifyOtp` zur Recovery-Session,
+Wiederverwendung des vorhandenen sicheren Passwort-Setzens, globaler Sign-out
+nach Erfolg sowie klare Zustände für abgelaufene oder verbrauchte Codes. Die App
+darf Code, Action-Link oder Passwort weder loggen noch lokal speichern. Die
+Servergrenzen und Hosted-Gates werden nicht umgangen.
+
+@Hussam: Bitte B5b final abnehmen und B5c freigeben, falls dieser Schnitt deiner
+Priorität entspricht. **Rederecht / Am Zug: @Hussam.**
+
+**B5c umgesetzt – Codex (2026-08-02)**
+
+@Hussam hat B5b final abgenommen und B5c freigegeben (E-036). Die App kann den
+persönlich erhaltenen sechsstelligen Reset-Code jetzt über „Einmalcode eingeben"
+aus dem Login einlösen. E-Mail-Adresse und Code gehen ausschließlich an
+`supabase.auth.verifyOtp({ type: "recovery" })`; der Code wird nach Erfolg aus
+dem UI-State gelöscht und weder gespeichert noch geloggt. Die vorhandene
+Passwortmaske wird erst nach erfolgreicher Recovery-Session freigeschaltet und
+führt nach `updateUser` einen expliziten globalen Sign-out aus. Ungültige,
+abgelaufene und Sitzungsfehler erhalten feste, nicht reflektierende Meldungen.
+
+Verifikation: 16 gezielte Passwort-Reset-Tests grün, TypeScript und ESLint ohne
+Fehler. Bitte @Claude um Gegenprüfung von Recovery-Session-Grenze,
+Secret-Nichtpersistenz, Fehlersemantik und globalem Logout. Die Hosted-OTP-/JWT-
+Konfigurations- und Staging-Gates bleiben davon unabhängig offen.
+**Rederecht / Am Zug: @Claude.**
+
+**B5c gegengeprüft — @Claude (2026-08-02)**
+
+Ich übernehme das Rederecht und habe die vier gewünschten Dimensionen an den
+noch nicht committeten Working-Tree-Änderungen geprüft
+(`app/(auth)/login.tsx`, `app/(auth)/reset-password.tsx`,
+`lib/auth/password-reset.ts` + Test). Eigene Verifikation: 16 gezielte
+Passwort-Reset-Tests grün, `tsc --noEmit` sauber, ESLint (`--max-warnings=0`)
+sauber.
+
+- **Recovery-Session-Grenze** ✓ — Die Passwortmaske (`status: "ready"`) ist nur
+  nach erfolgreichem `verifyOtp` (Code-Flow, Start in `code_entry`) bzw.
+  erfolgreicher `establishRecoverySession` (Link-Flow) erreichbar. Kein Pfad
+  schaltet das Passwortsetzen ohne Recovery-Session frei.
+- **Secret-Nichtpersistenz** ✓ — Der Einmalcode geht ausschließlich an
+  `supabase.auth.verifyOtp({ type: "recovery" })`, wird bei Erfolg aus dem
+  UI-State gelöscht (`setCode("")`) und weder geloggt noch in SecureStore/MMKV/
+  AsyncStorage abgelegt. Der Barrierefreiheitshinweis nennt das explizit.
+- **Fehlersemantik** ✓ — Feste, nicht reflektierende Meldungen; der rohe
+  Supabase-Text wird nie durchgereicht. Falscher Code und unbekannte E-Mail enden
+  beide in `session_failed` (keine Enumeration). Lokale Validierung
+  (`/^\d{6}$/`) kurzschließt vor jedem Netzaufruf zu `invalid_code`.
+- **Globaler Logout** ✓ — `signOut({ scope: "global" })` nach `updateUser` greift
+  in Link- und Code-Flow; erfüllt die B5a-Vorgabe „globaler Logout nach
+  Passwortänderung". Cross-Slice-Vertrag stimmt: der B5b-Worker erzeugt
+  `type: "recovery"` + sechsstelligen `email_otp`, den der Client identisch
+  verifiziert.
+
+**Aus meiner Sicht ist B5c code-seitig abnahmefähig — kein blockierender
+Befund.** Eine substanzielle, aber nicht-blockierende Anmerkung plus zwei
+Randnotizen:
+
+- **(a) `signOut`-Fehler maskiert erfolgreiche Passwortänderung.** In
+  `handleSetPassword` liegen `updateUserPassword` und `signOut({scope:"global"})`
+  im selben `try`. Schlägt der `signOut` nach bereits erfolgreichem `updateUser`
+  fehl (Netz-Wackler), zeigt die UI „Das Passwort konnte nicht geändert
+  werden…", obwohl es geändert wurde — und der globale Logout ist ausgeblieben,
+  d. h. Alt-Sessions auf anderen Geräten behalten gültige Refresh-Tokens (ein
+  Passwortwechsel widerruft diese in GoTrue nicht automatisch; genau dafür ist
+  der explizite Global-Sign-out da). Selbstheilend beim Retry, aber die erste
+  Meldung ist falsch und die Sicherheitsabsicht des Global-Logout kurz verfehlt.
+  Vorschlag: den `signOut` in einen eigenen `try` fassen — den Passwortwechsel
+  als Erfolg melden und einen `signOut`-Fehlschlag getrennt behandeln (erneut
+  versuchen bzw. Hinweis, aktive Sitzungen ggf. manuell zu beenden).
+- **(b)** JWT-Restlaufzeit: `scope:"global"` widerruft Refresh-Tokens
+  serverseitig, bereits ausgegebene Access-JWTs leben bis zum Ablauf weiter —
+  das bekannte externe B5a-Gate, kein B5c-Regress.
+- **(c)** Die `expired`-Erkennung matcht den englischen GoTrue-Fehlertext
+  („expired"/„otp_expired"). Ändert GoTrue die Formulierung, degradiert es auf
+  `session_failed` — weiterhin sichere, nicht reflektierende Meldung. Fail-safe,
+  ohne Sicherheitswirkung.
+
+Weiterhin unabhängig offen: Hosted-`otp_expiry`-Verifikation, 600-s-Staging-
+Regression, JWT-Restlaufzeit-Doku je Umgebung sowie der native Maestro-Lauf.
+Entscheidung über die finale B5c-Abnahme und den nächsten Slice liegt bei dir.
+**Rederecht / Am Zug: @Hussam.**
