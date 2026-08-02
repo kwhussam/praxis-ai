@@ -5335,3 +5335,54 @@ Rederecht zur Re-Prüfung des DB-Kerns an @Codex; Worker-Slice 2 danach.
   Bis zur Gegenprüfung bleiben App-Redemption/UI, globaler Logout nach
   Passwortänderung sowie Hosted-OTP-/JWT-Konfigurations- und Regression-Gates
   getrennt offen; dieser Monitorlauf startet keine Umsetzung.
+- **Zuletzt geprüft:** 2026-08-02 13:37 CEST – @Hussam bestätigt die
+  Freigabe des nächsten Schritts. B5b war jedoch bereits unter E-035 freigegeben
+  und sein Backend liegt in `d623307`; eine doppelte Implementierung wird daher
+  nicht begonnen. Der unmittelbare nächste Schritt ist die bereits angeforderte
+  Gegenprüfung durch @Claude. Erst nach deren Ergebnis kann @Hussam B5b final
+  abnehmen und den folgenden Slice entscheiden. **Rederecht / Am Zug: @Claude.**
+- **Zuletzt geprüft:** 2026-08-02 – @Claude hat das B5b-Backend (`d623307`)
+  gegengeprüft. Eigene Verifikation: `supabase db reset` sauber, **186 pgTAP in 8
+  Dateien grün** (18 neu für B5b), **285 Jest-Tests grün** (4 opt-in ITs
+  übersprungen), ESLint und TypeScript sauber.
+  (1) **Capability & Autorisierung** – `user.password_reset.initiate` ist in
+  `backoffice_actor_can` explizit admin-only (vor dem Bypass; Consultant/Support →
+  false); der Rest der Funktion ist unverändert (kein Regress bei B3.5
+  `assignment.manage`). Der Worker verlangt AAL2 **plus frischen Step-up**
+  (`freshStepUp:true`), lehnt Nicht-Admins mit 404 (anti-enumeration) ab, und die
+  RPC `password_reset_finalize` prüft die Capability erneut (Defense-in-Depth).
+  (2) **Secret-Handling** – der OTP entsteht serverseitig via GoTrue
+  `generate_link` und erscheint **ausschließlich** in der 201-Antwort. Weder OTP
+  noch action_link, hashed_token, E-Mail, IP oder Passwort gelangen in Audit,
+  Idempotenzergebnis, Logs (nur `safeErrorLog`) oder DB-Payloads – die
+  Worker-Tests beweisen das mit injizierten Fake-Secrets, der pgTAP prüft „kein
+  E-Mail/OTP im Audit". Rate-Limit-Subjekte (Ziel/IP) werden vor der DB
+  SHA-256-**gehasht**; unhashed wird von der RPC abgelehnt.
+  (3) **Idempotenz ohne Secret-Replay** – ein bereits verbrauchter Key liefert
+  `409 reset_already_issued` und gibt den Code **nicht** erneut aus; das
+  gespeicherte Idempotenzergebnis enthält nur `reset_request_id`/`expires_at`.
+  Genau das im B5a-Vertrag zugesagte Verhalten.
+  (4) **Audit-Grenze** – `password_reset_audit_events` ist append-only
+  (service_role nur select+insert, Updates nur über die Security-Definer-
+  Anonymisierung), FORCE RLS, admin-only-Read, exakt datenminimierte Feldliste,
+  183-Tage-B1b-Retention inkl. Limiter-Cleanup nach 24 h. Genau ein Success-
+  bzw. Failure-Audit je Versuch.
+  (5) **Rate-Limits & Zielbindung** – drei Dimensionen (5/15min Akteur über den
+  bestehenden Limiter, 3/15min Ziel und 20/60min IP über die neue gehashte
+  Tabelle). Die Zielbindung lädt Owner/aktive Membership serverseitig; die E-Mail
+  kommt nur aus Auth, nie aus dem Request. Die IP-Quelle `cf-connecting-ip` wird
+  validiert; fehlende/ungültige IP → 400. Damit sind meine B5a-Umsetzungshinweise
+  (Limiter-Erweiterung, IP-Quelle, admin-only-Capability) umgesetzt.
+  **Aus meiner Sicht ist das B5b-Backend code-seitig abnahmefähig; keine
+  blockierenden Befunde.** Zwei nicht-blockierende Anmerkungen: (a) das Gate
+  `PASSWORD_RESET_OTP_TTL_SECONDS===600` ist eine bewusste, gute Fail-closed-Kopplung,
+  aber ein **Proxy** – es beweist nicht, dass die Hosted-`otp_expiry` tatsächlich
+  600 s ist; steht sie noch auf 3600 s, lebt der Code länger als das gemeldete
+  `expiresAt`. Die Hosted-Verifikation bleibt das dokumentierte externe Gate (§7).
+  (b) Schlägt `finalize` nach erfolgreichem `generate_link` transient fehl, bleibt
+  ein **nicht offengelegter** Recovery-Code bis TTL/Supersession gültig; er wird
+  als Failure auditiert und nie zurückgegeben – kein Disclosure, akzeptabel.
+  Weiterhin offen und **nicht Teil dieses Backend-Slices**: App-Redemption/UI,
+  globaler Logout nach Passwortänderung samt JWT-Restlaufzeit-Dokumentation sowie
+  die Hosted-OTP-/Regression-Gates. Entscheidung über die finale B5b-Abnahme und
+  den nächsten Slice liegt bei dir. **Rederecht / Am Zug: @Hussam.**
