@@ -21,6 +21,7 @@ import {
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
 import type { BackofficeConsultant, BackofficeConsultantAssignment, BackofficeInvitation, BackofficeMembership, BackofficePasswordResetResult, BackofficePracticeDetail, BackofficePracticeDetailResponse, OnboardingStatus, PasswordResetIdentityVerification, PracticeMemberRole, UpdatePracticeInput } from "@/lib/backoffice/types";
 import { ApiError } from "@/lib/api/client";
+import { buildResetTargets, resetMessageForStatus } from "@/lib/backoffice/password-reset-ui";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
@@ -68,6 +69,7 @@ export default function BackofficePracticeDetailScreen() {
   const [resetResult, setResetResult] = useState<BackofficePasswordResetResult | null>(null);
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetNeedsStepUp, setResetNeedsStepUp] = useState(false);
+  const [resetAlreadyIssued, setResetAlreadyIssued] = useState(false);
   const resetAttempt = useRef<{ fingerprint: string; ids: BackofficeMutationIds } | null>(null);
 
   useEffect(() => {
@@ -184,19 +186,23 @@ export default function BackofficePracticeDetailScreen() {
     try { await assignConsultant.mutateAsync({ userId: selectedConsultant, purpose, ids: assignmentAttempt.current.ids }); } catch { /* rendered below */ }
   }
 
-  async function triggerReset() {
+  async function triggerReset(forceNew = false) {
     if (!selectedResetUser || !resetIdentity) return;
     setResetError(null);
     setResetResult(null);
     setResetNeedsStepUp(false);
+    setResetAlreadyIssued(false);
     const fingerprint = `${selectedResetUser} ${resetIdentity}`;
-    if (resetAttempt.current?.fingerprint !== fingerprint) resetAttempt.current = { fingerprint, ids: newMutationIds() };
+    // Neue Idempotenz-ID nur bei bewusster Neuanforderung (P1-2) oder beim ersten
+    // Versuch dieses Ziels; ein gewöhnlicher Retry behält den Key (kein Doppel-Reset).
+    if (forceNew || resetAttempt.current?.fingerprint !== fingerprint) resetAttempt.current = { fingerprint, ids: newMutationIds() };
     try {
       await initiateReset.mutateAsync({ userId: selectedResetUser, identity: resetIdentity, ids: resetAttempt.current.ids });
     } catch (error) {
-      const mapped = resetErrorMessage(error);
+      const mapped = resetMessageForStatus(error instanceof ApiError ? error.status : null);
       setResetError(mapped.text);
       setResetNeedsStepUp(mapped.needsStepUp);
+      setResetAlreadyIssued(mapped.alreadyIssued);
     }
   }
 
@@ -240,6 +246,7 @@ export default function BackofficePracticeDetailScreen() {
   const hasUnsavedChanges = JSON.stringify(form) !== JSON.stringify(formFromPractice(practice));
   const invitationRows = (invitations.data?.invitations ?? []) as BackofficeInvitation[];
   const activeMemberships = ((memberships.data?.memberships ?? []) as BackofficeMembership[]).filter((item) => item.status === "active");
+  const resetTargets = buildResetTargets(practice.owner_id, (memberships.data?.memberships ?? []) as BackofficeMembership[]);
   const consultantRows = ((consultants.data?.consultants ?? []) as BackofficeConsultant[]).filter((item) => item.status === "active");
   const activeAssignments = ((assignments.data?.assignments ?? []) as BackofficeConsultantAssignment[]).filter((item) => item.status === "active");
 
@@ -362,11 +369,11 @@ export default function BackofficePracticeDetailScreen() {
               <Text style={styles.sectionCopy}>Löst einen Einmalcode aus, mit dem die Person ihr Passwort selbst neu setzt. Erst auslösen, nachdem die Identität persönlich oder telefonisch verifiziert wurde. Der Code wird nur einmal angezeigt und nicht gespeichert.</Text>
               <Text style={styles.fieldLabel}>Person auswählen</Text>
               <View style={styles.roleRow}>
-                {activeMemberships.length ? activeMemberships.map((item) => (
-                  <Pressable key={item.user_id} onPress={() => { setSelectedResetUser(item.user_id); setResetResult(null); setResetError(null); }} style={[styles.roleChip, selectedResetUser === item.user_id && styles.roleChipActive]}>
-                    <Text style={[styles.roleChipText, selectedResetUser === item.user_id && styles.roleChipTextActive]}>{ROLE_LABEL[item.role]} · {shortId(item.user_id)}</Text>
+                {resetTargets.length ? resetTargets.map((target) => (
+                  <Pressable key={target.userId} onPress={() => { setSelectedResetUser(target.userId); setResetResult(null); setResetError(null); setResetAlreadyIssued(false); }} style={[styles.roleChip, selectedResetUser === target.userId && styles.roleChipActive]}>
+                    <Text style={[styles.roleChipText, selectedResetUser === target.userId && styles.roleChipTextActive]}>{target.role ? ROLE_LABEL[target.role] : "Inhaber"} · {shortId(target.userId)}</Text>
                   </Pressable>
-                )) : <Text style={styles.emptyText}>Keine aktive Person für einen Reset verfügbar.</Text>}
+                )) : <Text style={styles.emptyText}>Keine Person für einen Reset verfügbar.</Text>}
               </View>
               <Text style={styles.fieldLabel}>Identität verifiziert durch</Text>
               <View style={styles.roleRow}>
@@ -381,6 +388,7 @@ export default function BackofficePracticeDetailScreen() {
               </Pressable>
               {resetError ? <Text accessibilityRole="alert" style={styles.formError}>{resetError}</Text> : null}
               {resetNeedsStepUp ? <Pressable onPress={() => router.push("/backoffice/mfa" as never)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>MFA erneut bestätigen</Text></Pressable> : null}
+              {resetAlreadyIssued ? <Pressable disabled={initiateReset.isPending} onPress={() => void triggerReset(true)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Neuen Code erzeugen</Text></Pressable> : null}
               {resetResult ? (
                 <View style={styles.codeBox}>
                   <Text style={styles.codeLabel}>Einmalcode – sicher an die Person übergeben</Text>
@@ -425,20 +433,6 @@ function newMutationIds(): BackofficeMutationIds {
 }
 
 function shortId(value: string) { return `${value.slice(0, 8)}…${value.slice(-4)}`; }
-
-// Fehlertexte nach HTTP-Status; der rohe Serverfehler wird nie durchgereicht.
-// 403 = fehlender/alter MFA-Step-up (needsStepUp), 409 = bereits ausgelöst
-// (kein erneuter Code), 404 = nicht gefunden/keine Berechtigung (anti-enum).
-function resetErrorMessage(error: unknown): { text: string; needsStepUp: boolean } {
-  if (error instanceof ApiError) {
-    if (error.status === 403) return { text: "Für diese Aktion ist eine frische MFA-Bestätigung nötig. Bitte MFA erneuern und erneut auslösen.", needsStepUp: true };
-    if (error.status === 429) return { text: "Zu viele Reset-Anfragen. Bitte kurz warten und erneut versuchen.", needsStepUp: false };
-    if (error.status === 409) return { text: "Für diese Person wurde bereits ein Reset ausgelöst. Bitte den zuvor erzeugten Code verwenden oder später erneut anfordern.", needsStepUp: false };
-    if (error.status === 404) return { text: "Nicht möglich – Praxis oder Person nicht gefunden oder keine Berechtigung.", needsStepUp: false };
-    if (error.status === 400) return { text: "Bitte Person und Identitätsnachweis auswählen.", needsStepUp: false };
-  }
-  return { text: "Der Reset konnte nicht ausgelöst werden. Bitte erneut versuchen.", needsStepUp: false };
-}
 
 function Field({ disabled, grow, label, value, onChange }: { disabled: boolean; grow?: boolean; label: string; value: string; onChange: (value: string) => void }) {
   return <View style={[styles.field, grow && styles.fieldGrow]}><Text style={styles.fieldLabel}>{label}</Text><TextInput editable={!disabled} onChangeText={onChange} style={[styles.input, disabled && styles.inputDisabled]} value={value} /></View>;
