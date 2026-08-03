@@ -91,6 +91,10 @@ export type RecoveryResult =
   | { ok: true }
   | { ok: false; reason: "invalid_link" | "expired" | "session_failed" };
 
+export type RecoveryCodeResult =
+  | { ok: true }
+  | { ok: false; reason: "invalid_code" | "expired" | "session_failed" };
+
 // Turns an incoming deep-link URL into an authenticated recovery session so the
 // user can set a new password. Handles the implicit and PKCE flows plus the
 // error redirects Supabase appends when a link is expired or already used.
@@ -117,6 +121,27 @@ export async function establishRecoverySession(url: string): Promise<RecoveryRes
   }
 
   return { ok: false, reason: "invalid_link" };
+}
+
+// Completes an administrator-initiated recovery without sending the one-time
+// code anywhere except Supabase Auth. The code is intentionally never persisted
+// locally; a successful verification creates the short-lived recovery session
+// consumed immediately by updateUserPassword.
+export async function establishRecoverySessionFromCode(email: string, code: string): Promise<RecoveryCodeResult> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedCode = code.replace(/\s+/g, "");
+  if (!normalizedEmail || !/^\d{6}$/.test(normalizedCode)) return { ok: false, reason: "invalid_code" };
+
+  const { error } = await supabase.auth.verifyOtp({
+    email: normalizedEmail,
+    token: normalizedCode,
+    type: "recovery"
+  });
+  if (!error) return { ok: true };
+
+  const message = error.message.toLowerCase();
+  if (message.includes("expired") || message.includes("otp_expired")) return { ok: false, reason: "expired" };
+  return { ok: false, reason: "session_failed" };
 }
 
 export async function updateUserPassword(newPassword: string) {

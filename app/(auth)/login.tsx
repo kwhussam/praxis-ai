@@ -190,22 +190,34 @@ export default function LoginScreen() {
           <Text style={styles.validation}>Das Passwort braucht noch {8 - password.length} Zeichen.</Text>
         ) : null}
         {mode === "login" ? (
-          <Pressable
-            accessibilityLabel="Passwort vergessen"
-            accessibilityRole="button"
-            accessibilityState={{ disabled: resetLoading }}
-            disabled={resetLoading}
-            onPress={() => {
-              void handleForgotPassword();
-            }}
-            style={[styles.forgotPasswordButton, resetLoading ? styles.forgotPasswordButtonDisabled : null]}
-            testID="auth-forgot-password"
-          >
-            {resetLoading ? <ActivityIndicator color={colors.electricMuted} size="small" /> : null}
-            <Text style={styles.forgotPasswordText}>
-              {resetLoading ? "Link wird versendet..." : "Passwort vergessen"}
-            </Text>
-          </Pressable>
+          <>
+            <Pressable
+              accessibilityLabel="Passwort vergessen"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: resetLoading }}
+              disabled={resetLoading}
+              onPress={() => {
+                void handleForgotPassword();
+              }}
+              style={[styles.forgotPasswordButton, resetLoading ? styles.forgotPasswordButtonDisabled : null]}
+              testID="auth-forgot-password"
+            >
+              {resetLoading ? <ActivityIndicator color={colors.electricMuted} size="small" /> : null}
+              <Text style={styles.forgotPasswordText}>
+                {resetLoading ? "Link wird versendet..." : "Passwort vergessen"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Einmalcode für Passwort-Reset eingeben"
+              accessibilityRole="button"
+              disabled={resetLoading}
+              onPress={() => router.push("/(auth)/reset-password?mode=code")}
+              style={[styles.forgotPasswordButton, resetLoading ? styles.forgotPasswordButtonDisabled : null]}
+              testID="auth-open-reset-code"
+            >
+              <Text style={styles.forgotPasswordText}>Einmalcode eingeben</Text>
+            </Pressable>
+          </>
         ) : null}
         {error ? (
           <Text

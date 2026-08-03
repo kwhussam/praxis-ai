@@ -6,6 +6,7 @@ type Recorded = {
   resetCalls: Array<{ email: string; redirectTo?: string }>;
   setSessionCalls: Array<{ access_token: string; refresh_token: string }>;
   exchangeCalls: string[];
+  verifyOtpCalls: Array<{ email: string; token: string; type: string }>;
   updateCalls: string[];
 };
 
@@ -13,22 +14,26 @@ const recorded: Recorded = {
   resetCalls: [],
   setSessionCalls: [],
   exchangeCalls: [],
+  verifyOtpCalls: [],
   updateCalls: []
 };
 
 let mockResetError: Error | null = null;
 let mockSetSessionError: Error | null = null;
 let mockExchangeError: Error | null = null;
+let mockVerifyOtpError: Error | null = null;
 let mockUpdateError: Error | null = null;
 
 function resetMocks() {
   recorded.resetCalls.length = 0;
   recorded.setSessionCalls.length = 0;
   recorded.exchangeCalls.length = 0;
+  recorded.verifyOtpCalls.length = 0;
   recorded.updateCalls.length = 0;
   mockResetError = null;
   mockSetSessionError = null;
   mockExchangeError = null;
+  mockVerifyOtpError = null;
   mockUpdateError = null;
 }
 
@@ -47,6 +52,10 @@ jest.mock("@/lib/supabase/client", () => ({
         recorded.exchangeCalls.push(code);
         return { data: {}, error: mockExchangeError };
       },
+      verifyOtp: async (args: { email: string; token: string; type: string }) => {
+        recorded.verifyOtpCalls.push(args);
+        return { data: {}, error: mockVerifyOtpError };
+      },
       updateUser: async (args: { password: string }) => {
         recorded.updateCalls.push(args.password);
         return { data: {}, error: mockUpdateError };
@@ -57,6 +66,7 @@ jest.mock("@/lib/supabase/client", () => ({
 
 import {
   establishRecoverySession,
+  establishRecoverySessionFromCode,
   parseRecoveryUrl,
   PASSWORD_RESET_REDIRECT_URL,
   requestPasswordReset,
@@ -162,6 +172,39 @@ describe("establishRecoverySession", () => {
     );
 
     expect(result).toEqual({ ok: false, reason: "session_failed" });
+  });
+});
+
+describe("establishRecoverySessionFromCode", () => {
+  it("normalisiert E-Mail und Leerzeichen im sechsstelligen Code", async () => {
+    resetMocks();
+
+    const result = await establishRecoverySessionFromCode(" Team@Praxis.DE ", "123 456");
+
+    expect(result).toEqual({ ok: true });
+    expect(recorded.verifyOtpCalls).toEqual([{ email: "team@praxis.de", token: "123456", type: "recovery" }]);
+  });
+
+  it("ruft Supabase bei einem offensichtlich ungültigen Code nicht auf", async () => {
+    resetMocks();
+
+    const result = await establishRecoverySessionFromCode("team@praxis.de", "abc");
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_code"
+    });
+    expect(recorded.verifyOtpCalls).toHaveLength(0);
+  });
+
+  it("ordnet abgelaufene Codes zu ohne den Supabase-Text weiterzugeben", async () => {
+    resetMocks();
+    mockVerifyOtpError = new Error("OTP expired");
+
+    const result = await establishRecoverySessionFromCode("team@praxis.de", "123456");
+    expect(result).toEqual({
+      ok: false,
+      reason: "expired"
+    });
   });
 });
 
