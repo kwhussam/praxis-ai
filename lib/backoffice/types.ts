@@ -88,6 +88,18 @@ export type CreateInvitationResult = {
   code: string;
 };
 
+// Wie der Admin die Identität der Person vor dem Reset geprüft hat. Muss vom
+// Backend (B5b) akzeptiert werden; wird als Pflichtattestierung mitgeschickt.
+export type PasswordResetIdentityVerification = "in_person" | "phone_verified";
+
+// Antwort des B5b-Endpoints: der Einmalcode wird ausschließlich hier einmalig
+// zurückgegeben und darf clientseitig weder persistiert noch geloggt werden.
+export type BackofficePasswordResetResult = {
+  resetRequestId: string;
+  code: string;
+  expiresAt: string;
+};
+
 export type BackofficeAuditEvent = {
   id: string;
   actor_user_id: string | null;

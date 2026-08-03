@@ -7,10 +7,12 @@ import type {
   BackofficeConsultant,
   BackofficeConsultantAssignment,
   BackofficeMembership,
+  BackofficePasswordResetResult,
   CreateInvitationResult,
   CreatePracticeInput,
   CreatePracticeResult,
   OnboardingStatus,
+  PasswordResetIdentityVerification,
   PracticeMemberRole,
   UpdatePracticeInput
 } from "@/lib/backoffice/types";
@@ -92,6 +94,22 @@ export async function createBackofficeInvitation(
   return apiRequest<CreateInvitationResult>(`/api/backoffice/practices/${practiceId}/invitations`, {
     method: "POST",
     body: { targetEmail, intendedRole, deliveryChannel: "in_person_code", expiresAt },
+    headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
+  });
+}
+
+// Löst einen admin-initiierten Passwort-Reset aus (B5b). Der Einmalcode kommt
+// nur in der Antwort zurück und wird vom Aufrufer weder gespeichert noch geloggt.
+// Server erzwingt platform_admin + frischen MFA-Step-up; Nicht-Admin → 404.
+export async function initiateBackofficePasswordReset(
+  practiceId: string,
+  targetUserId: string,
+  identityVerification: PasswordResetIdentityVerification,
+  ids: BackofficeMutationIds
+) {
+  return apiRequest<BackofficePasswordResetResult>(`/api/backoffice/practices/${practiceId}/password-resets`, {
+    method: "POST",
+    body: { targetUserId, identityVerification },
     headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
   });
 }
