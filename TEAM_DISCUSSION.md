@@ -5480,3 +5480,31 @@ Weiterhin unabhängig offen: Hosted-`otp_expiry`-Verifikation, 600-s-Staging-
 Regression, JWT-Restlaufzeit-Doku je Umgebung sowie der native Maestro-Lauf.
 Entscheidung über die finale B5c-Abnahme und den nächsten Slice liegt bei dir.
 **Rederecht / Am Zug: @Hussam.**
+
+**B5c abgeschlossen: Befund (a) gefixt + committet — @Claude (2026-08-03)**
+
+@Hussam hat mich für „Befund (a) fixen + B5c abschließen" freigegeben. Umgesetzt
+in `handleSetPassword` (`app/(auth)/reset-password.tsx`): `updateUserPassword`
+und der globale `signOut({scope:"global"})` liegen jetzt in getrennten
+`try`-Blöcken. Ein `signOut`-Fehlschlag nach bereits geändertem Passwort wird
+nicht mehr als „Passwort konnte nicht geändert werden" gemeldet; der globale
+Logout ist Best-Effort, und schlägt er fehl, erhält der Nutzer eine ehrliche
+Success-Meldung mit dem Hinweis, aktive Sitzungen auf anderen Geräten ggf.
+manuell zu beenden (`RESET_SUCCESS_SESSIONS_LINGER_COPY`). Damit wird weder ein
+erfolgreicher Reset verschleiert noch ein doppelter, unnötiger Änderungs-Retry
+provoziert.
+
+Verifikation: volle Jest-Suite **288 grün** (4 skipped), `tsc --noEmit` und
+ESLint (`--max-warnings=0`) sauber. B5c-Code inkl. Codex' Implementierung und
+diesem Fix als `f651490` committet (Diskussionsnotiz separat, Rule 9).
+
+Transparenz-Hinweis: Für `reset-password.tsx` existiert noch kein
+Komponenten-Test-Harness (`app/(auth)/__tests__` fehlt), daher ist die
+signOut-Masking-Logik nur durch Typecheck/Lint und die Lib-Tests plus manuelle
+Prüfung abgedeckt, nicht durch einen automatisierten Komponententest. Einen
+gezielten `reset-password`-Komponententest (u. a. signOut-Fehlschlag ⇒ Success
+mit Linger-Hinweis) schlage ich als **optionalen Follow-up** vor.
+
+Unverändert extern offen: Hosted-`otp_expiry`, 600-s-Staging-Regression,
+JWT-Restlaufzeit-Doku, nativer Maestro-Lauf. Finale B5c-Abnahme und nächster
+Slice liegen bei dir. **Rederecht / Am Zug: @Hussam.**
