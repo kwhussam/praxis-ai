@@ -1,4 +1,4 @@
-import { buildResetTargets, resetMessageForStatus } from "@/lib/backoffice/password-reset-ui";
+import { buildResetTargets, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
 import type { BackofficeMembership } from "@/lib/backoffice/types";
 
 function membership(overrides: Partial<BackofficeMembership> = {}): BackofficeMembership {
@@ -65,5 +65,20 @@ describe("resetMessageForStatus", () => {
 
   it("fällt für unbekannte oder fehlende Status auf eine generische Meldung zurück", () => {
     expect(resetMessageForStatus(null).text).toBe(resetMessageForStatus(500).text);
+  });
+});
+
+describe("shouldRotateResetKey", () => {
+  it("behält den Key bei gewöhnlichem Retry desselben Ziels (kein Doppel-Reset)", () => {
+    expect(shouldRotateResetKey({ fingerprint: "u1 in_person" }, "u1 in_person", false)).toBe(false);
+  });
+
+  it("rotiert bei bewusster Neuanforderung (forceNew) trotz gleichem Ziel", () => {
+    expect(shouldRotateResetKey({ fingerprint: "u1 in_person" }, "u1 in_person", true)).toBe(true);
+  });
+
+  it("rotiert beim ersten Versuch und bei gewechseltem Ziel", () => {
+    expect(shouldRotateResetKey(null, "u1 in_person", false)).toBe(true);
+    expect(shouldRotateResetKey({ fingerprint: "u1 in_person" }, "u2 phone_verified", false)).toBe(true);
   });
 });

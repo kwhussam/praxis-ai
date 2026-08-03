@@ -18,6 +18,14 @@ export function buildResetTargets(ownerId: string | null, memberships: Backoffic
   return targets;
 }
 
+// Entscheidet, ob ein neuer Idempotenz-Key erzeugt werden muss. Ein bewusster
+// „Neuen Code erzeugen"-Klick (forceNew) und der erste Versuch eines Ziels
+// rotieren; ein gewöhnlicher Retry desselben Ziels behält den Key und löst
+// dadurch keinen zweiten Reset aus (Retry-vs.-bewusst-neuer-Code, P1-2).
+export function shouldRotateResetKey(current: { fingerprint: string } | null, fingerprint: string, forceNew: boolean): boolean {
+  return forceNew || current?.fingerprint !== fingerprint;
+}
+
 export type ResetOutcome = { text: string; needsStepUp: boolean; alreadyIssued: boolean };
 
 // Bildet den HTTP-Status auf eine feste, nicht reflektierende Meldung ab; der

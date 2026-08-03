@@ -21,7 +21,7 @@ import {
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
 import type { BackofficeConsultant, BackofficeConsultantAssignment, BackofficeInvitation, BackofficeMembership, BackofficePasswordResetResult, BackofficePracticeDetail, BackofficePracticeDetailResponse, OnboardingStatus, PasswordResetIdentityVerification, PracticeMemberRole, UpdatePracticeInput } from "@/lib/backoffice/types";
 import { ApiError } from "@/lib/api/client";
-import { buildResetTargets, resetMessageForStatus } from "@/lib/backoffice/password-reset-ui";
+import { buildResetTargets, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
@@ -70,6 +70,7 @@ export default function BackofficePracticeDetailScreen() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetNeedsStepUp, setResetNeedsStepUp] = useState(false);
   const [resetAlreadyIssued, setResetAlreadyIssued] = useState(false);
+  const [confirmNewCode, setConfirmNewCode] = useState(false);
   const resetAttempt = useRef<{ fingerprint: string; ids: BackofficeMutationIds } | null>(null);
 
   useEffect(() => {
@@ -192,12 +193,16 @@ export default function BackofficePracticeDetailScreen() {
     setResetResult(null);
     setResetNeedsStepUp(false);
     setResetAlreadyIssued(false);
+    setConfirmNewCode(false);
     const fingerprint = `${selectedResetUser} ${resetIdentity}`;
     // Neue Idempotenz-ID nur bei bewusster Neuanforderung (P1-2) oder beim ersten
     // Versuch dieses Ziels; ein gewöhnlicher Retry behält den Key (kein Doppel-Reset).
-    if (forceNew || resetAttempt.current?.fingerprint !== fingerprint) resetAttempt.current = { fingerprint, ids: newMutationIds() };
+    const attempt = shouldRotateResetKey(resetAttempt.current, fingerprint, forceNew) || !resetAttempt.current
+      ? { fingerprint, ids: newMutationIds() }
+      : resetAttempt.current;
+    resetAttempt.current = attempt;
     try {
-      await initiateReset.mutateAsync({ userId: selectedResetUser, identity: resetIdentity, ids: resetAttempt.current.ids });
+      await initiateReset.mutateAsync({ userId: selectedResetUser, identity: resetIdentity, ids: attempt.ids });
     } catch (error) {
       const mapped = resetMessageForStatus(error instanceof ApiError ? error.status : null);
       setResetError(mapped.text);
@@ -370,8 +375,8 @@ export default function BackofficePracticeDetailScreen() {
               <Text style={styles.fieldLabel}>Person auswählen</Text>
               <View style={styles.roleRow}>
                 {resetTargets.length ? resetTargets.map((target) => (
-                  <Pressable key={target.userId} onPress={() => { setSelectedResetUser(target.userId); setResetResult(null); setResetError(null); setResetAlreadyIssued(false); }} style={[styles.roleChip, selectedResetUser === target.userId && styles.roleChipActive]}>
-                    <Text style={[styles.roleChipText, selectedResetUser === target.userId && styles.roleChipTextActive]}>{target.role ? ROLE_LABEL[target.role] : "Inhaber"} · {shortId(target.userId)}</Text>
+                  <Pressable key={target.userId} onPress={() => { setSelectedResetUser(target.userId); setResetResult(null); setResetError(null); setResetAlreadyIssued(false); setConfirmNewCode(false); }} style={[styles.roleChip, selectedResetUser === target.userId && styles.roleChipActive]}>
+                    <Text style={[styles.roleChipText, selectedResetUser === target.userId && styles.roleChipTextActive]}>{target.role ? ROLE_LABEL[target.role] : "Primärinhaber"} · {shortId(target.userId)}</Text>
                   </Pressable>
                 )) : <Text style={styles.emptyText}>Keine Person für einen Reset verfügbar.</Text>}
               </View>
@@ -388,7 +393,14 @@ export default function BackofficePracticeDetailScreen() {
               </Pressable>
               {resetError ? <Text accessibilityRole="alert" style={styles.formError}>{resetError}</Text> : null}
               {resetNeedsStepUp ? <Pressable onPress={() => router.push("/backoffice/mfa" as never)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>MFA erneut bestätigen</Text></Pressable> : null}
-              {resetAlreadyIssued ? <Pressable disabled={initiateReset.isPending} onPress={() => void triggerReset(true)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Neuen Code erzeugen</Text></Pressable> : null}
+              {resetAlreadyIssued && !confirmNewCode ? <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(true)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Neuen Code erzeugen</Text></Pressable> : null}
+              {resetAlreadyIssued && confirmNewCode ? (
+                <View style={[styles.codeBox, { marginTop: 10 }]}>
+                  <Text style={styles.codeWarning}>Achtung: Ein zuvor ausgegebener Code wird dadurch ungültig. Nur fortfahren, wenn die Person keinen gültigen Code mehr hat.</Text>
+                  <Pressable disabled={initiateReset.isPending} onPress={() => void triggerReset(true)} style={[styles.primaryButton, { marginTop: 10 }]}><Text style={styles.primaryButtonText}>Ja, neuen Code erzeugen</Text></Pressable>
+                  <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(false)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Abbrechen</Text></Pressable>
+                </View>
+              ) : null}
               {resetResult ? (
                 <View style={styles.codeBox}>
                   <Text style={styles.codeLabel}>Einmalcode – sicher an die Person übergeben</Text>
