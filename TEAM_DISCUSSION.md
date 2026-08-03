@@ -4134,10 +4134,13 @@ Unfertige Gedanken sind ausdrücklich willkommen:
 | F-2: Autosave serialisieren und verwaiste Draft-Generationen bereinigen | @Codex, @Claude | 2026-07-23 | Erledigt – `25338a9` + P3-Resurrection-Fix `b36c2d0`, beide von @Claude gegengeprüft; Abschluss-Löschgarantie (E-014) hält |
 | W4c: Redirect-URL `praxisshield://reset-password` je Supabase-Umgebung konfigurieren und Recovery-Link im Dev-Build nativ prüfen | @Claude, @Codex | 2026-07-24 | Lokale Config erledigt (`8f3c22a`); Staging/Prod-Dashboard-Eintrag + nativer Dev-Build-Test offen (@Hussam) |
 | Admin-initiierten Passwort-Reset ohne Kenntnis des endgültigen Passworts fachlich und technisch entwerfen | @Claude, @Codex | 2026-07-24 | Erledigt – W4e-Vertrag bestätigt; Umsetzung gemäß E-021 bis zum Admin-Authz-Fundament zurückgestellt |
-| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | In Arbeit: B5b-Backend abgeschlossen (E-036); B5c-App-Redemption implementiert, Gegenprüfung sowie Hosted-OTP-/JWT-Gates offen |
+| W4e: Admin-initiierten Reset mit append-only RLS-Audit umsetzen | @Claude, @Codex | Später | In Arbeit: B5b abgeschlossen (E-036), B5c gegengeprüft und Befund in `f651490` geschlossen; finale Abnahme sowie externe Hosted-/Staging-/Native-Gates offen |
 | B5a: Sicherheitsvertrag, OTP-/JWT-TTL-Wirkung und Abnahmematrix für W4e festlegen | @Codex, @Claude | 2026-07-29 | Final abgenommen (E-035): `23b8588` + Härtung `037c978`, Gegenprüfung `4c6116f` |
 | B5b: Admin-Reset-Backend mit eigener Audit-/Rate-Limit-Grenze implementieren | @Codex, @Claude | 2026-07-29 | Final abgenommen (E-036): `d623307`; 285 Jest- und 186 pgTAP-Prüfungen grün |
-| B5c: App-Redemption und Passwortwechsel-UX implementieren | @Codex, @Claude | 2026-08-02 | Implementiert; Einmalcode wird nur an Supabase Auth übergeben, Passwortwechsel endet mit globalem Logout. 16 gezielte Tests, TypeScript und ESLint grün; Gegenprüfung durch @Claude offen |
+| B5c: App-Redemption und Passwortwechsel-UX implementieren | @Codex, @Claude | 2026-08-02 | Code-seitig abnahmefähig: Gegenprüfung durch @Claude, Sign-out-Befund in `f651490` geschlossen; 288 Jest-Tests, TypeScript und ESLint grün. Finale Abnahme durch @Hussam und externe Gates offen |
+| B5d: Hosted-/Staging-/Native-Release-Gates für Passwort-Reset schließen | @Hussam, @Codex, @Claude | 2026-08-03 | In Arbeit: lokales `otp_expiry` auf 600 s gesetzt, Worker-Regression grün; Hosted-Werte/JWT-Doku benötigen Dashboard-Zugang, nativer Maestro-Lauf durch lokale Maestro-Berechtigung blockiert |
+| E2E-F-01: Flow `08-report-generation-error` reparieren | @Claude, @Codex | Offen | `npm run e2e:smoke` am 2026-08-03 fehlgeschlagen: `check-start` nach Anmeldung/Wechsel zum Check-Tab nicht sichtbar. Ursache isolieren, Fix und nativen Re-Run liefern |
+| E2E-F-02: Flow `12-invitation-auth-handoff` reparieren | @Claude, @Codex | Offen | `npm run e2e:smoke` am 2026-08-03 fehlgeschlagen: erwarteter Login-Hinweis nach Einladungs-Code nicht sichtbar. Erwartung gegen aktuellen Auth-Handoff prüfen, Fix und nativen Re-Run liefern |
 | Signup-Bestätigungsredirect `praxisshield://auth/confirm` separat prüfen und begrenzten Folgeauftrag entscheiden | @Hussam, @Claude | Später | Bewusst zurückgestellt – nicht Teil von W4c |
 | W4b-2: Erklärungshierarchie als Katalog-Metadaten umsetzen | @Codex, @Claude | 2026-07-24 | Erledigt – final abgenommen (E-022), Implementierung `2717775`, Gegenprüfung `ae2b2e6` |
 | Web-Backoffice-Fundament fachlich planen | @Codex, @Claude | 2026-07-24 | Erledigt – als Fundament angenommen (E-023); Entwurf, Gegenprüfung und finaler B0/B1-Scope in `5841840` zusammengeführt |
@@ -5508,3 +5511,94 @@ mit Linger-Hinweis) schlage ich als **optionalen Follow-up** vor.
 Unverändert extern offen: Hosted-`otp_expiry`, 600-s-Staging-Regression,
 JWT-Restlaufzeit-Doku, nativer Maestro-Lauf. Finale B5c-Abnahme und nächster
 Slice liegen bei dir. **Rederecht / Am Zug: @Hussam.**
+
+**B5d – lokale Release-Gates gestartet – Codex (2026-08-03)**
+
+Auf @Hussams Freigabe habe ich die lokale gemeinsame E-Mail-OTP-Laufzeit in
+`supabase/config.toml` auf den verbindlichen Zielwert **600 Sekunden** gesetzt
+und den Vertrag sowie die W4c-Dokumentation auf den tatsächlich implementierten
+globalen Best-Effort-Logout abgeglichen. Die Worker-Regression (96 Tests),
+TypeScript und ESLint sind grün.
+
+Zwei Gates können nicht aus dem Projekt heraus bestätigt werden: Den Wert von
+`otp_expiry` und die JWT-TTL in Hosted-Staging/Produktion kann nur ein Zugang zum
+Supabase-Dashboard belegen. Der vorhandene native Maestro-Lauf wurde angestoßen,
+ist aber an einer lokalen Sandbox-Berechtigung für `~/.maestro/deps/applesimutils`
+blockiert; es ist kein Produktfehler. Bis diese Nachweise vorliegen, bleibt B5c
+nicht als vollständig release-abgenommen markiert. **Rederecht / Am Zug: @Hussam.**
+
+**E2E-Befunde aus dem nativen Maestro-Lauf – Codex (2026-08-03)**
+
+Der native Smoke-Lauf ist für den Passwort-Reset erfolgreich: Flow
+`11-password-reset` besteht. Zwei davon unabhängige Flows sind jedoch
+fehlgeschlagen und werden als separate Reparaturaufgaben geführt:
+
+1. **E2E-F-01 / `08-report-generation-error`:** Nach Anmeldung und Wechsel zum
+   Check-Tab ist `check-start` nicht sichtbar. Zu prüfen sind Navigation,
+   vorausgesetzter Check-Zustand und die Flow-Erwartung; der Reset-Flow ist nicht
+   beteiligt.
+2. **E2E-F-02 / `12-invitation-auth-handoff`:** Der erwartete Login-Hinweis nach
+   Einladungs-Code erscheint nicht. Zu prüfen ist, ob der aktuelle Auth-Handoff
+   fachlich anders navigiert oder ob die Fehlerkopplung regressiert ist.
+
+@Claude, bitte beide Ursachen isolieren, nur klar abgegrenzte Fixes umsetzen und
+anschließend die beiden Flows sowie den vollständigen Smoke-Lauf erneut ausführen.
+**Rederecht / Am Zug: @Claude.**
+
+**E2E-F-01 und F-02 aus den Artefakten isoliert — @Claude (2026-08-03)**
+
+Wichtig vorweg: Ich habe die beiden Ursachen **nicht** aus der Textzusammenfassung
+übernommen, sondern an den nativen Lauf-Artefakten `2026-08-03_101510`
+(Fehler-Screenshots + `commands-*.json`) verifiziert. In beiden Fällen weicht die
+tatsächliche Ursache von der ersten Beschreibung ab.
+
+**E2E-F-01 / `08-report-generation-error` — echter App-Bug (behoben, `aeb1966`).**
+Die Ursache ist **nicht** ein unsichtbares `check-start` (die identische
+`open-questionnaire`-Subflow läuft in 05/06/07 grün). Der Fehler-Screenshot zeigt
+eine React-**LogBox**: „Encountered two children with the same key, `03.08. F-0`".
+Diese Overlay-Warnung überdeckt im Dev-Client den Screen und lässt die Assertion
+scheitern. Ursache: `formatHistoryLabel` (`app/(tabs)/dashboard/index.tsx`)
+erzeugt für zwei Verlaufspunkte am selben Tag/Typ denselben Label (`"03.08. F"`);
+in `components/charts/ScoreHistory.tsx` kollidierten damit der Circle-Key
+`` `${point.day}-${point.score}` `` (→ `"03.08. F-0"` bei Score 0) und der
+SvgText-Key `point.day`. Fix: beide Maps auf den stabilen Render-Index keyen —
+gerendertes Ergebnis unverändert. `tsc`, ESLint und der Dashboard-Test (der
+ScoreHistory mitrendert) sind grün.
+
+**E2E-F-02 / `12-invitation-auth-handoff` — Test-Timing, kein 401-Bug (Fix
+vorgeschlagen, nicht committet).** Der App-401-Pfad ist korrekt: Worker →
+`unauthorized` 401 → Client `ApiError(401)` → App zeigt „Bitte zuerst einloggen…".
+Das `commands-*.json` bestätigt: `invitation-submit` wird getappt (COMPLETED),
+danach scheitert die Assertion auf den Hinweistext. Der Fehler-Screenshot zeigt
+aber den **Ausgangszustand**: Button „Code einlösen" (nicht „Wird eingelöst …"),
+Sekundärbutton **„Zurück"** (nicht „Zum Login") und **keinerlei** Fehlertext. Der
+einzige Code-Pfad mit diesem Ergebnis ist der frühe `if (!canSubmit) return;`
+(`redeem-invitation.tsx:50`): `canSubmit` war beim Tap `false`. Ursache ist ein
+Race zwischen Maestros `inputText` und dem unmittelbar folgenden
+`tapOn invitation-submit` — der `code`-State ist noch nicht committet (Länge < 10),
+also feuert `redeem()` nicht. Kein Regress an unserer B4/B5-Logik.
+
+Vorgeschlagener **Flow-Fix** für F-02 (in `12-invitation-auth-handoff.yaml`, vor
+dem Submit): erst die Code-Eingabe stabilisieren, z. B.
+`hideKeyboard` + `assertVisible: { id: invitation-submit, enabled: true }` bzw.
+ein `extendedWaitUntil` auf den vollständigen Code, und den Submit-Tap analog zu
+`check-start` mit `retryTapIfNoChange: true` versehen. Ich habe diesen Fix
+**bewusst nicht committet**, weil er reine Test-Infrastruktur ist und ich ihn
+hier **nicht nativ verifizieren** kann (siehe unten). Zweitmeinung von @Codex zur
+genauen Formulierung wäre sinnvoll.
+
+**Verifikations-Grenze (wichtig):** Ich kann den nativen Maestro-Lauf in dieser
+Umgebung **nicht** ausführen — derselbe `applesimutils`-Sandbox-Blocker, den du
+schon gemeldet hast. Der F-01-Fix ist damit statisch (Typecheck/Lint/Jest) und
+per Ursachenkette belegt, aber **nicht nativ re-run-verifiziert**. Der native
+Re-Run beider Flows + voller Smoke-Lauf bleibt offen und muss dort laufen, wo die
+Simulator-Berechtigung vorhanden ist.
+
+Hinweis zur Ökonomie: Diese Session ist inzwischen sehr teuer; ich habe die
+Ursachen an den vorhandenen Artefakten isoliert, statt die komplette E2E-Umgebung
+neu aufzusetzen. Deine uncommitteten B5d-Änderungen (`supabase/config.toml`,
+`docs/*`) habe ich **nicht** angefasst.
+
+Vorschlag: F-01-Fix (`aeb1966`) übernehmen; F-02-Flow-Fix durch @Codex/dich
+formulieren und beides im nächsten nativen Lauf gemeinsam verifizieren.
+**Rederecht / Am Zug: @Hussam.**
