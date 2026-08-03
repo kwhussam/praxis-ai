@@ -1,4 +1,4 @@
-import { buildResetTargets, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
+import { buildResetTargets, hasOutstandingResetCode, resetMainActionDisabled, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
 import type { BackofficeMembership } from "@/lib/backoffice/types";
 
 function membership(overrides: Partial<BackofficeMembership> = {}): BackofficeMembership {
@@ -65,6 +65,29 @@ describe("resetMessageForStatus", () => {
 
   it("fällt für unbekannte oder fehlende Status auf eine generische Meldung zurück", () => {
     expect(resetMessageForStatus(null).text).toBe(resetMessageForStatus(500).text);
+  });
+});
+
+describe("hasOutstandingResetCode / resetMainActionDisabled", () => {
+  it("sperrt nach einem erfolgreichen Erstcode die Hauptaktion — kein unbestätigter zweiter Request", () => {
+    // Erfolg: es liegt ein Code vor, obwohl Auswahl vollständig und nichts lädt.
+    expect(hasOutstandingResetCode(true, false)).toBe(true);
+    expect(resetMainActionDisabled({ hasSelection: true, isPending: false, hasOutstandingCode: true })).toBe(true);
+  });
+
+  it("sperrt die Hauptaktion auch nach 409 (bereits ausgelöst)", () => {
+    expect(hasOutstandingResetCode(false, true)).toBe(true);
+    expect(resetMainActionDisabled({ hasSelection: true, isPending: false, hasOutstandingCode: true })).toBe(true);
+  });
+
+  it("erlaubt die Hauptaktion nur bei vollständiger Auswahl ohne ausstehenden Code", () => {
+    expect(hasOutstandingResetCode(false, false)).toBe(false);
+    expect(resetMainActionDisabled({ hasSelection: true, isPending: false, hasOutstandingCode: false })).toBe(false);
+  });
+
+  it("sperrt die Hauptaktion bei fehlender Auswahl oder laufender Anfrage", () => {
+    expect(resetMainActionDisabled({ hasSelection: false, isPending: false, hasOutstandingCode: false })).toBe(true);
+    expect(resetMainActionDisabled({ hasSelection: true, isPending: true, hasOutstandingCode: false })).toBe(true);
   });
 });
 

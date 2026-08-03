@@ -21,7 +21,7 @@ import {
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
 import type { BackofficeConsultant, BackofficeConsultantAssignment, BackofficeInvitation, BackofficeMembership, BackofficePasswordResetResult, BackofficePracticeDetail, BackofficePracticeDetailResponse, OnboardingStatus, PasswordResetIdentityVerification, PracticeMemberRole, UpdatePracticeInput } from "@/lib/backoffice/types";
 import { ApiError } from "@/lib/api/client";
-import { buildResetTargets, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
+import { buildResetTargets, hasOutstandingResetCode, resetMainActionDisabled, resetMessageForStatus, shouldRotateResetKey } from "@/lib/backoffice/password-reset-ui";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const STATUS_LABEL: Record<OnboardingStatus, string> = {
@@ -252,6 +252,10 @@ export default function BackofficePracticeDetailScreen() {
   const invitationRows = (invitations.data?.invitations ?? []) as BackofficeInvitation[];
   const activeMemberships = ((memberships.data?.memberships ?? []) as BackofficeMembership[]).filter((item) => item.status === "active");
   const resetTargets = buildResetTargets(practice.owner_id, (memberships.data?.memberships ?? []) as BackofficeMembership[]);
+  // Ein ausstehender Code (frischer Erfolg ODER 409) sperrt die Hauptaktion; ein
+  // neuer Code entsteht dann nur über die bestätigungspflichtige Neuanforderung.
+  const resetOutstanding = hasOutstandingResetCode(resetResult !== null, resetAlreadyIssued);
+  const resetMainDisabled = resetMainActionDisabled({ hasSelection: Boolean(selectedResetUser && resetIdentity), isPending: initiateReset.isPending, hasOutstandingCode: resetOutstanding });
   const consultantRows = ((consultants.data?.consultants ?? []) as BackofficeConsultant[]).filter((item) => item.status === "active");
   const activeAssignments = ((assignments.data?.assignments ?? []) as BackofficeConsultantAssignment[]).filter((item) => item.status === "active");
 
@@ -388,24 +392,24 @@ export default function BackofficePracticeDetailScreen() {
                   </Pressable>
                 ))}
               </View>
-              <Pressable disabled={!selectedResetUser || !resetIdentity || initiateReset.isPending} onPress={() => void triggerReset()} style={[styles.primaryButton, (!selectedResetUser || !resetIdentity || initiateReset.isPending) && styles.disabled]}>
+              <Pressable disabled={resetMainDisabled} onPress={() => void triggerReset()} style={[styles.primaryButton, resetMainDisabled && styles.disabled]}>
                 {initiateReset.isPending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Passwort-Reset auslösen</Text>}
               </Pressable>
               {resetError ? <Text accessibilityRole="alert" style={styles.formError}>{resetError}</Text> : null}
               {resetNeedsStepUp ? <Pressable onPress={() => router.push("/backoffice/mfa" as never)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>MFA erneut bestätigen</Text></Pressable> : null}
-              {resetAlreadyIssued && !confirmNewCode ? <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(true)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Neuen Code erzeugen</Text></Pressable> : null}
-              {resetAlreadyIssued && confirmNewCode ? (
-                <View style={[styles.codeBox, { marginTop: 10 }]}>
-                  <Text style={styles.codeWarning}>Achtung: Ein zuvor ausgegebener Code wird dadurch ungültig. Nur fortfahren, wenn die Person keinen gültigen Code mehr hat.</Text>
-                  <Pressable disabled={initiateReset.isPending} onPress={() => void triggerReset(true)} style={[styles.primaryButton, { marginTop: 10 }]}><Text style={styles.primaryButtonText}>Ja, neuen Code erzeugen</Text></Pressable>
-                  <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(false)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Abbrechen</Text></Pressable>
-                </View>
-              ) : null}
               {resetResult ? (
                 <View style={styles.codeBox}>
                   <Text style={styles.codeLabel}>Einmalcode – sicher an die Person übergeben</Text>
                   <Text selectable style={styles.code}>{resetResult.code}</Text>
                   <Text style={styles.codeWarning}>Gültig bis {new Date(resetResult.expiresAt).toLocaleTimeString("de-DE")}. Der Code wird nur jetzt angezeigt und nicht erneut aus der Datenbank geladen.</Text>
+                </View>
+              ) : null}
+              {resetOutstanding && !confirmNewCode ? <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(true)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Neuen Code erzeugen</Text></Pressable> : null}
+              {resetOutstanding && confirmNewCode ? (
+                <View style={[styles.codeBox, { marginTop: 10 }]}>
+                  <Text style={styles.codeWarning}>Achtung: Ein zuvor ausgegebener Code wird dadurch ungültig. Nur fortfahren, wenn die Person keinen gültigen Code mehr hat.</Text>
+                  <Pressable disabled={initiateReset.isPending} onPress={() => void triggerReset(true)} style={[styles.primaryButton, { marginTop: 10 }]}><Text style={styles.primaryButtonText}>Ja, neuen Code erzeugen</Text></Pressable>
+                  <Pressable disabled={initiateReset.isPending} onPress={() => setConfirmNewCode(false)} style={[styles.secondaryButton, { marginTop: 10 }]}><Text style={styles.secondaryButtonText}>Abbrechen</Text></Pressable>
                 </View>
               ) : null}
             </View>

@@ -26,6 +26,23 @@ export function shouldRotateResetKey(current: { fingerprint: string } | null, fi
   return forceNew || current?.fingerprint !== fingerprint;
 }
 
+// Ein bereits ausgegebener Code blockiert die Hauptaktion. Das gilt für beide
+// Quellen: ein frisch erfolgreich ausgegebener Code (hasResult) und ein laut
+// Server bereits ausgelöster Reset (alreadyIssued, 409). Solange ein Code
+// aussteht, darf ein neuer nur über die bestätigungspflichtige Neuanforderung
+// entstehen — ein zweiter gewöhnlicher Klick würde sonst den bereits persönlich
+// übergebenen Code unbemerkt entwerten.
+export function hasOutstandingResetCode(hasResult: boolean, alreadyIssued: boolean): boolean {
+  return hasResult || alreadyIssued;
+}
+
+// Die Hauptaktion „Passwort-Reset auslösen" ist gesperrt, solange keine
+// vollständige Auswahl vorliegt, eine Anfrage läuft oder bereits ein Code
+// aussteht (dann ist nur noch die bestätigte Neuanforderung erlaubt).
+export function resetMainActionDisabled(params: { hasSelection: boolean; isPending: boolean; hasOutstandingCode: boolean }): boolean {
+  return !params.hasSelection || params.isPending || params.hasOutstandingCode;
+}
+
 export type ResetOutcome = { text: string; needsStepUp: boolean; alreadyIssued: boolean };
 
 // Bildet den HTTP-Status auf eine feste, nicht reflektierende Meldung ab; der
