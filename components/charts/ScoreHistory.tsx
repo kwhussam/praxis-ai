@@ -60,12 +60,15 @@ export function ScoreHistory({ data }: ScoreHistoryProps) {
             {points.length > 1 ? (
               <Path d={path} fill="none" stroke={colors.electric} strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" />
             ) : null}
-            {points.map((point) => (
-              <Circle key={`${point.day}-${point.score}`} cx={point.x} cy={point.y} r={5} fill={colors.electric} />
+            {points.map((point, index) => (
+              // Key auf den stabilen Render-Index: mehrere Verlaufspunkte am
+              // selben Tag/Typ liefern identische `point.day`/`score`, was sonst
+              // doppelte Keys (z. B. `03.08. F-0`) und eine LogBox-Warnung erzeugt.
+              <Circle key={`point-${index}`} cx={point.x} cy={point.y} r={5} fill={colors.electric} />
             ))}
             {points.map((point, index) =>
               index === 0 || index === points.length - 1 ? (
-                <SvgText key={point.day} x={point.x} y={chartHeight - 4} fill={colors.muted} fontSize="10" textAnchor="middle">
+                <SvgText key={`label-${index}`} x={point.x} y={chartHeight - 4} fill={colors.muted} fontSize="10" textAnchor="middle">
                   {point.day}
                 </SvgText>
               ) : null
