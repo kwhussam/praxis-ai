@@ -66,8 +66,11 @@ export async function initSession() {
 }
 
 export async function loadAccessiblePracticeForUser(userId: string): Promise<Practice | null> {
+  // B4c (E-039): Nur eine AKTIVE Praxis gewährt Zugang. Ein `draft`/`invited`
+  // Eintrag (oder suspended/archived) darf nie ins Dashboard führen – der Zugang
+  // entsteht erst nach Einlösung eines Admin-Aktivierungscodes.
   const { data: owned, error: ownerError } = await supabase.from("practices")
-    .select("id,name,domain,email,plan,white_label_partner_id").eq("owner_id", userId).maybeSingle();
+    .select("id,name,domain,email,plan,white_label_partner_id").eq("owner_id", userId).eq("onboarding_status", "active").maybeSingle();
   if (ownerError) throw ownerError;
   const ownedPractice = normalizePractice(owned);
   if (ownedPractice) return ownedPractice;
@@ -78,7 +81,7 @@ export async function loadAccessiblePracticeForUser(userId: string): Promise<Pra
   const practiceId = memberships?.[0]?.practice_id;
   if (!practiceId) return null;
   const { data: memberPractice, error: practiceError } = await supabase.from("practices")
-    .select("id,name,domain,email,plan,white_label_partner_id").eq("id", practiceId).maybeSingle();
+    .select("id,name,domain,email,plan,white_label_partner_id").eq("id", practiceId).eq("onboarding_status", "active").maybeSingle();
   if (practiceError) throw practiceError;
   return normalizePractice(memberPractice);
 }

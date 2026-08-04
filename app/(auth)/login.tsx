@@ -63,7 +63,7 @@ export default function LoginScreen() {
 
         const signUpNotice = hasPendingInvitation
           ? "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail und melden Sie sich danach an, um die Einladung abzuschließen."
-          : "Zugang angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach starten Sie direkt mit dem kostenlosen Check.";
+          : "Konto angelegt. Bitte bestätigen Sie Ihre E-Mail. Danach schalten Sie Ihren Zugang mit dem Einladungscode Ihres Beraters frei.";
         setNotice(signUpNotice);
         AccessibilityInfo.announceForAccessibility(signUpNotice);
         setMode("login");
@@ -134,13 +134,13 @@ export default function LoginScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>{hasPendingInvitation ? "Einladung abschließen" : mode === "login" ? "Willkommen zurück" : "Praxis kostenlos anlegen"}</Text>
+        <Text style={styles.title}>{hasPendingInvitation ? "Einladung abschließen" : mode === "login" ? "Willkommen zurück" : "Konto anlegen"}</Text>
         <Text style={styles.copy}>
           {hasPendingInvitation
             ? "Melde dich an oder erstelle ein Konto mit der E-Mail-Adresse, an die deine Einladung gesendet wurde."
             : mode === "login"
             ? "Melde dich als Praxis oder White-Label-Partner an."
-            : "Lege einen Zugang an und starte danach den ersten Praxis-Check."}
+            : "Lege ein Konto an. Deine Praxis schaltet dein Sicherheitsberater anschließend mit einem Einladungscode frei."}
         </Text>
       </View>
       <GlassCard>
@@ -236,14 +236,14 @@ export default function LoginScreen() {
         ) : null}
         <AnimatedButton
           disabled={!canSubmit}
-          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : hasPendingInvitation ? "Konto für Einladung anlegen" : "Praxis kostenlos anlegen"}
+          label={loading ? "Bitte warten..." : mode === "login" ? "Einloggen" : hasPendingInvitation ? "Konto für Einladung anlegen" : "Konto anlegen"}
           onPress={handleSubmit}
           style={styles.button}
           testID="auth-submit"
         />
         <AnimatedButton
           disabled={loading}
-          label={mode === "login" ? hasPendingInvitation ? "Noch kein Konto? Jetzt anlegen" : "Praxis kostenlos anlegen" : "Einloggen"}
+          label={mode === "login" ? hasPendingInvitation ? "Noch kein Konto? Jetzt anlegen" : "Konto anlegen" : "Einloggen"}
           onPress={() => {
             setError(null);
             setNotice(null);

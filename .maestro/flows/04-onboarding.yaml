@@ -4,8 +4,6 @@ tags:
   - ui-e2e
 ---
 - runFlow: ../subflows/bootstrap.yaml
-- evalScript: ${output.onboardingSuffix = Date.now()}
-- evalScript: ${output.onboardingDomain = "maestro-" + output.onboardingSuffix + ".example.test"}
 - runScript: ../scripts/create-onboarding-user.js
 - assertTrue:
     condition: ${output.onboardingUser.status === 200 && output.onboardingUser.hasSession === true}
@@ -15,36 +13,15 @@ tags:
     env:
       EMAIL: "${output.onboardingUser.email}"
       PASSWORD: "${output.onboardingUser.password}"
+# Redeem-only (B4c/E-039): Ein praxisloser Nutzer darf KEINE Praxis selbst
+# anlegen. Statt eines Domain-Formulars erscheint der Freischalt-Hinweis mit
+# Redeem-CTA; das Dashboard bleibt bis zur Code-Einlösung unerreichbar.
 - extendedWaitUntil:
     visible:
-      id: onboarding-next
+      id: onboarding-screen
     timeout: 30000
-- tapOn:
-    id: onboarding-next
-- tapOn:
-    id: onboarding-next
-- scrollUntilVisible:
-    element:
-      id: onboarding-domain
-    direction: DOWN
-    timeout: 30000
-    visibilityPercentage: 50
-    centerElement: true
-- tapOn:
-    id: onboarding-domain
-- inputText: "${output.onboardingDomain}"
-- pressKey: Enter
-- scrollUntilVisible:
-    element:
-      id: onboarding-submit
-    direction: DOWN
-    speed: 70
-    timeout: 30000
-    visibilityPercentage: 20
-- tapOn:
-    id: onboarding-submit
-- extendedWaitUntil:
-    visible:
-      id: tab-dashboard
-    timeout: 30000
-- assertVisible: "Noch keine echten Prüfdaten vorhanden."
+- assertVisible: "Zugang wird freigeschaltet"
+- assertVisible:
+    id: onboarding-redeem
+- assertNotVisible:
+    id: tab-dashboard

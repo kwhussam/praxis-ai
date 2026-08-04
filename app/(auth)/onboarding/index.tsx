@@ -1,126 +1,77 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { MotiView } from "moti";
-import { useMemo, useState } from "react";
-import { AccessibilityInfo, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
-import { AmpelKomponente } from "@/components/ui/Ampel";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
-import { apiRequest } from "@/lib/api/client";
-import { supabase } from "@/lib/supabase/client";
-import { useSessionStore } from "@/lib/store/session";
 
-const features = [
-  { icon: "checkmark-circle", title: "Check", copy: "Domain, E-Mail und WLAN strukturiert prüfen." },
-  { icon: "document-text", title: "Bericht", copy: "Ergebnisse ohne IT-Jargon und mit Prioritäten." },
-  { icon: "shield-checkmark", title: "Sicher", copy: "Konkrete Maßnahmen statt abstrakter Warnungen." }
+// B4c (E-039): Praxen werden nicht mehr per Self-Service angelegt. Ein Konto
+// ohne aktive Praxis landet hier und wird ausschließlich über einen an die
+// eingeladene E-Mail gebundenen Aktivierungscode freigeschaltet.
+const steps = [
+  {
+    icon: "person-add",
+    title: "1. Berater legt Ihre Praxis an",
+    copy: "Ihr Sicherheitsberater richtet die Praxis kontrolliert und revisionssicher im Backoffice ein."
+  },
+  {
+    icon: "mail",
+    title: "2. Sie erhalten einen Einladungscode",
+    copy: "Der Code ist an genau die E-Mail-Adresse gebunden, mit der Sie sich angemeldet haben."
+  },
+  {
+    icon: "shield-checkmark",
+    title: "3. Code einlösen, Zugang aktiv",
+    copy: "Nach dem Einlösen werden Dashboard, Fragebogen und Bericht für Ihre Praxis freigeschaltet."
+  }
 ] as const;
 
 export default function OnboardingScreen() {
-  const [step, setStep] = useState(0);
-  const [domainOrEmail, setDomainOrEmail] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const setPractice = useSessionStore((store) => store.setPractice);
-  const normalizedDomain = useMemo(() => extractDomain(domainOrEmail), [domainOrEmail]);
-  const canStart = normalizedDomain.length > 3 && normalizedDomain.includes(".");
-
-  async function next() {
-    if (step < 2) {
-      setStep((current) => current + 1);
-      return;
-    }
-
-    if (!canStart || loading) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const {
-        data: { user }
-      } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("Nicht eingeloggt. Bitte melden Sie sich erneut an.");
-
-      const practice = await findOrCreatePractice(normalizedDomain, extractEmail(domainOrEmail));
-      setPractice(practice);
-
-      await acceptLegalAgreement(practice.id);
-
-      router.replace("/(tabs)/dashboard");
-    } catch (nextError) {
-      const message = errorMessage(nextError);
-      setError(message);
-      AccessibilityInfo.announceForAccessibility(message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <Screen>
       <View style={styles.shell} testID="onboarding-screen">
-        <View style={styles.progressRow}>
-          {[0, 1, 2].map((index) => (
-            <Pressable
-              accessibilityLabel={`Onboarding-Schritt ${index + 1} von 3`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: step === index }}
-              key={index}
-              onPress={() => setStep(index)}
-              style={styles.dotPressable}
-              testID={`onboarding-step-${index + 1}`}
-            >
-              <MotiView
-                animate={{
-                  opacity: step === index ? 1 : 0.34,
-                  width: step === index ? 28 : 9
-                }}
-                transition={{ type: "timing", duration: 220 }}
-                style={styles.dot}
-              />
-            </Pressable>
-          ))}
+        <View style={styles.header}>
+          <View style={styles.badge}>
+            <Ionicons name="lock-closed" size={24} color={colors.electric} />
+          </View>
+          <Text style={styles.title}>Zugang wird freigeschaltet</Text>
+          <Text style={styles.copy}>
+            Aus Sicherheitsgründen legen Sie Ihre Praxis nicht selbst an. Ihr
+            Zugang wird von Ihrem Sicherheitsberater vorbereitet und mit einem
+            persönlichen Einladungscode aktiviert.
+          </Text>
         </View>
 
-        {step === 0 ? <SecurePracticeScreen /> : null}
-        {step === 1 ? <NoKnowledgeScreen /> : null}
-        {step === 2 ? (
-          <StartScreen domainOrEmail={domainOrEmail} setDomainOrEmail={setDomainOrEmail} canStart={canStart} />
-        ) : null}
+        <GlassCard style={styles.card}>
+          {steps.map((entry, index) => (
+            <View key={entry.title} style={[styles.row, index > 0 ? styles.rowSpaced : null]}>
+              <View style={styles.rowIcon}>
+                <Ionicons name={entry.icon} size={20} color={colors.safe} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{entry.title}</Text>
+                <Text style={styles.rowCopy}>{entry.copy}</Text>
+              </View>
+            </View>
+          ))}
+        </GlassCard>
 
         <View style={styles.actions}>
-          {error ? (
-            <Text
-              accessibilityLiveRegion="assertive"
-              accessibilityRole="alert"
-              style={styles.error}
-              testID="onboarding-error"
-            >
-              {error}
-            </Text>
-          ) : null}
-          {step > 0 ? (
-            <AnimatedButton
-              disabled={loading}
-              label="Zurück"
-              variant="ghost"
-              onPress={() => setStep((current) => current - 1)}
-              style={styles.secondaryAction}
-              testID="onboarding-back"
-            />
-          ) : null}
           <AnimatedButton
-            disabled={loading || (step === 2 && !canStart)}
-            label={loading ? "Praxis wird angelegt..." : step === 2 ? "Kostenlosen ersten Check starten" : "Weiter"}
-            onPress={next}
-            style={[styles.primaryAction, step === 2 && !canStart ? styles.disabled : null]}
-            icon={<Ionicons name={step === 2 ? "scan" : "arrow-forward"} size={18} color={colors.ink} />}
-            testID={step === 2 ? "onboarding-submit" : "onboarding-next"}
+            label="Einladungscode einlösen"
+            onPress={() => router.replace("/(auth)/redeem-invitation")}
+            icon={<Ionicons name="key" size={18} color={colors.ink} />}
+            style={styles.primaryAction}
+            testID="onboarding-redeem"
+          />
+          <AnimatedButton
+            label="Zurück zum Login"
+            variant="ghost"
+            onPress={() => router.replace("/(auth)/login")}
+            style={styles.secondaryAction}
+            testID="onboarding-back-login"
           />
         </View>
       </View>
@@ -128,306 +79,30 @@ export default function OnboardingScreen() {
   );
 }
 
-function SecurePracticeScreen() {
-  return (
-    <View style={styles.slide}>
-      <PracticeIllustration />
-      <Text style={styles.title}>Ihre Praxis. Geschützt.</Text>
-      <Text style={styles.copy}>PraxisShield AI erkennt digitale Risiken früh und übersetzt sie in klare nächste Schritte.</Text>
-    </View>
-  );
-}
-
-function NoKnowledgeScreen() {
-  return (
-    <View style={styles.slide}>
-      <GlassCard style={styles.featureCard}>
-        <View style={styles.featureHeader}>
-          <AmpelKomponente status="green" />
-          <Text style={styles.featureHeaderText}>Kein IT-Wissen nötig.</Text>
-        </View>
-        {features.map((feature, index) => (
-          <MotiView
-            key={feature.title}
-            from={{ opacity: 0, translateX: -14 }}
-            animate={{ opacity: 1, translateX: 0 }}
-            transition={{ type: "timing", duration: 320, delay: index * 120 }}
-            style={styles.featureRow}
-          >
-            <View style={styles.featureIcon}>
-              <Ionicons name={feature.icon} size={21} color={colors.safe} />
-            </View>
-            <View style={styles.featureText}>
-              <Text style={styles.featureTitle}>{feature.title}</Text>
-              <Text style={styles.featureCopy}>{feature.copy}</Text>
-            </View>
-          </MotiView>
-        ))}
-      </GlassCard>
-      <Text style={styles.title}>Kein IT-Wissen nötig.</Text>
-      <Text style={styles.copy}>Sie bekommen Ampelstatus, Bericht und Maßnahmen so, dass das Praxisteam sofort handeln kann.</Text>
-    </View>
-  );
-}
-
-function StartScreen({
-  domainOrEmail,
-  setDomainOrEmail,
-  canStart
-}: {
-  domainOrEmail: string;
-  setDomainOrEmail: (value: string) => void;
-  canStart: boolean;
-}) {
-  return (
-    <View style={styles.slide}>
-      <GlassCard style={styles.formCard}>
-        <View style={styles.formIcon}>
-          <Ionicons name="timer" size={28} color={colors.electric} />
-        </View>
-        <Text style={styles.formTitle}>Starten Sie in 2 Minuten.</Text>
-        <Text style={styles.formCopy}>Praxisdomain oder E-Mail eingeben und direkt den kostenlosen ersten Check starten.</Text>
-        <Text style={styles.label}>Domain oder E-Mail</Text>
-        <TextInput
-          accessibilityHint="Diese Angabe wird für den Praxis-Sicherheitscheck verwendet."
-          accessibilityLabel="Praxisdomain oder E-Mail-Adresse"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          onChangeText={setDomainOrEmail}
-          placeholder="team@praxis.de"
-          placeholderTextColor={colors.muted}
-          style={[styles.input, domainOrEmail.length > 0 && !canStart ? styles.inputWarning : null]}
-          testID="onboarding-domain"
-          value={domainOrEmail}
-        />
-        {domainOrEmail.length > 0 && !canStart ? (
-          <Text style={styles.validation}>Bitte eine gültige Domain oder E-Mail eingeben.</Text>
-        ) : null}
-        <View style={styles.privacyHint}>
-          <Ionicons name="information-circle" size={18} color={colors.electric} />
-          <Text style={styles.privacyHintText}>
-            Es werden keine Patientendaten verarbeitet. Der AVV wird automatisch für Sie erstellt - Sie müssen nichts
-            unterschreiben.
-          </Text>
-        </View>
-        <Text style={styles.legal}>Diese Angabe wird nur für den Praxis-Sicherheitscheck genutzt.</Text>
-      </GlassCard>
-      <Text style={styles.title}>Kostenloser erster Check.</Text>
-      <Text style={styles.copy}>Keine Installation, kein Vertragsabschluss, keine Patientendaten.</Text>
-    </View>
-  );
-}
-
-function PracticeIllustration() {
-  return (
-    <View style={styles.illustration}>
-      <MotiView
-        from={{ opacity: 0.22, scale: 0.88 }}
-        animate={{ opacity: 0.05, scale: 1.18 }}
-        transition={{ loop: true, type: "timing", duration: 1900 }}
-        style={styles.heroHalo}
-      />
-      <MotiView
-        from={{ translateY: 8 }}
-        animate={{ translateY: -4 }}
-        transition={{ loop: true, type: "timing", duration: 1800 }}
-        style={styles.practiceBuilding}
-      >
-        <View style={styles.roof} />
-        <View style={styles.buildingBody}>
-          <Ionicons name="medical" size={34} color={colors.ink} />
-          <View style={styles.windowRow}>
-            <View style={styles.window} />
-            <View style={styles.window} />
-            <View style={styles.window} />
-          </View>
-        </View>
-      </MotiView>
-      <MotiView
-        from={{ opacity: 0.36, scale: 0.86 }}
-        animate={{ opacity: 0.9, scale: 1 }}
-        transition={{ loop: true, type: "timing", duration: 1500 }}
-        style={styles.shieldBubble}
-      >
-        <Ionicons name="shield-checkmark" size={34} color={colors.safe} />
-      </MotiView>
-    </View>
-  );
-}
-
-function extractDomain(value: string) {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) return "";
-  const withoutProtocol = trimmed.replace(/^https?:\/\//, "");
-  const domain = withoutProtocol.includes("@") ? withoutProtocol.split("@").pop() ?? "" : withoutProtocol;
-  return domain.replace(/\/.*$/, "");
-}
-
-function extractEmail(value: string) {
-  const trimmed = value.trim().toLowerCase();
-  return trimmed.includes("@") ? trimmed : undefined;
-}
-
-type PracticeRow = {
-  id: string;
-  name: string;
-  domain: string | null;
-  email: string | null;
-  plan: "free" | "audit" | "monitoring" | "compliance" | null;
-  white_label_partner_id: string | null;
-};
-
-async function findOrCreatePractice(domain: string, email?: string) {
-  const { data: practice, error } = await supabase
-    .rpc("create_or_get_own_practice", {
-      p_domain: domain,
-      // SQL defines p_email DEFAULT NULL and normalizes both omitted/undefined
-      // and explicit NULL via coalesce, so the generated optional argument is
-      // behaviorally identical to the former `email ?? null` call.
-      p_email: email ?? undefined
-    })
-    .single<PracticeRow>();
-
-  if (error) throw error;
-  return practiceFromRow(practice);
-}
-
-async function acceptLegalAgreement(practiceId: string) {
-  try {
-    await apiRequest("/api/legal/avv/accept", {
-      method: "POST",
-      body: {
-        practiceId,
-        version: "1.0",
-        consentTypes: ["avv", "privacy_policy"]
-      }
-    });
-  } catch (legalError) {
-    console.warn("Legal acceptance could not be synced during onboarding.", legalError);
-  }
-}
-
-function practiceFromRow(row: PracticeRow) {
-  return {
-    id: row.id,
-    name: row.name,
-    domain: row.domain ?? undefined,
-    email: row.email ?? undefined,
-    plan: row.plan ?? "free",
-    whiteLabelPartnerId: row.white_label_partner_id ?? undefined
-  };
-}
-
-function errorMessage(error: unknown) {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "object" && error !== null) {
-    const record = error as Record<string, unknown>;
-    const message = typeof record.message === "string" ? record.message : null;
-    const details = typeof record.details === "string" ? record.details : null;
-    const hint = typeof record.hint === "string" ? record.hint : null;
-    return [message, details, hint].filter(Boolean).join(" ") || "Onboarding konnte nicht abgeschlossen werden.";
-  }
-
-  return "Onboarding konnte nicht abgeschlossen werden.";
-}
-
 const styles = StyleSheet.create({
   shell: {
-    flex: 1
-  },
-  progressRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 7,
-    justifyContent: "center",
-    marginBottom: 16
-  },
-  dotPressable: {
-    padding: 6
-  },
-  dot: {
-    backgroundColor: colors.electric,
-    borderRadius: 999,
-    height: 9
-  },
-  slide: {
     flex: 1,
     justifyContent: "center"
   },
-  illustration: {
+  header: {
+    marginBottom: 24
+  },
+  badge: {
     alignItems: "center",
-    alignSelf: "center",
-    height: 280,
-    justifyContent: "center",
-    marginBottom: 12,
-    width: 280
-  },
-  heroHalo: {
-    backgroundColor: colors.electric,
-    borderRadius: 150,
-    height: 250,
-    position: "absolute",
-    width: 250
-  },
-  practiceBuilding: {
-    alignItems: "center"
-  },
-  roof: {
-    borderBottomColor: colors.electric,
-    borderBottomWidth: 42,
-    borderLeftColor: "transparent",
-    borderLeftWidth: 88,
-    borderRightColor: "transparent",
-    borderRightWidth: 88,
-    height: 0,
-    width: 0
-  },
-  buildingBody: {
-    alignItems: "center",
-    backgroundColor: colors.navyElevated,
-    borderColor: colors.borderStrong,
-    borderRadius: 22,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
+    backgroundColor: colors.electricSoft,
+    borderColor: "rgba(45, 126, 248, 0.34)",
+    borderRadius: 20,
     borderWidth: 1,
-    gap: 22,
-    height: 128,
+    height: 60,
     justifyContent: "center",
-    shadowColor: colors.electric,
-    shadowOpacity: 0.28,
-    shadowRadius: 28,
-    width: 164
-  },
-  windowRow: {
-    flexDirection: "row",
-    gap: 10
-  },
-  window: {
-    backgroundColor: colors.electricMuted,
-    borderRadius: 6,
-    height: 24,
-    width: 24
-  },
-  shieldBubble: {
-    alignItems: "center",
-    backgroundColor: "rgba(46, 213, 115, 0.14)",
-    borderColor: "rgba(46, 213, 115, 0.38)",
-    borderRadius: 24,
-    borderWidth: 1,
-    bottom: 30,
-    height: 68,
-    justifyContent: "center",
-    position: "absolute",
-    right: 34,
-    width: 68
+    marginBottom: 20,
+    width: 60
   },
   title: {
     color: colors.ink,
-    fontSize: 40,
+    fontSize: 34,
     fontWeight: "900",
-    lineHeight: 44,
-    marginTop: 20
+    lineHeight: 40
   },
   copy: {
     color: colors.muted,
@@ -435,143 +110,48 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginTop: 12
   },
-  featureCard: {
-    marginBottom: 22
+  card: {
+    marginBottom: 24
   },
-  featureHeader: {
-    alignItems: "center",
+  row: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16
+    gap: 12
   },
-  featureHeaderText: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 19,
-    fontWeight: "900",
-    marginLeft: 12
+  rowSpaced: {
+    marginTop: 18
   },
-  featureRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-    paddingVertical: 11
-  },
-  featureIcon: {
+  rowIcon: {
     alignItems: "center",
     backgroundColor: "rgba(46, 213, 115, 0.12)",
     borderColor: "rgba(46, 213, 115, 0.28)",
-    borderRadius: 15,
+    borderRadius: 14,
     borderWidth: 1,
-    height: 44,
+    height: 42,
     justifyContent: "center",
-    width: 44
+    width: 42
   },
-  featureText: {
+  rowText: {
     flex: 1
   },
-  featureTitle: {
+  rowTitle: {
     color: colors.ink,
     fontSize: 16,
     fontWeight: "900"
   },
-  featureCopy: {
+  rowCopy: {
     color: colors.muted,
     fontSize: 13,
     lineHeight: 19,
     marginTop: 3
   },
-  formCard: {
-    marginBottom: 22
-  },
-  formIcon: {
-    alignItems: "center",
-    backgroundColor: colors.electricSoft,
-    borderColor: "rgba(45, 126, 248, 0.34)",
-    borderRadius: 19,
-    borderWidth: 1,
-    height: 58,
-    justifyContent: "center",
-    marginBottom: 18,
-    width: 58
-  },
-  formTitle: {
-    color: colors.ink,
-    fontSize: 24,
-    fontWeight: "900"
-  },
-  formCopy: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-    marginTop: 8
-  },
-  label: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 8,
-    marginTop: 20
-  },
-  input: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderColor: colors.border,
-    borderRadius: 16,
-    borderWidth: 1,
-    color: colors.ink,
-    fontSize: 16,
-    minHeight: 54,
-    paddingHorizontal: 16
-  },
-  inputWarning: {
-    borderColor: colors.warning
-  },
-  validation: {
-    color: colors.warning,
-    fontSize: 13,
-    marginTop: 8
-  },
-  privacyHint: {
-    alignItems: "flex-start",
-    backgroundColor: colors.electricSoft,
-    borderColor: "rgba(45, 126, 248, 0.3)",
-    borderRadius: 14,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 9,
-    marginTop: 14,
-    padding: 12
-  },
-  privacyHintText: {
-    color: colors.ink,
-    flex: 1,
-    fontSize: 12,
-    fontWeight: "700",
-    lineHeight: 17
-  },
-  legal: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 12
-  },
   actions: {
-    gap: 10,
-    paddingBottom: 4
-  },
-  secondaryAction: {
-    minHeight: 48
+    gap: 10
   },
   primaryAction: {
     minHeight: 56
   },
-  disabled: {
-    opacity: 0.44
-  },
-  error: {
-    color: colors.critical,
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 19
+  secondaryAction: {
+    minHeight: 48
   }
 });

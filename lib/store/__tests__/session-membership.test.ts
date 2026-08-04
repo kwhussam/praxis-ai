@@ -23,7 +23,7 @@ import { loadAccessiblePracticeForUser } from "@/lib/store/session";
 
 describe("membership-aware session practice resolution", () => {
   it("loads an active member practice when the user is not owner", async () => {
-    mockRows.practices = [{ id: "practice-1", owner_id: "owner-1", name: "Kanzlei", domain: null, email: null, plan: "free", white_label_partner_id: null }];
+    mockRows.practices = [{ id: "practice-1", owner_id: "owner-1", name: "Kanzlei", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "active" }];
     mockRows.practice_memberships = [{ user_id: "member-1", practice_id: "practice-1", status: "active", granted_at: "2026-07-29" }];
     expect(await loadAccessiblePracticeForUser("member-1")).toMatchObject({ id: "practice-1", name: "Kanzlei" });
   });
@@ -31,5 +31,24 @@ describe("membership-aware session practice resolution", () => {
   it("does not resolve a revoked membership", async () => {
     mockRows.practice_memberships = [{ user_id: "member-1", practice_id: "practice-1", status: "revoked", granted_at: "2026-07-29" }];
     expect(await loadAccessiblePracticeForUser("member-1")).toBeNull();
+  });
+
+  // B4c (E-039): Nur eine aktive Praxis gewährt Zugang.
+  it("gibt eine aktive eigene Praxis zurück", async () => {
+    mockRows.practices = [{ id: "practice-9", owner_id: "owner-9", name: "Aktive Praxis", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "active" }];
+    mockRows.practice_memberships = [];
+    expect(await loadAccessiblePracticeForUser("owner-9")).toMatchObject({ id: "practice-9", name: "Aktive Praxis" });
+  });
+
+  it("sperrt den Zugang, solange die eigene Praxis nur ein deaktivierter Entwurf ist", async () => {
+    mockRows.practices = [{ id: "practice-draft", owner_id: "owner-draft", name: "Entwurf", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "draft" }];
+    mockRows.practice_memberships = [];
+    expect(await loadAccessiblePracticeForUser("owner-draft")).toBeNull();
+  });
+
+  it("gewährt keinen Zugang über eine aktive Mitgliedschaft an einer noch nicht aktivierten Praxis", async () => {
+    mockRows.practices = [{ id: "practice-inv", owner_id: null, name: "Eingeladen", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "invited" }];
+    mockRows.practice_memberships = [{ user_id: "member-2", practice_id: "practice-inv", status: "active", granted_at: "2026-08-01" }];
+    expect(await loadAccessiblePracticeForUser("member-2")).toBeNull();
   });
 });
