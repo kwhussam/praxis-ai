@@ -60,6 +60,13 @@ export default function OnboardingScreen() {
 
         <View style={styles.actions}>
           <AnimatedButton
+            label="Praxis anfragen"
+            onPress={() => router.push("/(auth)/request-practice")}
+            icon={<Ionicons name="business" size={18} color={colors.ink} />}
+            style={styles.primaryAction}
+            testID="onboarding-request-practice"
+          />
+          <AnimatedButton
             label="Einladungscode einlösen"
             onPress={() => router.replace("/(auth)/redeem-invitation")}
             icon={<Ionicons name="key" size={18} color={colors.ink} />}

@@ -248,6 +248,52 @@ describe("Rate limiting", () => {
   });
 });
 
+describe("Practice activation request approval", () => {
+  const activationRequestId = "44444444-4444-4444-8444-444444444444";
+  const practiceId = activationRequestId;
+  const path = `/api/backoffice/practice-requests/${activationRequestId}/approve`;
+  const expiresAt = "2026-08-12T10:00:00.000Z";
+
+  it("hides the approval endpoint from non-admin staff", async () => {
+    const world = installWorld({ staffRole: "security_consultant" });
+    const res = await call(request(path, { method: "POST", token: aal2Token(), headers: { "idempotency-key": "approve-1" }, body: { expiresAt } }));
+    expect(res.status).toBe(404);
+    expect(world.calls.some((c) => c.url.includes("backoffice_approve_practice_request"))).toBe(false);
+  });
+
+  it("approves the bound request, creates an owner invitation, and never sends plaintext to the DB", async () => {
+    const world = installWorld({
+      restRows: { practice_activation_requests: [{ contact_email: "Owner@Example.test" }] },
+      rpcResults: {
+        backoffice_approve_practice_request: {
+          ok: true, request_id: activationRequestId, practice_id: practiceId,
+          contact_email: "owner@example.test", onboarding_status: "invited", invitation_id: "invite-1"
+        }
+      }
+    });
+    const res = await call(request(path, {
+      method: "POST", token: aal2Token(), headers: { "idempotency-key": "approve-2", "x-request-id": "request-2" }, body: { expiresAt }
+    }));
+    expect(res.status).toBe(201);
+    const payload = (await res.json()) as { code: string; contact_email: string };
+    expect(payload.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+    expect(payload.contact_email).toBe("owner@example.test");
+
+    const approvalRpc = world.calls.find((c) => c.url.includes("backoffice_approve_practice_request"));
+    expect(approvalRpc?.body).toMatchObject({ p_activation_request_id: activationRequestId, p_idempotency_key: "approve-2" });
+    expect(approvalRpc?.body).toMatchObject({ p_expires_at: expiresAt });
+    expect((approvalRpc?.body as Record<string, unknown>).p_proof_reference).toMatch(/^hmac:v1:[0-9a-f]{64}$/);
+    expect(JSON.stringify(approvalRpc?.body)).not.toContain(payload.code);
+  });
+
+  it("does not create an invitation when approval fails", async () => {
+    const world = installWorld({ restRows: { practice_activation_requests: [{ contact_email: "owner@example.test" }] }, rpcResults: { backoffice_approve_practice_request: { ok: false, error: "invalid_state" } } });
+    const res = await call(request(path, { method: "POST", token: aal2Token(), headers: { "idempotency-key": "approve-3" }, body: { expiresAt } }));
+    expect(res.status).toBe(409);
+    expect(world.calls.filter((c) => c.url.includes("/rest/v1/rpc/")).some((c) => c.url.includes("backoffice_create_invitation"))).toBe(false);
+  });
+});
+
 describe("Invitation code minting", () => {
   const invitationsPath = "/api/backoffice/practices/22222222-2222-4222-8222-222222222222/invitations";
   const expiresAt = "2026-08-01T00:00:00.000Z";

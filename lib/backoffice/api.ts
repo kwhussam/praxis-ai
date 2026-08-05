@@ -1,6 +1,8 @@
 import { apiRequest } from "@/lib/api/client";
 import type {
   BackofficePracticeDetailResponse,
+  BackofficePracticeActivationRequest,
+  ApprovePracticeRequestResult,
   BackofficePracticePage,
   BackofficeInvitation,
   BackofficeAuditEvent,
@@ -23,6 +25,22 @@ export async function listBackofficePractices(options: { search?: string; offset
   params.set("offset", String(options.offset ?? 0));
   params.set("limit", String(options.limit ?? 25));
   return apiRequest<BackofficePracticePage>(`/api/backoffice/practices?${params.toString()}`);
+}
+
+export async function listBackofficePracticeRequests() {
+  return apiRequest<{ requests: BackofficePracticeActivationRequest[] }>("/api/backoffice/practice-requests");
+}
+
+export async function approveBackofficePracticeRequest(
+  activationRequestId: string,
+  expiresAt: string,
+  ids: BackofficeMutationIds
+) {
+  return apiRequest<ApprovePracticeRequestResult>(`/api/backoffice/practice-requests/${activationRequestId}/approve`, {
+    method: "POST",
+    body: { expiresAt },
+    headers: { "Idempotency-Key": ids.idempotencyKey, "X-Request-Id": ids.requestId }
+  });
 }
 
 export async function getBackofficePractice(practiceId: string) {

@@ -594,6 +594,8 @@ app.post("/api/legal/consent", async (c) => handleConsent(c));
 // fresh step-up. Mutations are rate-limited per actor and delegated to the
 // backoffice_* DB RPCs, which own the transactional/idempotency contract.
 app.get("/api/backoffice/practices", async (c) => handleBackofficeListPractices(c));
+app.get("/api/backoffice/practice-requests", async (c) => handleBackofficeListPracticeRequests(c));
+app.post("/api/backoffice/practice-requests/:id/approve", async (c) => handleBackofficeApprovePracticeRequest(c));
 app.post("/api/backoffice/practices", async (c) => handleBackofficeCreatePractice(c));
 app.get("/api/backoffice/practices/:id", async (c) => handleBackofficePracticeDetail(c));
 app.patch("/api/backoffice/practices/:id", async (c) => handleBackofficeUpdatePractice(c));
@@ -3518,6 +3520,69 @@ async function handleBackofficeListPractices(c: Context<{ Bindings: Env }>) {
     page: { offset, limit: pageSize, hasMore, nextOffset: hasMore ? offset + pageSize : null },
     permissions: { canCreate: scope.role !== "support" }
   });
+}
+
+// B4c Slice 2: Nur platform_admin sieht die öffentlichen, noch deaktivierten
+// Praxisanfragen. Die Anfrage enthält bewusst keine aktive Praxiszuordnung.
+async function handleBackofficeListPracticeRequests(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope || scope.role !== "platform_admin") return c.json({ error: "not_found" }, 404);
+  const rows = await supabaseRest<unknown[]>(
+    c.env,
+    "/rest/v1/practice_activation_requests?select=id,practice_kind,legal_name,display_name,contact_first_name,contact_last_name,contact_email,contact_phone,street,postal_code,city,country_code,domain,status,created_at&status=eq.pending&order=created_at.asc&limit=100",
+    { method: "GET" }
+  );
+  return c.json({ requests: rows });
+}
+
+async function handleBackofficeApprovePracticeRequest(c: Context<{ Bindings: Env }>) {
+  const actor = await requireBackofficeActor(c);
+  if (actor instanceof Response) return actor;
+  const scope = await resolveStaffScope(c.env, actor.id);
+  if (!scope || scope.role !== "platform_admin") return c.json({ error: "not_found" }, 404);
+
+  const secret = c.env.BACKOFFICE_INVITE_HMAC_SECRET;
+  if (!secret || secret.length < BACKOFFICE_INVITE_MIN_SECRET_BYTES) {
+    console.error("backoffice_invite_hmac_unconfigured");
+    return c.json({ ok: false, error: "backoffice_not_configured" }, 500);
+  }
+  const activationRequestId = c.req.param("id");
+  if (!activationRequestId || !isUuid(activationRequestId)) return c.json({ ok: false, error: "not_found" }, 404);
+  const body = await parseJsonBody(c);
+  const idempotencyKey = (c.req.header("idempotency-key") ?? stringFieldOrNull(body.idempotencyKey) ?? "").trim();
+  const expiresAt = stringFieldOrNull(body.expiresAt);
+  if (!idempotencyKey) return c.json({ ok: false, error: "idempotency_key_required" }, 400);
+  if (!expiresAt) return c.json({ ok: false, error: "invalid_expiry" }, 400);
+  if (!(await consumeBackofficeRateLimit(c.env, actor.id, "practice.activation_request.approve"))) {
+    return c.json({ ok: false, error: "rate_limited" }, 429);
+  }
+
+  const requestId = backofficeRequestId(c, body);
+  const rows = await supabaseRest<Array<{ contact_email: string }>>(
+    c.env,
+    `/rest/v1/practice_activation_requests?select=contact_email&id=eq.${encodeURIComponent(activationRequestId)}&limit=1`,
+    { method: "GET" }
+  );
+  const email = rows[0]?.contact_email?.trim().toLowerCase() ?? "";
+  if (!email) return c.json({ ok: false, error: "not_found" }, 404);
+  const canonicalPayload = JSON.stringify({
+    channel: "in_person_code", email, expires: expiresAt,
+    practice: activationRequestId, role: "practice_owner"
+  });
+  const code = await deriveInviteCode(secret, actor.id, idempotencyKey, canonicalPayload);
+  const proof = await computeInviteProof(secret, code, activationRequestId, email);
+  const approval = await callBackofficeRpc(c.env, "backoffice_approve_practice_request", {
+    p_actor: actor.id,
+    p_request_id: requestId,
+    p_idempotency_key: idempotencyKey,
+    p_activation_request_id: activationRequestId,
+    p_proof_reference: proof,
+    p_expires_at: expiresAt
+  });
+  if (!approval.ok) return respondBackofficeResult(c, approval, { collapseNotFound: true });
+  return c.json({ ...approval, code }, 201);
 }
 
 function parseBoundedInteger(value: string | undefined, fallback: number, min: number, max: number): number | null {

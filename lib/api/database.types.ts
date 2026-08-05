@@ -989,6 +989,83 @@ export type Database = {
           },
         ]
       }
+      practice_activation_requests: {
+        Row: {
+          city: string
+          contact_email: string
+          contact_first_name: string
+          contact_last_name: string
+          contact_phone: string
+          country_code: string
+          created_at: string
+          display_name: string
+          domain: string | null
+          id: string
+          legal_name: string
+          postal_code: string
+          practice_id: string | null
+          practice_kind: string
+          requester_user_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          street: string
+          updated_at: string
+        }
+        Insert: {
+          city: string
+          contact_email: string
+          contact_first_name: string
+          contact_last_name: string
+          contact_phone: string
+          country_code: string
+          created_at?: string
+          display_name: string
+          domain?: string | null
+          id?: string
+          legal_name: string
+          postal_code: string
+          practice_id?: string | null
+          practice_kind: string
+          requester_user_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          street: string
+          updated_at?: string
+        }
+        Update: {
+          city?: string
+          contact_email?: string
+          contact_first_name?: string
+          contact_last_name?: string
+          contact_phone?: string
+          country_code?: string
+          created_at?: string
+          display_name?: string
+          domain?: string | null
+          id?: string
+          legal_name?: string
+          postal_code?: string
+          practice_id?: string | null
+          practice_kind?: string
+          requester_user_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          street?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_activation_requests_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       practice_invitations: {
         Row: {
           accepted_at: string | null
@@ -1563,6 +1640,17 @@ export type Database = {
         Args: { p_actor: string; p_capability: string; p_practice_id?: string }
         Returns: boolean
       }
+      backoffice_approve_practice_request: {
+        Args: {
+          p_activation_request_id: string
+          p_actor: string
+          p_expires_at: string
+          p_idempotency_key: string
+          p_proof_reference: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       backoffice_assign_consultant: {
         Args: {
           p_actor: string
@@ -1856,6 +1944,22 @@ export type Database = {
       report_check_belongs_to_practice: {
         Args: { p_check_id: string; p_practice_id: string }
         Returns: boolean
+      }
+      request_practice_activation: {
+        Args: {
+          p_city: string
+          p_contact_first_name: string
+          p_contact_last_name: string
+          p_contact_phone: string
+          p_country_code: string
+          p_display_name: string
+          p_domain?: string
+          p_legal_name: string
+          p_postal_code: string
+          p_practice_kind: string
+          p_street: string
+        }
+        Returns: Json
       }
       transfer_practice_ownership: {
         Args: { p_actor?: string; p_new_owner: string; p_practice_id: string }

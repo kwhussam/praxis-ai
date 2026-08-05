@@ -13,6 +13,7 @@ jest.mock("@/lib/api/client", () => {
 
 import { apiRequest } from "@/lib/api/client";
 import {
+  approveBackofficePracticeRequest,
   assignBackofficeConsultant,
   createBackofficeInvitation,
   createBackofficePractice,
@@ -96,6 +97,19 @@ describe("B3 create-practice idempotency", () => {
     expect(inviteOptions?.body).toMatchObject({ targetEmail: "owner@example.test", intendedRole: "practice_owner", deliveryChannel: "in_person_code" });
     expect(inviteOptions?.headers).toEqual({ "Idempotency-Key": "invite-1", "X-Request-Id": "request-invite-1" });
     expect(getCalls()[callsBefore + 3][0]).toBe("/api/backoffice/invitations/invitation-1/revoke");
+  });
+
+  it("approves a practice request with caller-owned retry identifiers and expiry", async () => {
+    const callsBefore = getCalls().length;
+    const ids = { idempotencyKey: "approval-1", requestId: "request-approval-1" };
+    await approveBackofficePracticeRequest("activation-1", "2026-08-12T00:00:00.000Z", ids);
+    const [path, options] = getCalls()[callsBefore];
+    expect(path).toBe("/api/backoffice/practice-requests/activation-1/approve");
+    expect(options).toMatchObject({
+      method: "POST",
+      body: { expiresAt: "2026-08-12T00:00:00.000Z" },
+      headers: { "Idempotency-Key": "approval-1", "X-Request-Id": "request-approval-1" }
+    });
   });
 
   it("loads audit events only through the server-authorized endpoint", async () => {

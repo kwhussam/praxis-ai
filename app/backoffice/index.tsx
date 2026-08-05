@@ -15,9 +15,9 @@ import {
 } from "react-native";
 
 import { supabase } from "@/lib/api/supabase";
-import { createBackofficePractice, listBackofficePractices, type BackofficeMutationIds } from "@/lib/backoffice/api";
+import { approveBackofficePracticeRequest, createBackofficePractice, listBackofficePracticeRequests, listBackofficePractices, type BackofficeMutationIds } from "@/lib/backoffice/api";
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
-import type { BackofficePracticeSummary, BackofficePracticePage, CreatePracticeInput, OnboardingStatus } from "@/lib/backoffice/types";
+import type { ApprovePracticeRequestResult, BackofficePracticeSummary, BackofficePracticePage, BackofficePracticeActivationRequest, CreatePracticeInput, OnboardingStatus } from "@/lib/backoffice/types";
 import { validatePracticeInput } from "@/lib/backoffice/validation";
 
 const EMPTY_FORM: CreatePracticeInput = {
@@ -56,6 +56,8 @@ export default function BackofficeDashboard() {
   const [form, setForm] = useState<CreatePracticeInput>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const createAttemptIds = useRef<BackofficeMutationIds>(newCreateAttemptIds());
+  const approvalAttempts = useRef(new Map<string, { ids: BackofficeMutationIds; expiresAt: string }>());
+  const [approvedRequest, setApprovedRequest] = useState<ApprovePracticeRequestResult | null>(null);
 
   useEffect(() => {
     void getBackofficeAuthState()
@@ -80,6 +82,7 @@ export default function BackofficeDashboard() {
     queryFn: () => listBackofficePractices({ search: debouncedSearch, offset, limit: 25 }),
     enabled: authReady
   });
+  const activationRequests = useQuery<{ requests: BackofficePracticeActivationRequest[] }>({ queryKey: ["backoffice-practice-requests"], queryFn: listBackofficePracticeRequests, enabled: authReady });
   const createPractice = useMutation({
     mutationFn: ({ input, ids }: { input: CreatePracticeInput; ids: BackofficeMutationIds }) =>
       createBackofficePractice(input, ids),
@@ -88,6 +91,18 @@ export default function BackofficeDashboard() {
       setForm(EMPTY_FORM);
       createAttemptIds.current = newCreateAttemptIds();
       await queryClient.invalidateQueries({ queryKey: ["backoffice-practices"] });
+    }
+  });
+  const approveRequest = useMutation({
+    mutationFn: ({ activationRequestId, ids, expiresAt }: { activationRequestId: string; ids: BackofficeMutationIds; expiresAt: string }) =>
+      approveBackofficePracticeRequest(activationRequestId, expiresAt, ids),
+    onSuccess: async (result) => {
+      approvalAttempts.current.delete(result.request_id);
+      setApprovedRequest(result);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["backoffice-practice-requests"] }),
+        queryClient.invalidateQueries({ queryKey: ["backoffice-practices"] })
+      ]);
     }
   });
   const practiceRows = useMemo<BackofficePracticeSummary[]>(() => practices.data?.practices ?? [], [practices.data]);
@@ -111,6 +126,22 @@ export default function BackofficeDashboard() {
     } catch {
       // React Query exposes the normalized error state in the form. Keeping the
       // rejection local avoids an unhandled browser promise on network failure.
+    }
+  }
+
+  async function approveActivationRequest(activationRequestId: string) {
+    let attempt = approvalAttempts.current.get(activationRequestId);
+    if (!attempt) {
+      attempt = {
+        ids: newCreateAttemptIds(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 - 60_000).toISOString()
+      };
+      approvalAttempts.current.set(activationRequestId, attempt);
+    }
+    try {
+      await approveRequest.mutateAsync({ activationRequestId, ...attempt });
+    } catch {
+      // Der gleiche Versuch bleibt fuer einen sicheren idempotenten Retry erhalten.
     }
   }
 
@@ -159,6 +190,27 @@ export default function BackofficeDashboard() {
           <Stat label="Im Onboarding" value={String(practiceRows.filter((item) => item.onboarding_status !== "active").length)} />
           <Stat label="Aktiv" value={String(practiceRows.filter((item) => item.onboarding_status === "active").length)} />
         </View>
+        {activationRequests.data?.requests.length ? <View style={styles.requestNotice}>
+          <Text style={styles.requestTitle}>Offene Praxisanfragen ({activationRequests.data.requests.length})</Text>
+          {activationRequests.data.requests.map((request: BackofficePracticeActivationRequest) => <View key={request.id} style={styles.requestRow}>
+            <View style={styles.requestDetails}>
+              <Text style={styles.requestName}>{request.display_name}</Text>
+              <Text style={styles.requestCopy}>{request.contact_email} · {request.city} · {request.practice_kind === "health" ? "Gesundheitseinrichtung" : "Allgemeines Unternehmen"}</Text>
+            </View>
+            <Pressable
+              disabled={approveRequest.isPending}
+              onPress={() => void approveActivationRequest(request.id)}
+              style={[styles.approveButton, approveRequest.isPending && styles.disabledButton]}
+            ><Text style={styles.approveButtonText}>Freigeben + Code</Text></Pressable>
+          </View>)}
+          {approveRequest.isError ? <Text accessibilityRole="alert" style={styles.formError}>Die Freigabe konnte nicht abgeschlossen werden. Ein erneuter Klick setzt denselben sicheren Versuch fort.</Text> : null}
+        </View> : null}
+        {approvedRequest ? <View style={styles.codeNotice}>
+          <Text style={styles.codeTitle}>Aktivierungscode – nur jetzt sichtbar</Text>
+          <Text selectable style={styles.activationCode}>{approvedRequest.code}</Text>
+          <Text style={styles.codeCopy}>Gebunden an {approvedRequest.contact_email}. Gültig bis {new Date(approvedRequest.expires_at).toLocaleString("de-DE")}.</Text>
+          <Pressable onPress={() => setApprovedRequest(null)} style={styles.codeDismiss}><Text style={styles.codeDismissText}>Anzeige schließen</Text></Pressable>
+        </View> : null}
 
         <View style={styles.tableCard}>
           <View style={styles.toolbar}>
@@ -176,29 +228,30 @@ export default function BackofficeDashboard() {
               <Text style={styles.emptyCopy}>Lege die erste Praxis an oder passe die Suche an.</Text>
             </View>
           ) : null}
-          {practiceRows.map((practice) => (
-            <Pressable
+          {practiceRows.map((practice) => {
+            const displayName = practice.display_name?.trim() || practice.legal_name?.trim() || "Unbenannte Praxis";
+            return <Pressable
               accessibilityRole="link"
               key={practice.id}
               onPress={() => router.push(`/backoffice/practices/${practice.id}` as never)}
               style={({ pressed }) => [styles.row, compact && styles.rowCompact, pressed && styles.rowPressed]}
             >
               <View style={styles.practiceIdentity}>
-                <View style={styles.avatar}><Text style={styles.avatarText}>{practice.display_name.slice(0, 2).toUpperCase()}</Text></View>
+                <View style={styles.avatar}><Text style={styles.avatarText}>{displayName.slice(0, 2).toUpperCase()}</Text></View>
                 <View>
-                  <Text style={styles.practiceName}>{practice.display_name}</Text>
-                  <Text style={styles.practiceLegal}>{practice.legal_name}</Text>
+                  <Text style={styles.practiceName}>{displayName}</Text>
+                  <Text style={styles.practiceLegal}>{practice.legal_name || "Kein rechtlicher Name hinterlegt"}</Text>
                 </View>
               </View>
               <View style={styles.rowMeta}>
-                <Text style={styles.metaValue}>{practice.contact_email}</Text>
+                <Text style={styles.metaValue}>{practice.contact_email || "Keine Kontakt-E-Mail"}</Text>
                 <Text style={styles.metaLabel}>{practice.domain ?? "Keine Domain"}</Text>
               </View>
               <View style={[styles.status, statusStyle(practice.onboarding_status)]}>
                 <Text style={styles.statusText}>{STATUS_LABEL[practice.onboarding_status]}</Text>
               </View>
-            </Pressable>
-          ))}
+            </Pressable>;
+          })}
           {practices.data && practiceRows.length > 0 ? (
             <View style={styles.pagination}>
               <Pressable disabled={offset === 0} onPress={() => setOffset(Math.max(0, offset - 25))} style={[styles.pageButton, offset === 0 && styles.pageButtonDisabled]}>
@@ -315,6 +368,8 @@ const styles = StyleSheet.create({
   navItem: { alignItems: "center", borderRadius: 9, flexDirection: "row", gap: 12, paddingHorizontal: 12, paddingVertical: 12 }, navItemActive: { backgroundColor: "#123653" }, navItemDisabled: { opacity: 0.48 }, navText: { color: "#B7C8D8", fontSize: 14, fontWeight: "600" }, navTextActive: { color: "#FFFFFF" },
   logout: { alignItems: "center", borderTopColor: "#28516D", borderTopWidth: 1, flexDirection: "row", gap: 10, paddingTop: 20 }, logoutText: { color: "#B7C8D8", fontSize: 14 },
   content: { flexGrow: 1, padding: 38 }, header: { alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between" }, headerCompact: { alignItems: "flex-start", gap: 22 }, kicker: { color: "#147D6B", fontSize: 11, fontWeight: "900", letterSpacing: 1.5 }, heading: { color: "#102A43", fontSize: 34, fontWeight: "800", marginTop: 8 }, headingCopy: { color: "#627D98", fontSize: 15, marginTop: 5 },
+  requestNotice: { backgroundColor: "#FFF7E6", borderColor: "#F2C66D", borderRadius: 12, borderWidth: 1, marginTop: 22, padding: 16 }, requestTitle: { color: "#7A4E00", fontSize: 15, fontWeight: "800" }, requestRow: { alignItems: "center", borderTopColor: "#F2D69B", borderTopWidth: 1, flexDirection: "row", gap: 14, justifyContent: "space-between", marginTop: 12, paddingTop: 12 }, requestDetails: { flex: 1 }, requestName: { color: "#5F3D00", fontSize: 14, fontWeight: "800" }, requestCopy: { color: "#7A5B20", fontSize: 13, marginTop: 4 }, approveButton: { backgroundColor: "#9A6700", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 }, approveButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  codeNotice: { backgroundColor: "#E8F8F3", borderColor: "#62C7AD", borderRadius: 12, borderWidth: 1, marginTop: 16, padding: 18 }, codeTitle: { color: "#0A5C4D", fontSize: 15, fontWeight: "900" }, activationCode: { color: "#0A2540", fontFamily: "monospace", fontSize: 28, fontWeight: "900", letterSpacing: 3, marginTop: 10 }, codeCopy: { color: "#356B62", fontSize: 13, marginTop: 8 }, codeDismiss: { alignSelf: "flex-start", marginTop: 12 }, codeDismissText: { color: "#147D6B", fontSize: 13, fontWeight: "800" },
   primaryButton: { alignItems: "center", backgroundColor: "#147D6B", borderRadius: 9, flexDirection: "row", gap: 8, justifyContent: "center", minHeight: 46, paddingHorizontal: 18 }, primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" }, disabledButton: { opacity: 0.5 },
   statsRow: { flexDirection: "row", gap: 14, marginTop: 28 }, stat: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 12, borderWidth: 1, flex: 1, padding: 20 }, statValue: { color: "#102A43", fontSize: 28, fontWeight: "800" }, statLabel: { color: "#627D98", fontSize: 13, marginTop: 5 },
   tableCard: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 14, borderWidth: 1, marginTop: 22, overflow: "hidden" }, toolbar: { borderBottomColor: "#E8EEF4", borderBottomWidth: 1, padding: 16 }, searchBox: { alignItems: "center", backgroundColor: "#F7F9FC", borderColor: "#D9E2EC", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 8, maxWidth: 430, paddingHorizontal: 13 }, searchInput: { color: "#102A43", flex: 1, fontSize: 14, height: 42 }, loader: { margin: 50 }, errorBox: { color: "#B42318", padding: 24 },

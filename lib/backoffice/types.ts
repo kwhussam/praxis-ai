@@ -35,6 +35,24 @@ export type BackofficePracticePage = {
   permissions: { canCreate: boolean };
 };
 
+export type BackofficePracticeActivationRequest = {
+  id: string; practice_kind: PracticeKind; legal_name: string; display_name: string;
+  contact_first_name: string; contact_last_name: string; contact_email: string;
+  contact_phone: string; street: string; postal_code: string; city: string;
+  country_code: string; domain: string | null; status: "pending"; created_at: string;
+};
+
+export type ApprovePracticeRequestResult = {
+  ok: true;
+  request_id: string;
+  practice_id: string;
+  invitation_id: string;
+  onboarding_status: "invited";
+  contact_email: string;
+  expires_at: string;
+  code: string;
+};
+
 export type BackofficePracticeDetailResponse = {
   practice: BackofficePracticeDetail;
   permissions: { canManage: boolean; canManageAssignments: boolean };
