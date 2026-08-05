@@ -51,6 +51,10 @@ function patchMainApplication(projectRoot, packageName) {
       /(List<ReactPackage> packages = new PackageList\(this\)\.getPackages\(\);\s*\n)/,
       `$1    packages.add(new PraxisShieldNetworkProbePackage());\n`
     );
+    contents = contents.replace(
+      /return PackageList\(this\)\.packages/,
+      "return PackageList(this).packages.apply { add(PraxisShieldNetworkProbePackage()) }"
+    );
   }
 
   fs.writeFileSync(mainApplication, contents);
@@ -93,6 +97,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Socket
+import java.io.File
 import java.util.concurrent.Executors
 
 class PraxisShieldNetworkProbeModule(private val reactContext: ReactApplicationContext) :
@@ -117,6 +122,38 @@ class PraxisShieldNetworkProbeModule(private val reactContext: ReactApplicationC
         promise.resolve(unavailableWifi("android_wifi_permission_denied"))
       } catch (error: Exception) {
         promise.resolve(unavailableWifi(error.message ?: "android_wifi_probe_failed"))
+      }
+    }
+  }
+
+  @ReactMethod
+  fun scanDevices(promise: Promise) {
+    executor.execute {
+      val devices = Arguments.createArray()
+      try {
+        val arpFile = File("/proc/net/arp")
+        if (arpFile.canRead()) {
+          arpFile.useLines { lines ->
+            lines.drop(1).forEach { line ->
+              val columns = line.trim().split(Regex("\\\\s+"))
+              if (columns.size < 4) return@forEach
+              val ip = columns[0]
+              val flags = columns[2]
+              val mac = columns[3].lowercase()
+              if (flags == "0x0" || mac == "00:00:00:00:00:00") return@forEach
+              devices.pushMap(Arguments.createMap().apply {
+                putString("ip", ip)
+                putString("mac", mac)
+              })
+            }
+          }
+        }
+        promise.resolve(devices)
+      } catch (_: Exception) {
+        // Android versions and vendor ROMs may restrict /proc/net/arp. The JS
+        // layer still performs bounded active probes, so metadata discovery is
+        // best-effort and must fail closed to an empty list.
+        promise.resolve(devices)
       }
     }
   }
