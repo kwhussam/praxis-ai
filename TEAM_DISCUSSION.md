@@ -5993,3 +5993,57 @@ davon unberührt. (2) Flow 04 deckt den **automatisierten Gate-Teil** ab; die
 vollständige manuelle Schleife (Anfrage → Backoffice-Freigabe → Code einmal anzeigen
 → in der App einlösen → Praxis wird `active`) ist damit **nicht** ersetzt und bleibt
 der letzte menschliche Abnahmeschritt. **Rederecht / Am Zug: @Hussam.**
+
+**B4c Slice 2 finale Produktabnahme – Hussam/Codex (2026-08-05)**
+
+@Hussam hat die vollständige manuelle Web→App-Schleife durchgeführt und
+bestätigt: Praxisanfrage stellen → im Backoffice freigeben → Aktivierungscode
+einmalig anzeigen → Code in der App einlösen → Praxis wird `active` und das
+Dashboard ist erreichbar. Das Verhalten entspricht dem vereinbarten
+Redeem-only- und Admin-Freigabe-Vertrag.
+
+Zusammen mit Claudes Gegenprüfung, dem nativen Maestro-Gate-Lauf, 205 grünen
+pgTAP-Tests, 310 grünen Jest-Tests sowie grünem TypeScript/ESLint ist **B4c
+Slice 2 vollständig abgenommen und geschlossen**. Es gibt keinen offenen
+Code- oder Produktbefund für B4c. **Rederecht / Am Zug: @Hussam.**
+
+**Review der Folge-Commits (cfc9e6b, d53d85a, dada79d, 0922c35) – Claude (2026-08-05)**
+
+@Hussam hat mich um Review der neuen Commits gebeten. `cfc9e6b` ist die bereits
+gegengeprüfte B4c-Arbeit (jetzt committet) — unverändert abnahmefähig. Die drei
+Folge-Commits habe ich neu geprüft; **alle sauber, kein blockierender Befund:**
+
+- **`0922c35` (target redeemed practice explicitly).** Korrektheits-Fix:
+  `loadAccessiblePracticeForUser(userId, targetPracticeId?)` lädt nach dem Redeem
+  **gezielt** die vom Server zurückgegebene Zielpraxis statt generisch irgendeine
+  aktive Praxis zu greifen und per Gleichheit zu prüfen — das brach bei
+  Multi-Praxis-Nutzern. Die Autorisierungsgrenze bleibt intakt (weiterhin
+  `onboarding_status='active'` **und** Owner **oder** aktive Mitgliedschaft; sonst
+  `null`). Zwei neue Tests decken Happy-Path + Unauthorized ab.
+- **`d53d85a` (admin reset release gates).** `mfa.tsx` unterstützt jetzt
+  **In-App-TOTP-Enrollment** (QR + Secret auf Web, Secret manuell auf Native;
+  verwaiste unverifizierte Faktoren werden vorher entfernt) — ersetzt den zuvor
+  nötigen manuellen Enroll-Umweg. `config.toml` aktiviert TOTP und senkt
+  `otp_expiry` 3600→600 (härter, mit passendem Worker-`PASSWORD_RESET_OTP_TTL_
+  SECONDS=600`). Neue Migration `20260805120000_b5e_worker_reserve_grant.sql`
+  sperrt `backoffice_reserve` auf `service_role` (anon/authenticated raus) —
+  gute Defense-in-depth. Neuer Unit-Test für die Faktor-Auswahl.
+- **`dada79d` (runtime maintenance gaps).** `shouldClearPendingInvitation`
+  löscht bei terminalen Fehlern (400/403/409/410) den gerätegebundenen Code; 401
+  bleibt ausgenommen (Login→weiter), Transport/429/5xx bleiben für idempotenten
+  Retry erhalten — Logik korrekt. `pending-invitation.ts` löscht jetzt einen
+  ungültigen SecureStore-Wert statt ihn liegen zu lassen. `fetchWithTimeout`
+  ersetzt `AbortSignal.timeout()` durch `AbortController` + `clearTimeout` im
+  `finally` — behebt sehr wahrscheinlich den zuvor gemeldeten offenen Jest-Handle,
+  ohne Verhaltensregress.
+
+Eigene Verifikation in dieser Session: `tsc --noEmit` grün, ESLint
+(`--max-warnings=0`) grün, **64 gezielte Jest-Tests** grün (session-membership,
+mfa-auth, mutation-api, invitations, pending-invitation, dashboard,
+worker-backoffice).
+
+Ein nicht-blockierender Hinweis: `dada79d` hebt `wrangler` 3→4 und
+`@cloudflare/workers-types` 4→5 (Major-Bumps, große Lock-Churn). Die JS-Tests und
+Typen sind grün; einen echten `wrangler`-Build/Deploy habe ich **nicht** gefahren
+— bitte einmal `npm run workers:dev` bzw. den Deploy-Pfad gegen v4 bestätigen,
+falls noch nicht via CI geschehen. **Rederecht / Am Zug: @Hussam.**
