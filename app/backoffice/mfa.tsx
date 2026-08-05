@@ -1,21 +1,80 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { verifyBackofficeTotp } from "@/lib/backoffice/auth";
+import { hasVerifiedTotpFactor, verifyBackofficeTotp } from "@/lib/backoffice/auth";
 import { supabase } from "@/lib/api/supabase";
+
+function WebTotpQrCode({ uri }: { uri: string }) {
+  if (Platform.OS !== "web") return null;
+  // GoTrue liefert den TOTP-QR als SVG-Daten-URL. React Native Webs Image
+  // rendert diese nicht zuverlässig; ein echtes Web-Image hingegen schon.
+  return createElement("img", {
+    src: uri,
+    alt: "QR-Code für den TOTP-Schlüssel",
+    style: { display: "block", height: 180, margin: "14px auto 0", width: 180 }
+  });
+}
 
 export default function BackofficeMfaScreen() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [enrollment, setEnrollment] = useState<{ factorId: string; secret: string; qrCode: string } | null>(null);
+  const [hasVerifiedFactor, setHasVerifiedFactor] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void supabase.auth.mfa.listFactors()
+      .then(({ data, error: factorsError }) => {
+        if (factorsError) throw factorsError;
+        if (active) setHasVerifiedFactor(hasVerifiedTotpFactor({ data, error: null }));
+      })
+      .catch((factorsError: unknown) => {
+        if (active) setError(factorsError instanceof Error ? factorsError.message : "MFA-Status konnte nicht geladen werden.");
+      });
+    return () => { active = false; };
+  }, []);
+
+  async function startEnrollment() {
+    setLoading(true);
+    setError(null);
+    try {
+      const factors = await supabase.auth.mfa.listFactors();
+      if (factors.error) throw factors.error;
+      const abandonedTotpFactors = factors.data.all.filter(
+        (factor) => factor.factor_type === "totp" && factor.status === "unverified"
+      );
+      await Promise.all(abandonedTotpFactors.map(async (factor) => {
+        const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (unenrollError) throw unenrollError;
+      }));
+      const { data, error: enrollError } = await supabase.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "PraxisShield Backoffice"
+      });
+      if (enrollError) throw enrollError;
+      setEnrollment({ factorId: data.id, secret: data.totp.secret, qrCode: data.totp.qr_code });
+    } catch (enrollmentError) {
+      setError(enrollmentError instanceof Error ? enrollmentError.message : "TOTP-Faktor konnte nicht eingerichtet werden.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function verify() {
     setLoading(true);
     setError(null);
     try {
-      await verifyBackofficeTotp(code);
+      if (enrollment) {
+        const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: enrollment.factorId });
+        if (challengeError) throw challengeError;
+        const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: enrollment.factorId, challengeId: challenge.id, code });
+        if (verifyError) throw verifyError;
+      } else {
+        await verifyBackofficeTotp(code);
+      }
       router.replace("/backoffice" as never);
     } catch (verificationError) {
       setError(verificationError instanceof Error ? verificationError.message : "MFA-Code konnte nicht bestätigt werden.");
@@ -31,7 +90,20 @@ export default function BackofficeMfaScreen() {
       <View style={styles.card}>
         <Text style={styles.eyebrow}>ZWEITER FAKTOR</Text>
         <Text style={styles.title}>Anmeldung bestätigen</Text>
-        <Text style={styles.copy}>Gib den sechsstelligen Code aus deiner Authenticator-App ein.</Text>
+        <Text style={styles.copy}>{enrollment ? "Scanne den QR-Code mit deiner Authenticator-App und gib anschließend den ersten sechsstelligen Code ein." : hasVerifiedFactor === false ? "Richte zuerst eine Authenticator-App ein und gib anschließend den ersten sechsstelligen Code ein." : "Gib den sechsstelligen Code aus deiner Authenticator-App ein."}</Text>
+        {hasVerifiedFactor === null ? <ActivityIndicator color="#147D6B" style={styles.factorLoader} /> : null}
+        {hasVerifiedFactor === false && !enrollment ? (
+          <Pressable disabled={loading} onPress={() => void startEnrollment()} style={styles.setupButton}>
+            <Text style={styles.setupButtonText}>Authenticator-App erstmalig einrichten</Text>
+          </Pressable>
+        ) : null}
+        {enrollment ? (
+          <View style={styles.secretBox}>
+            <Text style={styles.secretLabel}>TOTP-Schlüssel (nur jetzt sichtbar)</Text>
+            <WebTotpQrCode uri={enrollment.qrCode} />
+            <Text selectable style={styles.secret}>{enrollment.secret}</Text>
+          </View>
+        ) : null}
         <TextInput
           keyboardType="number-pad"
           maxLength={6}
@@ -41,7 +113,7 @@ export default function BackofficeMfaScreen() {
           value={code}
         />
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-        <Pressable disabled={loading || code.length !== 6} onPress={() => void verify()} style={[styles.button, (loading || code.length !== 6) && styles.disabled]}>
+        <Pressable disabled={loading || hasVerifiedFactor === null || code.length !== 6} onPress={() => void verify()} style={[styles.button, (loading || hasVerifiedFactor === null || code.length !== 6) && styles.disabled]}>
           {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>Code bestätigen</Text>}
         </Pressable>
         <Pressable onPress={() => void supabase.auth.signOut().then(() => router.replace("/backoffice/login" as never))}>
@@ -63,5 +135,11 @@ const styles = StyleSheet.create({
   button: { alignItems: "center", backgroundColor: "#147D6B", borderRadius: 10, height: 50, justifyContent: "center", marginTop: 22 },
   disabled: { opacity: 0.45 },
   buttonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
+  factorLoader: { marginTop: 18 },
+  setupButton: { alignItems: "center", borderColor: "#147D6B", borderRadius: 10, borderWidth: 1, marginTop: 20, minHeight: 46, justifyContent: "center", paddingHorizontal: 16 },
+  setupButtonText: { color: "#147D6B", fontSize: 14, fontWeight: "800" },
+  secretBox: { backgroundColor: "#EFFAF7", borderColor: "#9EE5D5", borderRadius: 10, borderWidth: 1, marginTop: 20, padding: 14 },
+  secretLabel: { color: "#334E68", fontSize: 12, fontWeight: "700" },
+  secret: { color: "#102A43", fontFamily: "monospace", fontSize: 14, marginTop: 8 },
   cancel: { color: "#486581", fontSize: 14, fontWeight: "600", marginTop: 22, textAlign: "center" }
 });

@@ -4,6 +4,7 @@ compatibility_date = "2026-06-24"
 
 [vars]
 APP_ENV = "development"
+PASSWORD_RESET_OTP_TTL_SECONDS = "600"
 
 [triggers]
 crons = [

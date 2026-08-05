@@ -116,13 +116,19 @@ After the native app is installed, Metro can be restarted without rebuilding via
 
 ## Seed accounts
 
-All accounts use the local-only password `Local-E2E-2026!`.
+Praxis-Testkonten verwenden das lokale Passwort `Local-E2E-2026!`. Der
+separate Backoffice-Bootstrap-Admin verwendet das unten angegebene Passwort.
 
 | Role | Email | Practice |
 |---|---|---|
 | Owner | `owner-a@example.test` | E2E Praxis A |
 | Manager | `manager@example.test` | E2E Praxis A |
 | Viewer | `partner@example.test` | E2E Praxis A |
+| Platform admin | `admin@praxis-ai.local` | Internes Backoffice; Passwort: `Local-Admin-2026!` |
+
+Der Bootstrap-Admin ist ausschließlich lokal. Bei der ersten Anmeldung im
+Backoffice muss ein persönlicher TOTP-Faktor in einer Authenticator-App
+eingerichtet werden, bevor das Backoffice geöffnet wird.
 | Cross-tenant owner | `owner-b@example.test` | E2E Praxis B |
 
 Practice IDs remain deterministic:

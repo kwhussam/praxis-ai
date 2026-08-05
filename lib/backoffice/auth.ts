@@ -18,6 +18,10 @@ export function firstVerifiedTotpFactor(result: AuthMFAListFactorsResponse) {
   return result.data.totp.find((factor) => factor.status === "verified") ?? null;
 }
 
+export function hasVerifiedTotpFactor(result: AuthMFAListFactorsResponse) {
+  return firstVerifiedTotpFactor(result) !== null;
+}
+
 export async function verifyBackofficeTotp(code: string) {
   const factors = await supabase.auth.mfa.listFactors();
   const factor = firstVerifiedTotpFactor(factors);
@@ -32,4 +36,3 @@ export async function verifyBackofficeTotp(code: string) {
   });
   if (verifyError) throw verifyError;
 }
-

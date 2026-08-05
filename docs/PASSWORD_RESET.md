@@ -34,9 +34,11 @@ new password against a short-lived recovery session.
 4. **Set new password** — With a valid recovery session the screen shows two fields
    (new password + confirm), validates length ≥ 8 and match, then calls
    `updateUserPassword(newPassword)` → `supabase.auth.updateUser({ password })`.
-5. **Finish** — On success the screen signs the recovery session out
-   (`supabase.auth.signOut()`) and asks the user to sign in with the new password,
-   so no long-lived session rides on a recovery token.
+5. **Finish** — On success the screen signs all refresh sessions out
+   (`supabase.auth.signOut({ scope: "global" })`) and asks the user to sign in
+   with the new password. If that best-effort revocation fails after the password
+   has already changed, the screen preserves the successful outcome and warns
+   about potentially active sessions on other devices.
 
 ## States shown to the user
 

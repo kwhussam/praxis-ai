@@ -3,7 +3,7 @@ create extension if not exists pgtap with schema extensions;
 
 begin;
 set local search_path = public, extensions;
-select plan(18);
+select plan(19);
 
 insert into auth.users (id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
 values
@@ -42,6 +42,7 @@ select ok((select created_at=date_trunc('day',created_at) and retention_until-in
 select ok(not has_table_privilege('authenticated','public.password_reset_audit_events','INSERT,UPDATE,DELETE'),'authenticated cannot mutate reset audit');
 select ok(not has_function_privilege('authenticated','public.password_reset_finalize(uuid,text,uuid,uuid,uuid,text,text,timestamptz)','EXECUTE'),'authenticated cannot finalize reset audit');
 select ok(has_function_privilege('service_role','public.password_reset_finalize(uuid,text,uuid,uuid,uuid,text,text,timestamptz)','EXECUTE'),'service_role can finalize reset audit');
+select ok(has_function_privilege('service_role','public.backoffice_reserve(uuid,text,text,text)','EXECUTE'),'service_role can reserve reset idempotency before calling Auth Admin');
 insert into public.password_reset_rate_limit (dimension,subject_hash,window_start,count,updated_at)
 values ('ip',repeat('c',64),now()-interval '2 days',1,now()-interval '2 days');
 select is(public.anonymize_password_reset_audit_events(183,500),0,'retention rerun is idempotent');

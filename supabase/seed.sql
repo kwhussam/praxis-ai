@@ -85,6 +85,23 @@ values
     '',
     '',
     ''
+  ),
+  (
+    '00000000-0000-0000-0000-000000000000',
+    '00000000-0000-4000-8000-0000000000e1',
+    'authenticated',
+    'authenticated',
+    'admin@praxis-ai.local',
+    crypt('Local-Admin-2026!', gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"local_seed":true,"platform_role":"platform_admin"}'::jsonb,
+    now(),
+    now(),
+    '',
+    '',
+    '',
+    ''
   )
 on conflict (id) do update
 set
@@ -124,14 +141,29 @@ where id in (
   '00000000-0000-4000-8000-0000000000a1',
   '00000000-0000-4000-8000-0000000000b1',
   '00000000-0000-4000-8000-0000000000c1',
-  '00000000-0000-4000-8000-0000000000d1'
+  '00000000-0000-4000-8000-0000000000d1',
+  '00000000-0000-4000-8000-0000000000e1'
 )
 on conflict (provider_id, provider) do update
 set
   identity_data = excluded.identity_data,
   updated_at = excluded.updated_at;
 
-insert into public.practices (id, owner_id, name, domain, email, plan)
+-- Lokaler Bootstrap-Zugang für das interne Backoffice. Dieser Zugang ist nur
+-- für die lokale Entwicklungsumgebung bestimmt; jeder Backoffice-Zugriff
+-- erzwingt zusätzlich ein persönliches TOTP-MFA-Setup.
+insert into public.platform_staff (user_id, role, status, mfa_required)
+values ('00000000-0000-4000-8000-0000000000e1', 'platform_admin', 'active', true)
+on conflict (user_id) do update
+set role = excluded.role,
+    status = excluded.status,
+    mfa_required = excluded.mfa_required;
+
+insert into public.practices (
+  id, owner_id, name, domain, email, plan, practice_kind, legal_name,
+  display_name, contact_first_name, contact_last_name, contact_email,
+  contact_phone, street, postal_code, city, country_code, onboarding_status
+)
 values
   (
     '20000000-0000-4000-8000-0000000000a1',
@@ -139,7 +171,19 @@ values
     'E2E Praxis A',
     'praxis-a.example.test',
     'owner-a@example.test',
-    'monitoring'
+    'monitoring',
+    'general',
+    'E2E Praxis A',
+    'E2E Praxis A',
+    'Erika',
+    'Eigentümerin',
+    'owner-a@example.test',
+    '+49 30 10000001',
+    'Teststraße 1',
+    '10115',
+    'Berlin',
+    'DE',
+    'active'
   ),
   (
     '20000000-0000-4000-8000-0000000000b1',
@@ -147,7 +191,19 @@ values
     'E2E Praxis B',
     'praxis-b.example.test',
     'owner-b@example.test',
-    'free'
+    'free',
+    'health',
+    'E2E Praxis B',
+    'E2E Praxis B',
+    'Bernd',
+    'Beispiel',
+    'owner-b@example.test',
+    '+49 89 10000002',
+    'Testallee 2',
+    '80331',
+    'München',
+    'DE',
+    'active'
   )
 on conflict (id) do update
 set
@@ -155,7 +211,19 @@ set
   name = excluded.name,
   domain = excluded.domain,
   email = excluded.email,
-  plan = excluded.plan;
+  plan = excluded.plan,
+  practice_kind = excluded.practice_kind,
+  legal_name = excluded.legal_name,
+  display_name = excluded.display_name,
+  contact_first_name = excluded.contact_first_name,
+  contact_last_name = excluded.contact_last_name,
+  contact_email = excluded.contact_email,
+  contact_phone = excluded.contact_phone,
+  street = excluded.street,
+  postal_code = excluded.postal_code,
+  city = excluded.city,
+  country_code = excluded.country_code,
+  onboarding_status = excluded.onboarding_status;
 
 insert into public.partner_practices (id, partner_id, practice_id, role, granted_by)
 values

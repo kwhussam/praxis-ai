@@ -1,12 +1,12 @@
 # W4e/B5a: Vertrag für administrativ initiierten Passwort-Reset
 
 Stand: 2026-07-29  
-Status: B5a final abgenommen; B5b-Backend implementiert, Gegenprüfung offen
+Status: B5a/B5b/B5c code-seitig abgenommen; Hosted-Konfigurationsgates offen
 
-Implementierungsstand: Migration `20260729220000_admin_password_reset_backend.sql`
-und Worker-Route `POST /api/backoffice/practices/:practiceId/password-resets`.
-App-Redemption/UI und Hosted-Konfigurationsgates sind nicht Bestandteil dieses
-Backend-Slices.
+Implementierungsstand: Migration `20260729220000_admin_password_reset_backend.sql`,
+Worker-Route `POST /api/backoffice/practices/:practiceId/password-resets` und
+App-Redemption über `verifyOtp({ type: "recovery" })` sind umgesetzt.
+Hosted-Konfigurations- und Staging-Gates bleiben davon getrennt.
 
 ## 1. Ziel und Produktgrenze
 
@@ -21,9 +21,9 @@ Der Reset ist kein allgemeiner Support-Endpunkt und kein Self-Service-Ersatz.
 
 ## 2. Verifizierte technische Ausgangslage
 
-- Lokal steht `auth.email.otp_length = 6` und `auth.email.otp_expiry = 3600` in
-  `supabase/config.toml`. Der gewünschte Zielwert von zehn Minuten ist lokal
-  daher noch nicht erfüllt.
+- Lokal stehen `auth.email.otp_length = 6` und `auth.email.otp_expiry = 600` in
+  `supabase/config.toml`. Der gewünschte Zielwert von zehn Minuten ist damit
+  lokal konfiguriert; Hosted-Staging und -Produktion müssen ihn separat belegen.
 - Supabase dokumentiert `auth.email.otp_expiry` als gemeinsame Ablaufzeit für
   E-Mail-OTPs. Eine getrennte Recovery-OTP-TTL ist in der verwendeten
   Konfiguration und der offiziellen CLI-Konfigurationsreferenz nicht vorhanden.
@@ -140,9 +140,9 @@ W4c-Passwortformular:
    Recovery-Session.
 3. Das vorhandene Passwortformular setzt das vom Nutzer gewählte Passwort.
 4. Erst nach erfolgreichem `updateUser` wird
-   `signOut({ scope: "global" })` ausgeführt. Ein fehlgeschlagener globaler
-   Widerruf ist kein Erfolg: Die UI zeigt einen sicheren Fehler und fordert
-   erneute Anmeldung beziehungsweise Supportprüfung.
+   `signOut({ scope: "global" })` ausgeführt. Schlägt dieser Best-Effort-
+   Widerruf fehl, bleibt der Passwortwechsel trotzdem erfolgreich; die UI weist
+   transparent auf potenziell fortbestehende Sitzungen auf anderen Geräten hin.
 5. Weder Recovery-Session noch Code werden lokal dauerhaft gespeichert.
 
 Wichtig: Der globale Logout widerruft Refresh-Sessions. Bereits ausgestellte
