@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 
 import { listBackofficeAuditEvents } from "@/lib/backoffice/api";
 import { getBackofficeAuthState } from "@/lib/backoffice/auth";
-import type { BackofficeAuditEvent } from "@/lib/backoffice/types";
+import type { BackofficeAuditEvent, BackofficeAuditPage } from "@/lib/backoffice/types";
 
 const RESULT_LABEL: Record<string, string> = { success: "Erfolgreich", denied: "Abgelehnt", failure: "Fehlgeschlagen" };
 
@@ -25,14 +25,16 @@ export default function BackofficeAuditScreen() {
     }).catch(() => router.replace("/backoffice/login" as never));
   }, [router]);
 
-  const audit = useQuery<{ events: BackofficeAuditEvent[] }>({
+  const audit = useInfiniteQuery<BackofficeAuditPage>({
     queryKey: ["backoffice-audit"],
-    queryFn: listBackofficeAuditEvents,
+    queryFn: ({ pageParam }) => listBackofficeAuditEvents({ offset: pageParam as number, limit: 50 }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.page.nextOffset ?? undefined,
     enabled: authReady
   });
   const events = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase("de-DE");
-    const rows = (audit.data?.events ?? []) as BackofficeAuditEvent[];
+    const rows = audit.data?.pages.flatMap((page) => page.events) ?? [];
     if (!needle) return rows;
     return rows.filter((event) => [event.action, event.target_type, event.result, event.practice_id, event.request_id]
       .some((value) => value?.toLocaleLowerCase("de-DE").includes(needle)));
@@ -56,6 +58,7 @@ export default function BackofficeAuditScreen() {
         {audit.isError ? <View style={styles.empty}><Text style={styles.errorTitle}>Audit-Protokoll nicht verfügbar</Text><Text style={styles.emptyText}>Deine Rolle besitzt möglicherweise keine Audit-Berechtigung oder die Verbindung ist fehlgeschlagen.</Text></View> : null}
         {!audit.isLoading && !audit.isError && events.length === 0 ? <View style={styles.empty}><Text style={styles.emptyTitle}>Keine Ereignisse gefunden</Text><Text style={styles.emptyText}>Passe die Suche an oder führe zuerst eine Backoffice-Aktion aus.</Text></View> : null}
         {events.map((event) => <AuditRow compact={compact} event={event} key={event.id} />)}
+        {audit.hasNextPage ? <Pressable disabled={audit.isFetchingNextPage} onPress={() => void audit.fetchNextPage()} style={styles.loadMore}><Text style={styles.loadMoreText}>{audit.isFetchingNextPage ? "Weitere Ereignisse werden geladen …" : "Weitere Ereignisse laden"}</Text></Pressable> : null}
       </View>
     </ScrollView>
   );
@@ -72,5 +75,5 @@ function shortId(value: string) { return value.length > 14 ? `${value.slice(0, 8
 const styles = StyleSheet.create({
   page: { backgroundColor: "#F4F7FB", flexGrow: 1, padding: 38 }, center: { alignItems: "center", backgroundColor: "#F4F7FB", flex: 1, justifyContent: "center", padding: 24 }, back: { alignItems: "center", flexDirection: "row", gap: 8, paddingVertical: 8 }, backText: { color: "#486581", fontSize: 14, fontWeight: "700" },
   header: { alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", marginTop: 24 }, headerCompact: { alignItems: "stretch", flexDirection: "column", gap: 20 }, kicker: { color: "#147D6B", fontSize: 11, fontWeight: "900", letterSpacing: 1.4 }, heading: { color: "#102A43", fontSize: 34, fontWeight: "800", marginTop: 8 }, copy: { color: "#627D98", fontSize: 14, marginTop: 5 }, searchBox: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#CBD5E1", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 8, minWidth: 360, paddingHorizontal: 12 }, searchInput: { color: "#102A43", flex: 1, fontSize: 13, height: 44 },
-  retentionNotice: { alignItems: "flex-start", backgroundColor: "#ECF9F6", borderColor: "#B9E8DC", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 12, marginTop: 26, padding: 16 }, retentionText: { color: "#39766C", flex: 1, fontSize: 12, lineHeight: 19 }, card: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 14, borderWidth: 1, marginTop: 18, overflow: "hidden" }, loader: { margin: 40 }, row: { alignItems: "center", borderBottomColor: "#EDF2F7", borderBottomWidth: 1, flexDirection: "row", gap: 24, justifyContent: "space-between", padding: 18 }, rowCompact: { alignItems: "flex-start", flexDirection: "column", gap: 10 }, eventMain: { alignItems: "center", flex: 1, flexDirection: "row", gap: 12 }, resultDot: { backgroundColor: "#24A68B", borderRadius: 99, height: 9, width: 9 }, resultDotWarning: { backgroundColor: "#D9822B" }, action: { color: "#243B53", fontSize: 14, fontWeight: "800" }, target: { color: "#829AB1", fontSize: 11, marginTop: 4 }, meta: { minWidth: 190 }, metaPrimary: { color: "#486581", fontSize: 12, fontWeight: "700" }, metaSecondary: { color: "#9FB3C8", fontSize: 11, marginTop: 4 }, empty: { alignItems: "center", padding: 48 }, emptyTitle: { color: "#334E68", fontSize: 16, fontWeight: "800" }, errorTitle: { color: "#B42318", fontSize: 16, fontWeight: "800" }, emptyText: { color: "#829AB1", fontSize: 13, marginTop: 7, textAlign: "center" }
+  retentionNotice: { alignItems: "flex-start", backgroundColor: "#ECF9F6", borderColor: "#B9E8DC", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 12, marginTop: 26, padding: 16 }, retentionText: { color: "#39766C", flex: 1, fontSize: 12, lineHeight: 19 }, card: { backgroundColor: "#FFFFFF", borderColor: "#E1E8EF", borderRadius: 14, borderWidth: 1, marginTop: 18, overflow: "hidden" }, loader: { margin: 40 }, loadMore: { alignItems: "center", borderTopColor: "#EDF2F7", borderTopWidth: 1, padding: 18 }, loadMoreText: { color: "#147D6B", fontSize: 13, fontWeight: "800" }, row: { alignItems: "center", borderBottomColor: "#EDF2F7", borderBottomWidth: 1, flexDirection: "row", gap: 24, justifyContent: "space-between", padding: 18 }, rowCompact: { alignItems: "flex-start", flexDirection: "column", gap: 10 }, eventMain: { alignItems: "center", flex: 1, flexDirection: "row", gap: 12 }, resultDot: { backgroundColor: "#24A68B", borderRadius: 99, height: 9, width: 9 }, resultDotWarning: { backgroundColor: "#D9822B" }, action: { color: "#243B53", fontSize: 14, fontWeight: "800" }, target: { color: "#829AB1", fontSize: 11, marginTop: 4 }, meta: { minWidth: 190 }, metaPrimary: { color: "#486581", fontSize: 12, fontWeight: "700" }, metaSecondary: { color: "#9FB3C8", fontSize: 11, marginTop: 4 }, empty: { alignItems: "center", padding: 48 }, emptyTitle: { color: "#334E68", fontSize: 16, fontWeight: "800" }, errorTitle: { color: "#B42318", fontSize: 16, fontWeight: "800" }, emptyText: { color: "#829AB1", fontSize: 13, marginTop: 7, textAlign: "center" }
 });

@@ -114,8 +114,8 @@ describe("B3 create-practice idempotency", () => {
 
   it("loads audit events only through the server-authorized endpoint", async () => {
     const callsBefore = getCalls().length;
-    await listBackofficeAuditEvents();
-    expect(getCalls()[callsBefore]).toEqual(["/api/backoffice/audit"]);
+    await listBackofficeAuditEvents({ offset: 100, limit: 50 });
+    expect(getCalls()[callsBefore]).toEqual(["/api/backoffice/audit?offset=100&limit=50"]);
   });
 
   it("uses admin-only consultant endpoints with stable mutation identifiers", async () => {

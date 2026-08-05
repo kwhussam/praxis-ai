@@ -511,6 +511,20 @@ describe("Server-side read scoping", () => {
     expect(res.status).toBe(403);
   });
 
+  it("paginates the audit log server-side with a deterministic next offset", async () => {
+    const rows = Array.from({ length: 26 }, (_, index) => ({ id: `audit-${index}` }));
+    const world = installWorld({ restRows: { backoffice_audit_events: rows } });
+    const res = await call(request("/api/backoffice/audit?offset=50&limit=25", { token: aal2Token() }));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { events: unknown[]; page: unknown };
+    expect(body.events).toHaveLength(25);
+    expect(body.page).toEqual({ offset: 50, limit: 25, hasMore: true, nextOffset: 75 });
+    const auditCall = world.calls.find((c) => c.url.includes("/rest/v1/backoffice_audit_events?"));
+    expect(auditCall?.url).toContain("order=created_at.desc,id.desc");
+    expect(auditCall?.url).toContain("limit=26&offset=50");
+  });
+
   it("returns read-only UI permissions to support for assigned practices", async () => {
     const assigned = "77777777-7777-4777-8777-777777777777";
     installWorld({

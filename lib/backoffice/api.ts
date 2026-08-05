@@ -5,7 +5,7 @@ import type {
   ApprovePracticeRequestResult,
   BackofficePracticePage,
   BackofficeInvitation,
-  BackofficeAuditEvent,
+  BackofficeAuditPage,
   BackofficeConsultant,
   BackofficeConsultantAssignment,
   BackofficeMembership,
@@ -139,8 +139,12 @@ export async function revokeBackofficeInvitation(invitationId: string, ids: Back
   });
 }
 
-export async function listBackofficeAuditEvents() {
-  return apiRequest<{ events: BackofficeAuditEvent[] }>("/api/backoffice/audit");
+export async function listBackofficeAuditEvents(options: { offset?: number; limit?: number } = {}) {
+  const params = new URLSearchParams({
+    offset: String(options.offset ?? 0),
+    limit: String(options.limit ?? 50)
+  });
+  return apiRequest<BackofficeAuditPage>(`/api/backoffice/audit?${params.toString()}`);
 }
 
 export async function listBackofficeConsultants() {

@@ -3663,19 +3663,28 @@ async function handleBackofficeListMemberships(c: Context<{ Bindings: Env }>) {
 async function handleBackofficeAudit(c: Context<{ Bindings: Env }>) {
   const actor = await requireBackofficeActor(c);
   if (actor instanceof Response) return actor;
+  const pageSize = parseBoundedInteger(c.req.query("limit"), 50, 10, 100);
+  const offset = parseBoundedInteger(c.req.query("offset"), 0, 0, 100_000);
+  if (pageSize === null || offset === null) return c.json({ error: "invalid_query" }, 400);
   const scope = await resolveStaffScope(c.env, actor.id);
   if (!scope) return c.json({ error: "forbidden" }, 403);
   // audit.read is held by admin + consultant only; support is limited to practice.read.
   if (scope.role === "support") return c.json({ error: "forbidden" }, 403);
 
   let path =
-    "/rest/v1/backoffice_audit_events?select=id,actor_user_id,action,target_type,target_id,practice_id,result,request_id,created_at&order=created_at.desc&limit=200";
+    `/rest/v1/backoffice_audit_events?select=id,actor_user_id,action,target_type,target_id,practice_id,result,request_id,created_at&order=created_at.desc,id.desc&limit=${pageSize + 1}&offset=${offset}`;
   if (scope.practiceIds !== "all") {
-    if (scope.practiceIds.length === 0) return c.json({ events: [] });
+    if (scope.practiceIds.length === 0) {
+      return c.json({ events: [], page: { offset, limit: pageSize, hasMore: false, nextOffset: null } });
+    }
     path += `&practice_id=in.(${scope.practiceIds.map(encodeURIComponent).join(",")})`;
   }
   const rows = await supabaseRest<unknown[]>(c.env, path, { method: "GET" });
-  return c.json({ events: rows });
+  const hasMore = rows.length > pageSize;
+  return c.json({
+    events: rows.slice(0, pageSize),
+    page: { offset, limit: pageSize, hasMore, nextOffset: hasMore ? offset + pageSize : null }
+  });
 }
 
 async function requirePlatformAdmin(c: Context<{ Bindings: Env }>) {

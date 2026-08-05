@@ -129,6 +129,10 @@ export type BackofficeAuditEvent = {
   request_id: string | null;
   created_at: string;
 };
+export type BackofficeAuditPage = {
+  events: BackofficeAuditEvent[];
+  page: { offset: number; limit: number; hasMore: boolean; nextOffset: number | null };
+};
 export type BackofficeConsultant = { user_id: string; email: string; status: "active" | "suspended" };
 export type BackofficeConsultantAssignment = {
   id: string; staff_user_id: string; email: string; assignment_purpose: string | null;
