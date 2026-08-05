@@ -21,8 +21,12 @@ var mockLoadDashboardData = jest.fn();
 
 function renderDashboard(client: QueryClient): ReactTestRenderer {
   return renderer.create(
-    React.createElement(QueryClientProvider, { client }, React.createElement(DashboardScreen))
+    React.createElement(QueryClientProvider, { client }, React.createElement(DashboardScreen, { queryGcTime: Infinity }))
   );
+}
+
+function unmountRenderer(tree: ReactTestRenderer): void {
+  (tree as unknown as { unmount(): void }).unmount();
 }
 
 function newQueryClient(): QueryClient {
@@ -140,6 +144,11 @@ describe("DashboardScreen", () => {
     expect(text.includes("Mo")).toBe(false);
     expect(text.includes("62")).toBe(false);
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
+
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
   });
 
   it("zeigt nach einem Fragebogen-Abschluss den echten Score und keine Demo-History", async () => {
@@ -161,6 +170,11 @@ describe("DashboardScreen", () => {
     expect(text.includes("Mo:62")).toBe(false);
     expect(text.includes("Di:66")).toBe(false);
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
+
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
   });
 
   // PERF-05: a fast unmount+remount against the same QueryClient must not re-fetch — the cached
@@ -169,16 +183,21 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
+    let second: ReactTestRenderer;
 
     await act(async () => {
       const first = renderDashboard(client);
       await flushQuery();
-      (first as unknown as { unmount(): void }).unmount();
-      renderDashboard(client);
+      unmountRenderer(first);
+      second = renderDashboard(client);
       await flushQuery();
     });
 
     expect(mockLoadDashboardData.mock.calls.length).toBe(1);
+    await act(async () => {
+      unmountRenderer(second!);
+      client.clear();
+    });
   });
 });
 

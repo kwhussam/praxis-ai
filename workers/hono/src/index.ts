@@ -469,12 +469,13 @@ export async function fetchWithTimeout(
 ) {
   const service = options.service ?? "upstream";
   const timeoutMs = options.timeoutMs ?? OUTBOUND_TIMEOUT_MS.supabase;
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
 
   try {
-    return await fetch(input, { ...init, signal: timeoutSignal });
+    return await fetch(input, { ...init, signal: timeoutController.signal });
   } catch (error) {
-    if (timeoutSignal.aborted) {
+    if (timeoutController.signal.aborted) {
       const timeoutError = new OutboundRequestTimeoutError(service, timeoutMs);
       console.error("outbound_timeout", {
         service,
@@ -483,6 +484,8 @@ export async function fetchWithTimeout(
       throw timeoutError;
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

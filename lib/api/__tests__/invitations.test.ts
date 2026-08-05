@@ -20,7 +20,7 @@ jest.mock("@/lib/api/client", () => {
 
 import { apiRequest } from "@/lib/api/client";
 import { ApiError, ApiTimeoutError } from "@/lib/api/client";
-import { newRedeemIds, redeemInvitation, shouldResetRedeemAttempt } from "@/lib/api/invitations";
+import { newRedeemIds, redeemInvitation, shouldClearPendingInvitation, shouldResetRedeemAttempt } from "@/lib/api/invitations";
 
 function getCalls() {
   return (apiRequest as unknown as { mock: { calls: unknown[][] } }).mock.calls;
@@ -53,5 +53,15 @@ describe("invitation redeem client", () => {
     expect(shouldResetRedeemAttempt(new ApiError("rate limited", 429))).toBe(false);
     expect(shouldResetRedeemAttempt(new ApiError("server", 500))).toBe(false);
     expect(shouldResetRedeemAttempt(new ApiError("terminal", 400))).toBe(true);
+  });
+
+  it("clears persisted codes only after terminal non-login responses", () => {
+    for (const status of [400, 403, 409, 410]) {
+      expect(shouldClearPendingInvitation(new ApiError("terminal", status))).toBe(true);
+    }
+    expect(shouldClearPendingInvitation(new ApiError("login required", 401))).toBe(false);
+    expect(shouldClearPendingInvitation(new ApiError("rate limited", 429))).toBe(false);
+    expect(shouldClearPendingInvitation(new ApiError("server", 500))).toBe(false);
+    expect(shouldClearPendingInvitation(new Error("network"))).toBe(false);
   });
 });

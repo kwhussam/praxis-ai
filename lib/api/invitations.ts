@@ -26,6 +26,15 @@ export function shouldResetRedeemAttempt(error: unknown) {
   return error instanceof ApiError && [400, 401, 403, 409, 410].includes(error.status);
 }
 
+// Terminale Antworten, bei denen derselbe Code nicht mehr erfolgreich
+// eingelöst werden kann, dürfen nicht im gerätegebundenen Übergabespeicher
+// verbleiben. 401 ist ausgenommen: Nach dem Login soll derselbe Versuch
+// fortgesetzt werden können. Transportfehler, 429 und 5xx bleiben ebenfalls
+// für einen idempotenten Retry erhalten.
+export function shouldClearPendingInvitation(error: unknown) {
+  return error instanceof ApiError && [400, 403, 409, 410].includes(error.status);
+}
+
 // Löst einen Einladungs-Einmalcode über den serverseitig autorisierten Worker
 // ein. Der Klartextcode geht nur an den Worker (dort HMAC-Prüfung); die
 // Session-Identität wird automatisch über das Supabase-Token gebunden.

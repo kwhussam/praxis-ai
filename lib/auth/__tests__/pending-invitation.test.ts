@@ -31,4 +31,11 @@ describe("pending invitation handoff", () => {
     await clearPendingInvitationCode();
     mockAvailable = true;
   });
+
+  it("removes a malformed persisted value instead of repeatedly loading it", async () => {
+    mockValues.set("praxisshield.pending-invitation.v1", "not-a-valid-code");
+
+    expect(await getPendingInvitationCode()).toBeNull();
+    expect(mockValues.size).toBe(0);
+  });
 });

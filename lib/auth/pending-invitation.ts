@@ -19,7 +19,11 @@ export async function getPendingInvitationCode() {
   if (memoryCode) return memoryCode;
   if (!(await secureStoreAvailable())) return null;
   const value = await SecureStore.getItemAsync(KEY, options());
-  if (!value || !CODE_PATTERN.test(value)) return null;
+  if (!value) return null;
+  if (!CODE_PATTERN.test(value)) {
+    await SecureStore.deleteItemAsync(KEY, options());
+    return null;
+  }
   memoryCode = value;
   return value;
 }

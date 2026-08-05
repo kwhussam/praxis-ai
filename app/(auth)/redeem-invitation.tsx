@@ -8,7 +8,7 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { ApiError } from "@/lib/api/client";
-import { newRedeemIds, redeemInvitation, shouldResetRedeemAttempt, type RedeemIds } from "@/lib/api/invitations";
+import { newRedeemIds, redeemInvitation, shouldClearPendingInvitation, shouldResetRedeemAttempt, type RedeemIds } from "@/lib/api/invitations";
 import { clearPendingInvitationCode, getPendingInvitationCode, savePendingInvitationCode } from "@/lib/auth/pending-invitation";
 import { supabase } from "@/lib/supabase/client";
 import { loadAccessiblePracticeForUser, useSessionStore } from "@/lib/store/session";
@@ -66,7 +66,8 @@ export default function RedeemInvitationScreen() {
       const mapped = messageForError(err);
       setError(mapped.text);
       setNeedsLogin(mapped.needsLogin);
-      if (mapped.needsLogin) await savePendingInvitationCode(normalized);
+      if (shouldClearPendingInvitation(err)) await clearPendingInvitationCode();
+      else if (mapped.needsLogin) await savePendingInvitationCode(normalized);
       if (shouldResetRedeemAttempt(err)) attempt.current = null;
     } finally {
       setPending(false);

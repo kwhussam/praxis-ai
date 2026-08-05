@@ -16,7 +16,7 @@ import type { DashboardData, DashboardHistoryPoint } from "@/lib/dashboard/types
 import { guidanceFromScoreReport } from "@/lib/security/practiceGuidance";
 import { useSessionStore } from "@/lib/store/session";
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcTime?: number }) {
   const practice = useSessionStore((state) => state.practice);
   const practiceId = practice?.id ?? null;
   // PERF-05: dashboard data now flows through React Query instead of a manual useEffect fetch.
@@ -32,7 +32,7 @@ export default function DashboardScreen() {
     queryFn: () => loadDashboardData(practiceId as string),
     enabled: Boolean(practiceId),
     staleTime: 60_000,
-    gcTime: 5 * 60_000,
+    gcTime: queryGcTime,
     retry: 2
   });
   // With enabled=false (no practice), React Query stays "pending"; treat that as not-loading.
