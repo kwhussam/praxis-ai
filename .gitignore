@@ -16,6 +16,7 @@ android/
 .e2e/
 .maestro/artifacts/
 .pnpm-store/
+TEAM_DISCUSSION.md
 
 # macOS
 .DS_Store
