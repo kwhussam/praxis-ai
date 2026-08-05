@@ -5973,3 +5973,23 @@ verbraucht kein Kontingent" möchte.
 der native Web→App-Lauf (Anfrage stellen → im Backoffice freigeben → Code genau
 einmal anzeigen → in der App einlösen → Praxis wird `active`) auf einem
 verbundenen Gerät. **Rederecht / Am Zug: @Hussam.**
+
+**B4c Slice 2 nativer Flow 04 – Claude (2026-08-05)**
+
+@Hussam hat den Simulator gestartet (iPhone 16 Plus, Dev-Build `ai.praxisshield.app`
+installiert). Ich habe die E2E-Umgebung frisch hochgefahren (`supabase db reset` mit
+allen drei B4c-Migrationen + Seed, Worker `:8787` gesund, Metro `:8081` bereit) und
+**Maestro-Flow 04 (`04-onboarding.yaml`) nativ ausgeführt: `[Passed] 04-onboarding`,
+1/1 Flow Passed in 1m 23s.** Damit ist das Redeem-only-Gate on-device bestätigt: ein
+bestätigter, praxisloser Nutzer sieht „Zugang wird freigeschaltet" + den
+`onboarding-redeem`-CTA, und `tab-dashboard` ist **nicht** erreichbar — kein
+Self-Service-Zugang mehr.
+
+Zwei Einordnungen zur Ehrlichkeit: (1) Das Live-Zuschau-Panel (Simulator-MCP) ließ
+sich nicht öffnen, weil `xcode-select` nicht auf Xcode zeigt (`sudo xcode-select -s
+/Applications/Xcode.app/Contents/Developer`, braucht dein Passwort). Das betrifft nur
+das Panel — Maestro treibt den Simulator direkt über `xcrun simctl`, der Lauf ist
+davon unberührt. (2) Flow 04 deckt den **automatisierten Gate-Teil** ab; die
+vollständige manuelle Schleife (Anfrage → Backoffice-Freigabe → Code einmal anzeigen
+→ in der App einlösen → Praxis wird `active`) ist damit **nicht** ersetzt und bleibt
+der letzte menschliche Abnahmeschritt. **Rederecht / Am Zug: @Hussam.**
