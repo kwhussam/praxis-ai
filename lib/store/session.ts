@@ -65,10 +65,28 @@ export async function initSession() {
   return normalizedPractice;
 }
 
-export async function loadAccessiblePracticeForUser(userId: string): Promise<Practice | null> {
+export async function loadAccessiblePracticeForUser(userId: string, targetPracticeId?: string): Promise<Practice | null> {
   // B4c (E-039): Nur eine AKTIVE Praxis gewährt Zugang. Ein `draft`/`invited`
   // Eintrag (oder suspended/archived) darf nie ins Dashboard führen – der Zugang
   // entsteht erst nach Einlösung eines Admin-Aktivierungscodes.
+  // Nach einem Invitation-Redeem liefert der Server die autoritative Zielpraxis.
+  // Diese wird separat autorisiert, damit bei Multi-Praxis-Nutzern nicht eine
+  // bereits vorhandene eigene oder zuletzt gewährte Praxis ausgewählt wird.
+  if (targetPracticeId) {
+    const { data: target, error: targetError } = await supabase.from("practices")
+      .select("id,owner_id,name,domain,email,plan,white_label_partner_id").eq("id", targetPracticeId).eq("onboarding_status", "active").maybeSingle();
+    if (targetError) throw targetError;
+    const targetRow = target && typeof target === "object" && !Array.isArray(target) ? target as Record<string, unknown> : null;
+    const targetPractice = normalizePractice(target);
+    if (!targetPractice) return null;
+    if (targetRow?.owner_id === userId) return targetPractice;
+
+    const { data: targetMembership, error: membershipError } = await supabase.from("practice_memberships")
+      .select("practice_id").eq("user_id", userId).eq("practice_id", targetPracticeId).eq("status", "active").maybeSingle();
+    if (membershipError) throw membershipError;
+    return targetMembership ? targetPractice : null;
+  }
+
   const { data: owned, error: ownerError } = await supabase.from("practices")
     .select("id,name,domain,email,plan,white_label_partner_id").eq("owner_id", userId).eq("onboarding_status", "active").maybeSingle();
   if (ownerError) throw ownerError;

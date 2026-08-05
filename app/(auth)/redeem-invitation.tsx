@@ -57,8 +57,8 @@ export default function RedeemInvitationScreen() {
       const result = await redeemInvitation(normalized, attempt.current.ids);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("redeem_session_missing");
-      const practice = await loadAccessiblePracticeForUser(user.id);
-      if (!practice || practice.id !== result.practice_id) throw new Error("redeemed_practice_not_accessible");
+      const practice = await loadAccessiblePracticeForUser(user.id, result.practice_id);
+      if (!practice) throw new Error("redeemed_practice_not_accessible");
       setPractice(practice);
       await clearPendingInvitationCode();
       router.replace("/(tabs)/dashboard");

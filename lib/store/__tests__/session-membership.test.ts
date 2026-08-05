@@ -51,4 +51,29 @@ describe("membership-aware session practice resolution", () => {
     mockRows.practice_memberships = [{ user_id: "member-2", practice_id: "practice-inv", status: "active", granted_at: "2026-08-01" }];
     expect(await loadAccessiblePracticeForUser("member-2")).toBeNull();
   });
+
+  it("lädt nach Invitation-Redeem gezielt die autorisierte Zielpraxis eines Multi-Praxis-Nutzers", async () => {
+    mockRows.practices = [
+      { id: "practice-old", owner_id: "member-3", name: "Eigene Praxis", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "active" },
+      { id: "practice-target", owner_id: "owner-target", name: "Zielpraxis", domain: null, email: null, plan: "monitoring", white_label_partner_id: null, onboarding_status: "active" }
+    ];
+    mockRows.practice_memberships = [
+      { user_id: "member-3", practice_id: "practice-target", status: "active", granted_at: "2026-08-05" }
+    ];
+
+    expect(await loadAccessiblePracticeForUser("member-3", "practice-target")).toMatchObject({
+      id: "practice-target",
+      name: "Zielpraxis",
+      plan: "monitoring"
+    });
+  });
+
+  it("verweigert eine angeforderte Zielpraxis ohne Ownership oder aktive Mitgliedschaft", async () => {
+    mockRows.practices = [
+      { id: "practice-other", owner_id: "owner-other", name: "Fremde Praxis", domain: null, email: null, plan: "free", white_label_partner_id: null, onboarding_status: "active" }
+    ];
+    mockRows.practice_memberships = [];
+
+    expect(await loadAccessiblePracticeForUser("member-4", "practice-other")).toBeNull();
+  });
 });
