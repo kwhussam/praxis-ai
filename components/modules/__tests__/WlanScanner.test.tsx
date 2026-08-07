@@ -183,6 +183,8 @@ describe("WlanScanner", () => {
 
     await waitForText(screen, "Scan konnte nicht gespeichert werden. Bitte erneut versuchen.");
     expect(findText(screen.root, "Speichern erneut versuchen")).toBeDefined();
+    expect(allText(screen.root)).toContain("Auf diesem Gerät nicht unterstützt: sichtbare WLAN-Netze, native Geräteerkennung");
+    expect(allText(screen.root)).toContain("Prüfabdeckung der unterstützten Sensoren: 100% (1/1)");
 
     const firstErrorCall = consoleError.mock.calls[0];
     expect(firstErrorCall[0]).toBe("WLAN scan sync threw an unexpected error");
@@ -240,6 +242,19 @@ function allText(root: ReactTestInstance) {
 function minimalScanResult() {
   return {
     connectedDevices: [],
+    collection: {
+      currentWifi: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", freshness: "fresh" },
+      visibleWifiNetworks: { status: "unsupported", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
+      localDevices: { status: "unsupported", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
+    },
+    coverage: {
+      score: 100,
+      status: "sufficient",
+      active: 1,
+      total: 1,
+      missing: [],
+      unsupported: ["visibleWifiNetworks", "localDevices"]
+    },
     dnsServers: ["192.168.1.1"],
     findings: {
       connectedDevices: { source: "network_probe" },

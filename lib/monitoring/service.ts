@@ -227,7 +227,7 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
       unknown: 3
     },
     checks: {},
-    coverage: { score: 100, status: "sufficient", active: 6, total: 6, missing: [] },
+    coverage: { score: 100, status: "sufficient", active: 6, total: 6, missing: [], unsupported: [] },
     checked_at: now.toISOString()
   };
 
@@ -299,12 +299,15 @@ function readMonitoringCoverage(checks: Record<string, unknown>): MonitoringCove
     total: readNumber(coverage, "total", 0),
     missing: Array.isArray(coverage.missing)
       ? coverage.missing.filter((item): item is string => typeof item === "string")
+      : [],
+    unsupported: Array.isArray(coverage.unsupported)
+      ? coverage.unsupported.filter((item): item is string => typeof item === "string")
       : []
   };
 }
 
 function emptyMonitoringCoverage(): MonitoringCoverage {
-  return { score: 0, status: "insufficient", active: 0, total: 0, missing: [] };
+  return { score: 0, status: "insufficient", active: 0, total: 0, missing: [], unsupported: [] };
 }
 
 function normalizeEvent(row: unknown): MonitoringEvent {

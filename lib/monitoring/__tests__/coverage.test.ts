@@ -14,6 +14,7 @@ describe("monitoring coverage", () => {
     expect(coverage.score).toBe(33);
     expect(coverage.status).toBe("insufficient");
     expect(coverage.missing).toEqual(["shodan", "hibp", "virusTotal", "securityTrails"]);
+    expect(coverage.unsupported).toEqual([]);
   });
 
   it("marks complete provider execution as sufficient", () => {

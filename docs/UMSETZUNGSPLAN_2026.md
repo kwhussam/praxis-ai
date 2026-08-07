@@ -845,15 +845,16 @@ Stand: **2026-08-07**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
 | SP1-07 | review | ADR-001 und nicht ausführbarer Schemaentwurf mit Datenklassen, Schlüsseln, Retention, Dual-Read, Backfill, Rollback und Abbruchgates erstellt | Reviews und Checkboxen in ADR-001; vor Freigabe keine Migration |
 
-Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **360 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
+Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **361 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
 
 ### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review
 
-Das Review von Commit `60cc363` wurde am 2026-08-07 umgesetzt:
+Die Reviews der Commits `60cc363` und `6df194f` wurden am 2026-08-07 umgesetzt:
 
 - Kritische Monitoringwarnungen haben auch bei unzureichender Coverage Vorrang; fehlende Messquellen werden zusätzlich, nicht anstelle des Alarms genannt.
 - Nach einem App-Neustart wird der letzte autoritative Fragebogencheck serverseitig beziehungsweise über den Dashboard-Read-Pfad wiedergefunden. Der Worker bindet den erzeugten Bericht und die Antwort an die tatsächlich verwendete Check-ID.
 - Neue Berichte tragen `facts_version`, `scoring_version` und `assessment_profile`. Die noch offene Snapshotmigration bleibt notwendig, damit spätere Engineversionen historische Bewertungen nicht neu interpretieren.
+- Der SP1-02-Review-Fund zur iOS-Coverage ist behoben: plattformbedingt `unsupported` wird aus dem erreichbaren Nenner entfernt, separat persistiert und in der WLAN-Oberfläche ausdrücklich als nicht unterstützt ausgewiesen. Fehlende, verweigerte oder fehlgeschlagene unterstützte Messungen bleiben im Nenner und verhindern weiterhin falsche Vollabdeckung.
 - `overall_risk=critical` setzt jetzt einen bestätigten kritischen Kernbefund voraus; ein roter Score ohne solchen Befund wird als `high` eingeordnet.
 - Coverage liegt in einem neutralen Assessment-Modul statt einer Security→Monitoring-Abhängigkeit; tote Tarifkartenstyles wurden entfernt.
 

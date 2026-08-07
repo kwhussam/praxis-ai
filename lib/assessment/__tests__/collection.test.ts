@@ -52,13 +52,29 @@ describe("shared assessment collection contract", () => {
     expect(collectionStatusForProvider("timeout")).toBe("timeout");
   });
 
-  it("calculates coverage only from truly collected sensors", () => {
+  it("excludes unsupported capabilities from the denominator and reports them separately", () => {
     expect(calculateCollectionCoverage({ wifi: "collected", devices: "timeout", router: "unsupported" })).toEqual({
-      score: 33,
+      score: 50,
       status: "insufficient",
       active: 1,
-      total: 3,
-      missing: ["devices", "router"]
+      total: 2,
+      missing: ["devices"],
+      unsupported: ["router"]
+    });
+  });
+
+  it("allows iOS full coverage for all capabilities actually supported there", () => {
+    expect(calculateCollectionCoverage({
+      currentWifi: "collected",
+      visibleWifiNetworks: "unsupported",
+      localDevices: "unsupported"
+    })).toEqual({
+      score: 100,
+      status: "sufficient",
+      active: 1,
+      total: 1,
+      missing: [],
+      unsupported: ["visibleWifiNetworks", "localDevices"]
     });
   });
 });

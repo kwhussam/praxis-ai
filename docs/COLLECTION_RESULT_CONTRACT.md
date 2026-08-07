@@ -62,7 +62,15 @@ Ein `WlanScanResult` enthält ab jetzt:
 - `collection.currentWifi`;
 - `collection.visibleWifiNetworks`;
 - `collection.localDevices`;
-- `coverage` mit Anteil erfolgreich erhobener Sensoren und Liste fehlender Quellen.
+- `coverage` mit Anteil erfolgreich erhobener, auf der Plattform unterstützter
+  Sensoren sowie getrennten Listen für fehlende und nicht unterstützte Quellen.
+
+`unsupported` wird analog zu `not_applicable` aus dem Nenner entfernt. Damit
+kann iOS für alle dort tatsächlich verfügbaren Sensoren vollständige Coverage
+erreichen. Die nicht durch öffentliche iOS-APIs erlaubten Prüfungen werden in
+`coverage.unsupported` und in der Oberfläche ausdrücklich als „Auf diesem Gerät
+nicht unterstützt“ ausgewiesen. Ein System ganz ohne unterstützte Sensoren
+erhält weiterhin keine ausreichende Coverage.
 
 Die relevanten `WlanFinding`-Objekte tragen Collection-Status, Grund,
 Beobachtungszeit, Ablaufzeit und Freshness weiter. Nicht erfolgreiche Sensoren
@@ -80,8 +88,9 @@ Monitoring verwendet denselben Grundvertrag:
 | `unavailable` | `unavailable` |
 | `timeout` | `timeout` |
 
-Coverage zählt ausschließlich `collected`. Neue Sensorfamilien sollen ihre
-Coverage über `calculateCollectionCoverage` berechnen.
+Coverage zählt im Nenner ausschließlich unterstützte Sensoren und im Zähler
+ausschließlich `collected`. Neue Sensorfamilien sollen ihre Coverage über
+`calculateCollectionCoverage` berechnen.
 
 ## 6. Release-Gates
 

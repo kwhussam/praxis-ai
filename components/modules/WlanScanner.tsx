@@ -757,9 +757,25 @@ function FindingRow({ label, source }: { label: string; source: WlanScanResult["
 }
 
 function Methodology({ result }: { result: WlanScanResult }) {
+  const unsupported = result.coverage.unsupported ?? [];
+  const coverageLabel = result.coverage.total === 0
+    ? "Prüfabdeckung: Auf diesem Gerät sind diese Sensoren nicht verfügbar"
+    : `Prüfabdeckung der unterstützten Sensoren: ${result.coverage.score}% (${result.coverage.active}/${result.coverage.total})`;
+
   return (
     <View style={styles.methodologyBox}>
       <Text style={styles.methodologyTitle}>So wurde geprüft</Text>
+      <Text style={styles.methodologyText} testID="wlan-coverage-summary">{coverageLabel}</Text>
+      {unsupported.length > 0 ? (
+        <Text style={styles.methodologyText} testID="wlan-unsupported-capabilities">
+          Auf diesem Gerät nicht unterstützt: {unsupported.map(collectionSensorLabel).join(", ")}
+        </Text>
+      ) : null}
+      {result.coverage.missing.length > 0 ? (
+        <Text style={styles.methodologyText} testID="wlan-missing-capabilities">
+          Noch nicht erfolgreich erhoben: {result.coverage.missing.map(collectionSensorLabel).join(", ")}
+        </Text>
+      ) : null}
       <FindingRow label={`Adressdienst: ${result.dnsServers.length || "nicht sichtbar"}`} source={result.findings.dnsServers.source} />
       <FindingRow label={`Erreichbare Routerdienste: ${result.findings.openPorts.value.length}`} source={result.findings.openPorts.source} />
       <FindingRow
@@ -771,6 +787,13 @@ function Methodology({ result }: { result: WlanScanResult }) {
       ))}
     </View>
   );
+}
+
+function collectionSensorLabel(sensor: string) {
+  if (sensor === "currentWifi") return "aktuelles WLAN";
+  if (sensor === "visibleWifiNetworks") return "sichtbare WLAN-Netze";
+  if (sensor === "localDevices") return "native Geräteerkennung";
+  return sensor;
 }
 
 function SecurityCheckList({ findings }: { findings: NetworkSecurityFinding[] }) {
