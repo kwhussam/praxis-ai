@@ -18,9 +18,10 @@ jest.mock("react-native", () => ({
   Platform: { OS: "ios" }
 }));
 jest.mock("@/lib/security/nativeWifi", () => ({
-  getCurrentWifiSsid: async () => "Praxis-WLAN",
-  scanLocalDevices: async () => [],
-  scanVisibleWifiNetworks: async () => []
+  WIFI_OBSERVATION_TTL_MS: 300000,
+  collectCurrentWifiSsid: async () => ({ status: "collected", value: "Praxis-WLAN", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" }),
+  collectLocalDevices: async () => ({ status: "collected", value: [], observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:10:00.000Z", freshness: "fresh" }),
+  collectVisibleWifiNetworks: async () => ({ status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" })
 }));
 jest.mock("@/lib/security/networkProbes", () => ({
   getNativeWifiSecurityDetails: async () => null,
@@ -44,7 +45,22 @@ jest.mock("@/lib/api/supabase", () => ({
   }
 }));
 
-import { syncWlanScanResultToSupabase, type WlanScanResult } from "@/lib/security/wlan";
+import { runWlanSecurityScan, syncWlanScanResultToSupabase, type WlanScanResult } from "@/lib/security/wlan";
+
+describe("WLAN collection contract", () => {
+  it("surfaces platform limitations and coverage instead of treating them as empty measurements", async () => {
+    const result = await runWlanSecurityScan({ phaseDelayMs: 0, phaseIds: ["network_info"] });
+
+    expect(result.networkName).toBe("Praxis-WLAN");
+    expect(result.collection.currentWifi.status).toBe("collected");
+    expect(result.collection.visibleWifiNetworks.status).toBe("unsupported");
+    expect(result.collection.localDevices.status).toBe("not_checked");
+    expect(result.coverage).toMatchObject({ score: 33, status: "insufficient" });
+    expect(result.findings.networkName.collection_status).toBe("collected");
+    expect(result.findings.securityProtocol.collection_status).toBe("unsupported");
+    expect(result.methodology.some((line) => line.includes("visibleWifiNetworks: unsupported"))).toBe(true);
+  });
+});
 
 describe("syncWlanScanResultToSupabase", () => {
   it("treats a duplicate client_sync_id as an idempotent retry when the existing row is visible", async () => {
@@ -84,6 +100,12 @@ function minimalScanResult(): WlanScanResult {
     },
     timestamp: new Date("2026-07-14T12:00:00.000Z"),
     findings: {} as WlanScanResult["findings"],
-    methodology: []
+    methodology: [],
+    collection: {
+      currentWifi: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" },
+      visibleWifiNetworks: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
+      localDevices: { status: "not_checked", reason: "Nicht ausgeführt", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
+    },
+    coverage: { score: 33, status: "insufficient", active: 1, total: 3, missing: ["visibleWifiNetworks", "localDevices"] }
   };
 }

@@ -1,25 +1,24 @@
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
+import {
+  deriveEvidenceFreshness,
+  hasInvalidEvidenceWindow,
+  type CollectionStatus,
+  type EvidenceFreshness
+} from "@/lib/assessment/collection";
 
-// W4 führt profilabhängige Applicability ein. Dadurch kann dieselbe Evidenz je
-// Profil einen anderen Nenner ergeben; die Version muss deshalb von W3 abweichen.
-export const SCORING_VERSION = "2.1.0";
+export type { CollectionStatus, EvidenceFreshness } from "@/lib/assessment/collection";
+
+// 2.2 führt die bewertungsrelevante Freshness-Semantik ein: abgelaufene Evidenz
+// wird unknown und erhält keine Punkte. Historische Ergebnisse bleiben über die
+// persistierte Scoring-Version reproduzierbar.
+export const SCORING_VERSION = "2.2.0";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";
 export type SecurityCategory = "access_control" | "backup" | "email_security" | "network" | "dsgvo" | "updates";
 export type EvidenceSource = "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
 export type EvidenceKind = "technical_evidence" | "derived_signal" | "claim" | "missing";
-// Erhebungszustand ist von der fachlichen Evidenzquelle getrennt. Ein Sensorfehler
-// darf dadurch weder als negativer Befund noch als bestandene Kontrolle erscheinen.
-export type CollectionStatus =
-  | "collected"
-  | "not_checked"
-  | "unsupported"
-  | "permission_denied"
-  | "timeout"
-  | "error"
-  | "unavailable";
 export type ReviewStatus = "ok" | "review_required";
 export type AssessmentProfile = "general" | "health";
 export type CategoryApplicability = "applicable" | "not_applicable";
@@ -69,6 +68,7 @@ export type ScoreInput = {
 
 export type CheckData = {
   observed_at?: string;
+  expires_at?: string;
   assessment_profile?: AssessmentProfile;
   mfa_enabled?: boolean;
   backup_tested?: boolean;
@@ -118,6 +118,7 @@ export interface RuleEvaluation {
   control_ids?: string[];
   observed_at?: string;
   expires_at?: string;
+  freshness?: EvidenceFreshness;
   disposition?: Disposition;
   // management_recommendation läuft parallel zu recommendation, bis alle Regeln migriert sind (§2, Phase 3).
   management_recommendation?: string;
@@ -681,10 +682,12 @@ export function deriveControlStatus(input: {
   source: EvidenceSource;
   applicability: Applicability;
   collectionStatus?: CollectionStatus;
+  freshness?: EvidenceFreshness;
 }): ControlStatus {
   if (input.applicability === "not_applicable") return "not_applicable";
   const collectionStatus = input.collectionStatus ?? collectionStatusForEvidence(input.source);
   if (collectionStatus !== "collected") return "unknown";
+  if (input.freshness === "stale") return "unknown";
   if (input.source === "not_checked" || input.source === "unavailable") return "unknown";
   if (input.applicability === "conditional") return "unknown";
   return input.passed ? "met" : "not_met";
@@ -741,8 +744,30 @@ function buildResult(input: {
   applicabilityReason?: string;
   controlIds?: string[];
 }): RuleEvaluation {
-  const missingEvidence = input.evidenceCoverage.source === "not_checked" || input.evidenceCoverage.source === "unavailable";
-  const rawPoints = missingEvidence ? 0 : Math.max(0, Math.min(input.max, input.earned));
+  const collectionStatus = input.evidenceCoverage.collection_status
+    ?? collectionStatusForEvidence(input.evidenceCoverage.source);
+  const evaluationTime = new Date();
+  const observedAt = input.data.observed_at ?? evaluationTime.toISOString();
+  const evidenceWindow = { observed_at: observedAt, expires_at: input.data.expires_at };
+  const freshness = deriveEvidenceFreshness(evidenceWindow, evaluationTime);
+  const invalidFreshness = hasInvalidEvidenceWindow(evidenceWindow, evaluationTime);
+  const effectiveCollectionStatus: CollectionStatus = invalidFreshness ? "error" : collectionStatus;
+  const missingSource = input.evidenceCoverage.source === "not_checked"
+    || input.evidenceCoverage.source === "unavailable";
+  const unusableEvidence = missingSource
+    || collectionStatus !== "collected"
+    || freshness === "stale"
+    || invalidFreshness;
+  const effectiveCoverage: EvidenceCoverage = unusableEvidence
+    ? {
+        ...input.evidenceCoverage,
+        kind: "missing",
+        collection_status: effectiveCollectionStatus,
+        score: 0,
+        confidence: 0
+      }
+    : { ...input.evidenceCoverage, collection_status: effectiveCollectionStatus };
+  const rawPoints = unusableEvidence ? 0 : Math.max(0, Math.min(input.max, input.earned));
   const cappedPoints =
     input.evidenceCoverage.source === "self_reported"
       ? Math.min(rawPoints, input.max * SELF_REPORTED_POINT_CAP_RATIO)
@@ -752,13 +777,14 @@ function buildResult(input: {
     ? [`Selbstauskunft wird als Claim behandelt und auf ${SELF_REPORTED_POINT_CAP_RATIO * 100}% der Regelpunkte begrenzt.`]
     : [];
 
-  const effectivePassed = missingEvidence ? false : input.passed;
+  const effectivePassed = unusableEvidence ? false : input.passed;
   const applicability: Applicability = input.applicability ?? "applicable";
   const status = deriveControlStatus({
     passed: effectivePassed,
     source: input.evidenceCoverage.source,
     applicability,
-    collectionStatus: input.evidenceCoverage.collection_status
+    collectionStatus: effectiveCollectionStatus,
+    freshness
   });
   const applicabilityReasons = controlApplicabilityReviewReasons({
     applicability,
@@ -769,9 +795,15 @@ function buildResult(input: {
     status,
     source: input.evidenceCoverage.source
   });
-  const reviewReasons = [...capReason, ...applicabilityReasons, ...coreReasons];
-  const reviewRequired = applicabilityReasons.length > 0 || coreReasons.length > 0;
-  const recommendation = missingEvidence || !input.passed || capApplied ? input.recommendation : undefined;
+  const collectionReasons = collectionReviewReasons(
+    collectionStatus,
+    freshness,
+    invalidFreshness,
+    input.evidenceCoverage.collection_reason
+  );
+  const reviewReasons = [...capReason, ...applicabilityReasons, ...coreReasons, ...collectionReasons];
+  const reviewRequired = applicabilityReasons.length > 0 || coreReasons.length > 0 || collectionReasons.length > 0;
+  const recommendation = unusableEvidence || !input.passed || capApplied ? input.recommendation : undefined;
 
   return {
     rule_id: input.ruleId,
@@ -782,7 +814,7 @@ function buildResult(input: {
     passed: effectivePassed,
     finding: input.finding,
     evidence: input.evidence,
-    evidence_coverage: input.evidenceCoverage,
+    evidence_coverage: effectiveCoverage,
     evidence_weight_cap_applied: capApplied,
     review_status: reviewRequired ? "review_required" : "ok",
     review_reasons: reviewReasons,
@@ -793,11 +825,31 @@ function buildResult(input: {
     applicability,
     applicability_reason: input.applicabilityReason,
     control_ids: input.controlIds,
-    observed_at: input.data.observed_at ?? new Date().toISOString(),
+    observed_at: observedAt,
+    expires_at: input.data.expires_at,
+    freshness,
     disposition: "open",
     // Spiegelt recommendation rückwärtskompatibel; der Kundenbericht liest nur diese Variante (§2/Abnahmekriterium 4).
     management_recommendation: recommendation
   };
+}
+
+function collectionReviewReasons(
+  status: CollectionStatus,
+  freshness: EvidenceFreshness,
+  invalidFreshness: boolean,
+  reason?: string
+): string[] {
+  if (invalidFreshness) {
+    return ["Die Zeitangaben der Evidenz sind ungültig und müssen neu erhoben werden."];
+  }
+  if (freshness === "stale") {
+    return ["Die Evidenz ist abgelaufen und muss neu erhoben werden."];
+  }
+  if (status === "permission_denied" || status === "timeout" || status === "error" || status === "unavailable") {
+    return [`Evidenzerhebung fehlgeschlagen (${status})${reason ? `: ${reason}` : "."}`];
+  }
+  return [];
 }
 
 function booleanCoverage(data: CheckData, ruleId: ScoringRuleId, value: boolean | undefined, detail: string) {

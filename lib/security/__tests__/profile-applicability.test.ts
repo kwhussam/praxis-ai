@@ -107,8 +107,8 @@ describe("W4 profile applicability", () => {
     expect(confirmed.score).toBeGreaterThan(open.score);
   });
 
-  it("versioniert die erste produktive Profilsemantik getrennt von W3", () => {
-    expect(SCORING_VERSION).toBe("2.1.0");
+  it("versioniert Profil- und Freshness-Semantik getrennt von W3", () => {
+    expect(SCORING_VERSION).toBe("2.2.0");
   });
 
   it("führt Gesundheitsfragen nur im Health-Profil und mappt sie in die Engine", () => {

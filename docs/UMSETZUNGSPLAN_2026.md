@@ -838,14 +838,14 @@ Stand: **2026-08-07**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | Ticket | Status | Gelieferter Stand | Noch offen bis `released` |
 |---|---|---|---|
 | SP1-01 | verification | Golden-Testpraxis, kanonischer Faktenvertrag und Regressionstest; Score 100 bei 115 Rohpunkten vertraglich fixiert | fachliche Freigabe der Fixture-Erwartungen |
-| SP1-02 | in_progress | getrennte Collection-Statuswerte, `observed_at`, Unknown-Mapping und Exhaustiveness-Test im zentralen Scoring | WLAN-/Native-Adapter und einheitlicher Freshness-/`expires_at`-Vertrag |
+| SP1-02 | verification | gemeinsamer diskriminierter Collection-Vertrag für Scoring, Monitoring und WLAN; Native-Adapter unterscheiden `unsupported`, `permission_denied`, `timeout`, `error` und `unavailable`; `observed_at`/`expires_at`/Freshness, WLAN-Coverage und Unknown-/Nullpunkte-Mapping sind getestet und dokumentiert | Android-/iOS-Smoke auf der freigegebenen Gerätematrix, danach Status `released` |
 | SP1-03 | verification | LLM erzeugt keine autoritativen Score-, Ampel-, Kategorie- oder Compliancefakten mehr; serverseitige Faktenprojektion überschreibt Modelloutput | Reportformat-Versionierung im Snapshotpfad aus SP2/SP3 |
 | SP1-04 | verification | Report verlangt gespeicherte Check-ID, lädt den mandantengebundenen Fragebogencheck und berechnet Fakten serverseitig; Clientwerte sind nicht autoritativ | Übergang von `check_id` auf vollständiges Assessment-Manifest/Snapshot in SP2/SP3 |
 | SP1-05 | verification | Dashboardprimärwert und Historie nutzen nur vergleichbare Fragebogenergebnisse; WLAN/Monitoring können ihn nicht ersetzen | finale Praxis-/Techniksicht und A11y-Abnahme in SP2-03 |
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
 | SP1-07 | review | ADR-001 und nicht ausführbarer Schemaentwurf mit Datenklassen, Schlüsseln, Retention, Dual-Read, Backfill, Rollback und Abbruchgates erstellt | Reviews und Checkboxen in ADR-001; vor Freigabe keine Migration |
 
-Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **342 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
+Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **360 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
 
 ### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review
 

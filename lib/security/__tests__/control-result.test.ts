@@ -59,6 +59,18 @@ describe("deriveControlStatus – §5.1 Statusmatrix", () => {
     expect(applicable({ source: "unavailable" })).toBe("unknown");
   });
 
+  it("abgelaufene Evidenz ⇒ unknown, auch wenn die frühere Messung bestanden war", () => {
+    expect(
+      deriveControlStatus({
+        passed: true,
+        source: "measured",
+        applicability: "applicable",
+        collectionStatus: "collected",
+        freshness: "stale"
+      })
+    ).toBe("unknown");
+  });
+
   it("anwendbar + bestanden ⇒ met (auch bei Self-Report)", () => {
     expect(applicable({ passed: true, source: "measured" })).toBe("met");
     expect(applicable({ passed: true, source: "self_reported" })).toBe("met");
@@ -276,6 +288,40 @@ describe("calculateScore – Integration der Matrix (produktiv erreichbare Zust�
     const mfa = report.rule_results.find((rule) => rule.rule_id === "MFA_ENABLED");
     expect(mfa?.status).toBe("not_met");
     expect(typeof mfa?.management_recommendation).toBe("string");
+  });
+
+  it("abgelaufene Evidenz erhält keine Punkte und erzwingt Review", () => {
+    const report = calculateScore({
+      ...FULL_MET,
+      observed_at: "2020-01-01T00:00:00.000Z",
+      expires_at: "2020-01-01T01:00:00.000Z"
+    });
+
+    expect(report.total_points).toBe(0);
+    expect(report.evidence_coverage_score).toBe(0);
+    expect(report.review_status).toBe("review_required");
+    expect(report.rule_results.every((rule) => rule.status === "unknown" || rule.status === "not_applicable")).toBe(true);
+    expect(report.rule_results.every((rule) => rule.freshness === "stale")).toBe(true);
+  });
+
+  it("noch gültige Evidenz bleibt bewertbar", () => {
+    const now = Date.now();
+    const report = calculateScore({
+      ...FULL_MET,
+      observed_at: new Date(now - 60_000).toISOString(),
+      expires_at: new Date(now + 60_000).toISOString()
+    });
+
+    expect(report.total_points).toBeGreaterThan(0);
+    expect(report.rule_results.every((rule) => rule.freshness === "fresh")).toBe(true);
+  });
+
+  it("ungültige Ablaufdaten werden nicht als rückwärtskompatibel fehlende Ablaufdaten akzeptiert", () => {
+    const report = calculateScore({ ...FULL_MET, expires_at: "kein-datum" });
+
+    expect(report.total_points).toBe(0);
+    expect(report.review_status).toBe("review_required");
+    expect(report.rule_results.every((rule) => rule.status === "unknown" || rule.status === "not_applicable")).toBe(true);
   });
 
   it("management_recommendation spiegelt recommendation rückwärtskompatibel", () => {

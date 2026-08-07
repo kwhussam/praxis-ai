@@ -13,6 +13,7 @@ import { ScoreRing } from "@/components/ui/ScoreRing";
 import { VulnerabilityCard } from "@/components/ui/VulnerabilityCard";
 import { colors, riskColors, toneForScore, type RiskTone } from "@/constants/colors";
 import { apiRequest } from "@/lib/api/client";
+import { calculateCollectionCoverage } from "@/lib/assessment/coverage";
 import { useInventoryStore } from "@/lib/store/inventory";
 import { useCheckStore } from "@/lib/store/check";
 import type { QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
@@ -23,6 +24,7 @@ import {
   runWlanSecurityScan,
   SCAN_PHASES,
   syncWlanScanResultToSupabase,
+  wlanCollectionLimitations,
   type DeviceInfo,
   type NetworkSegmentId,
   type NetworkSecurityFinding,
@@ -608,11 +610,31 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
   const securityFindings = Array.from(
     new Map([...previous.securityFindings, ...next.securityFindings].map((finding) => [finding.id, finding])).values()
   );
+  const collection = {
+    currentWifi: next.collection.currentWifi,
+    visibleWifiNetworks: next.collection.visibleWifiNetworks,
+    localDevices: next.collection.localDevices.status === "not_checked"
+      ? previous.collection.localDevices
+      : next.collection.localDevices
+  };
+  const coverage = calculateCollectionCoverage({
+    currentWifi: collection.currentWifi.status,
+    visibleWifiNetworks: collection.visibleWifiNetworks.status,
+    localDevices: collection.localDevices.status
+  });
+  const methodology = Array.from(new Set([...previous.methodology, ...next.methodology]))
+    .filter((line) => !line.startsWith("Erhebung "))
+    .concat(wlanCollectionLimitations(collection));
+  const connectedDevicesFinding = next.collection.localDevices.status === "not_checked"
+    ? previous.findings.connectedDevices
+    : next.findings.connectedDevices;
   return {
     ...previous,
     ...next,
     connectedDevices: devices,
-    methodology: Array.from(new Set([...previous.methodology, ...next.methodology])),
+    collection,
+    coverage,
+    methodology,
     riskScore: calculateWlanRiskScore(vulnerabilities, securityFindings),
     securityFindings,
     vulnerabilities,
@@ -624,7 +646,7 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
     // gemessen, deshalb bleiben die übrigen `next.findings`-Felder korrekt frisch.
     findings: {
       ...next.findings,
-      connectedDevices: { ...next.findings.connectedDevices, value: devices },
+      connectedDevices: { ...connectedDevicesFinding, value: devices },
       securityChecks: { ...next.findings.securityChecks, value: securityFindings }
     }
   };

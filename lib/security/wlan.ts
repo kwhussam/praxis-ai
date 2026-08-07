@@ -3,11 +3,22 @@ import * as Device from "expo-device";
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
+import {
+  collected,
+  collectionMetadata,
+  isCollected,
+  notCollected,
+  type CollectionMetadata,
+  type CollectionResult
+} from "@/lib/assessment/collection";
+import { calculateCollectionCoverage, type CollectionCoverage } from "@/lib/assessment/coverage";
 import type { AccessPoint, KnownDevice, RouterFirewallRule } from "@/lib/inventory/types";
 import {
-  getCurrentWifiSsid,
-  scanLocalDevices,
-  scanVisibleWifiNetworks,
+  collectCurrentWifiSsid,
+  collectLocalDevices,
+  collectVisibleWifiNetworks,
+  WIFI_OBSERVATION_TTL_MS,
+  type NativeNetworkDevice,
   type NativeWifiNetwork
 } from "@/lib/security/nativeWifi";
 import { assessFirewallBaseline, firewallBaselineFinding } from "@/lib/security/firewallBaseline";
@@ -61,7 +72,18 @@ export interface WlanFinding<TValue> {
   source_detail?: string;
   confidence: FindingConfidence;
   measured_at: Date;
+  collection_status?: CollectionMetadata["status"];
+  collection_reason?: string;
+  observed_at?: string;
+  expires_at?: string;
+  freshness?: CollectionMetadata["freshness"];
 }
+
+export type WlanCollectionState = {
+  currentWifi: CollectionMetadata;
+  visibleWifiNetworks: CollectionMetadata;
+  localDevices: CollectionMetadata;
+};
 
 export type WlanVulnCategory =
   | "encryption"
@@ -143,6 +165,8 @@ export interface WlanScanResult {
     securityChecks: WlanFinding<NetworkSecurityFinding[]>;
   };
   methodology: string[];
+  collection: WlanCollectionState;
+  coverage: CollectionCoverage;
   interactionContext?: WlanInteractionContext;
 }
 
@@ -379,6 +403,7 @@ type ScanContext = {
   scanMode: WlanScanMode;
   scanSegment: NetworkSegmentId;
   subnetScan: SubnetScanSummary;
+  collection: WlanCollectionState;
 };
 
 export type WlanSecurityScanOptions = {
@@ -525,7 +550,8 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
   context.securityFindings.push(...advancedFindings);
   context.vulnerabilities.push(...securityFindingsToVulnerabilities(advancedFindings));
 
-  const result = {
+  const collection = context.collection;
+  const result: WlanScanResult = {
     networkName: context.ssid,
     securityProtocol: context.securityProtocol,
     wifiSecurity: context.wifiSecurity,
@@ -542,7 +568,13 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     subnetScan: context.subnetScan,
     timestamp: new Date(),
     findings: buildFindings(context),
-    methodology: [...scanMethodology(context), ...getPlatformLimitations()],
+    methodology: [...scanMethodology(context), ...wlanCollectionLimitations(collection), ...getPlatformLimitations()],
+    collection,
+    coverage: calculateCollectionCoverage({
+      currentWifi: collection.currentWifi.status,
+      visibleWifiNetworks: collection.visibleWifiNetworks.status,
+      localDevices: collection.localDevices.status
+    }),
     interactionContext: options?.interactionContext
   };
 
@@ -594,6 +626,8 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       findings: serializeFindings(result.findings),
       securityFindings: result.securityFindings,
       methodology: result.methodology,
+      collection: result.collection,
+      coverage: result.coverage,
       interactionContext: result.interactionContext,
       riskScore: result.riskScore,
       timestamp: result.timestamp.toISOString()
@@ -948,8 +982,12 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
   const ipAddress = detailIp || fallbackIp || "0.0.0.0";
   const subnetMask = getStringProperty(details, "subnet") || inferSubnetMask(ipAddress);
   const gatewayIp = getStringProperty(details, "gateway") || inferGatewayIp(ipAddress);
-  const ssid = await getCurrentSsid(state);
-  const visibleNetworks = await scanVisibleWifiNetworks();
+  const ssidResult = await collectSsid(state);
+  const ssid = isCollected(ssidResult)
+    ? stripWifiQuotes(ssidResult.value)
+    : state.type === "wifi" ? "WLAN-Name nicht verfügbar" : "Kein WLAN verbunden";
+  const visibleNetworksResult = await collectVisibleWifiNetworks();
+  const visibleNetworks = isCollected(visibleNetworksResult) ? visibleNetworksResult.value : [];
   const nativeWifiSecurity = await getNativeWifiSecurityDetails();
   const wifiSecurity = resolveWifiSecurityDetails(ssid, visibleNetworks, nativeWifiSecurity, Platform.OS);
   const securityProtocol = state.type === "wifi" ? wifiSecurity.protocol : "UNKNOWN";
@@ -979,23 +1017,27 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
       candidateHosts: 0,
       scannedHosts: 0,
       scannedEntireRecognizedSubnet: false
+    },
+    collection: {
+      currentWifi: collectionMetadata(ssidResult),
+      visibleWifiNetworks: collectionMetadata(visibleNetworksResult),
+      localDevices: collectionMetadata(notCollected("not_checked", "Die lokale Geräteerkennung wurde noch nicht ausgeführt."))
     }
   };
 }
 
-async function getCurrentSsid(state: NetInfoState) {
+async function collectSsid(state: NetInfoState): Promise<CollectionResult<string>> {
   const details = (state.details && typeof state.details === "object" ? state.details : {}) as Record<string, unknown>;
   const netInfoSsid = getStringProperty(details, "ssid");
-  if (netInfoSsid) return stripWifiQuotes(netInfoSsid);
-
-  const nativeSsid = await getCurrentWifiSsid();
-  if (nativeSsid) return stripWifiQuotes(nativeSsid);
-
-  return state.type === "wifi" ? "Praxis-WLAN" : "Kein WLAN verbunden";
+  if (netInfoSsid) return collected(stripWifiQuotes(netInfoSsid), { ttlMs: WIFI_OBSERVATION_TTL_MS });
+  if (state.type === "wifi") return collectCurrentWifiSsid();
+  return notCollected("unavailable", "Das Gerät ist aktuell nicht mit einem WLAN verbunden.");
 }
 
 async function discoverNetworkDevices(context: ScanContext): Promise<DeviceInfo[]> {
-  const nativeDevices = await scanLocalDevices();
+  const nativeDevicesResult = await collectLocalDevices();
+  context.collection.localDevices = collectionMetadata(nativeDevicesResult);
+  const nativeDevices: NativeNetworkDevice[] = isCollected(nativeDevicesResult) ? nativeDevicesResult.value : [];
   const candidates = candidateIps(context.ipAddress, context.gatewayIp, context.subnetMask, context.scanMode);
   context.subnetScan = summarizeSubnetScan(context, candidates.length);
   const probes = await mapWithConcurrency(
@@ -1334,25 +1376,42 @@ function buildFindings(context: ScanContext): WlanScanResult["findings"] {
   const measuredAt = new Date();
   const gatewayPorts = context.devices.find((device) => device.ipAddress === context.gatewayIp)?.openPorts ?? [];
   const securitySource: DataSource = context.wifiSecurity.source;
-  const deviceSource: DataSource = Platform.OS === "web" ? "unavailable" : "measured";
+  const deviceSource: DataSource = context.collection.localDevices.status === "collected" ? "measured" : "unavailable";
   const securityChecks = dedupeSecurityFindings(context.securityFindings);
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
 
   return {
-    networkName: makeFinding("network_name", context.ssid, context.ssid ? "measured" : "unavailable", "NetInfo / native WiFi", context.ssid ? "high" : "low", measuredAt),
+    networkName: makeFinding(
+      "network_name",
+      context.ssid,
+      context.collection.currentWifi.status === "collected" ? "measured" : "unavailable",
+      "NetInfo / native WiFi",
+      context.collection.currentWifi.status === "collected" ? "high" : "low",
+      measuredAt,
+      context.collection.currentWifi
+    ),
     securityProtocol: makeFinding(
       "security_protocol",
       context.securityProtocol,
       securitySource,
       context.visibleNetworks.length > 0 ? "Native WiFi capabilities" : "SSID and platform inference",
       context.visibleNetworks.length > 0 ? "high" : "low",
-      measuredAt
+      measuredAt,
+      context.collection.visibleWifiNetworks
     ),
     ipAddress: makeFinding("ip_address", context.ipAddress, context.ipAddress !== "0.0.0.0" ? "measured" : "unavailable", "NetInfo / Expo Network", "high", measuredAt),
     subnetMask: makeFinding("subnet_mask", context.subnetMask, context.subnetMask === "unbekannt" ? "unavailable" : "inferred", "NetInfo or RFC1918 inference", "medium", measuredAt),
     gatewayIp: makeFinding("gateway_ip", context.gatewayIp, context.gatewayIp ? "inferred" : "unavailable", "NetInfo gateway or subnet inference", context.gatewayIp ? "medium" : "low", measuredAt),
     dnsServers: makeFinding("dns_servers", context.dnsServers, context.dnsServers.length > 0 ? "measured" : "unavailable", "NetInfo DNS details", context.dnsServers.length > 0 ? "high" : "low", measuredAt),
-    connectedDevices: makeFinding("connected_devices", context.devices, deviceSource, "Native discovery and HTTP probes", Platform.OS === "ios" ? "low" : "medium", measuredAt),
+    connectedDevices: makeFinding(
+      "connected_devices",
+      context.devices,
+      deviceSource,
+      "Native discovery and HTTP probes",
+      Platform.OS === "ios" ? "low" : "medium",
+      measuredAt,
+      context.collection.localDevices
+    ),
     openPorts: makeFinding(
       "open_ports",
       gatewayPorts,
@@ -1420,7 +1479,8 @@ function makeFinding<TValue>(
   source: DataSource,
   sourceDetail: string,
   confidence: FindingConfidence,
-  measuredAt: Date
+  measuredAt: Date,
+  collection?: CollectionMetadata
 ): WlanFinding<TValue> {
   return {
     id,
@@ -1428,8 +1488,21 @@ function makeFinding<TValue>(
     source,
     source_detail: sourceDetail,
     confidence,
-    measured_at: measuredAt
+    measured_at: measuredAt,
+    collection_status: collection?.status,
+    collection_reason: collection?.reason,
+    observed_at: collection?.observed_at,
+    expires_at: collection?.expires_at,
+    freshness: collection?.freshness
   };
+}
+
+export function wlanCollectionLimitations(collection: WlanCollectionState) {
+  return Object.entries(collection).flatMap(([sensor, metadata]) =>
+    metadata.status === "collected"
+      ? []
+      : [`Erhebung ${sensor}: ${metadata.status}${metadata.reason ? ` – ${metadata.reason}` : ""}`]
+  );
 }
 
 function serializeFindings(findings: WlanScanResult["findings"]) {
