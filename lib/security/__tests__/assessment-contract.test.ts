@@ -1,4 +1,4 @@
-import { toCanonicalAssessmentFacts } from "@/lib/security/assessment-contract";
+import { toCanonicalAssessmentFacts, toDeterministicReportFacts } from "@/lib/security/assessment-contract";
 import {
   GOLDEN_ASSESSMENT_EXPECTED,
   GOLDEN_ASSESSMENT_INPUT,
@@ -61,5 +61,22 @@ describe("canonical assessment contract", () => {
         })
       ).toBe("unknown");
     });
+  });
+
+  it("carries fact and scoring versions into deterministic reports", () => {
+    const scoreReport = calculateScore(GOLDEN_ASSESSMENT_INPUT);
+    const facts = toDeterministicReportFacts(scoreReport);
+
+    expect(facts).toMatchObject({
+      facts_version: "1.0.0",
+      scoring_version: scoreReport.scoring_version,
+      assessment_profile: "general",
+      overall_risk: "low"
+    });
+  });
+
+  it("distinguishes high risk from a confirmed critical finding", () => {
+    expect(toDeterministicReportFacts(calculateScore({})).overall_risk).toBe("high");
+    expect(toDeterministicReportFacts(calculateScore({ encryption: "WEP" })).overall_risk).toBe("critical");
   });
 });

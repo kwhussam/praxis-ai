@@ -1,4 +1,4 @@
-import { calculateMonitoringCoverage } from "@/lib/monitoring/coverage";
+import { calculateMonitoringCoverage } from "@/lib/assessment/coverage";
 
 describe("monitoring coverage", () => {
   it("prevents a sufficient status when providers are not configured or unavailable", () => {

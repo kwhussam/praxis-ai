@@ -2,7 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import { supabase } from "@/lib/api/supabase";
 import { AppConfig } from "@/lib/config/environment";
 import { assertDemoPracticeAccess } from "@/lib/demo/demo-data";
-import type { MonitoringCoverage } from "@/lib/monitoring/coverage";
+import type { MonitoringCoverage } from "@/lib/assessment/coverage";
 import {
   type DashboardData,
   type EmailSecurityStatus,

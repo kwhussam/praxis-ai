@@ -63,6 +63,9 @@ export type QuickWin = {
 };
 
 export type Report = {
+  facts_version?: string;
+  scoring_version?: string;
+  assessment_profile?: AssessmentProfile;
   executive_summary: string;
   overall_risk: OverallRisk;
   security_score: number;
@@ -77,6 +80,7 @@ export type Report = {
 
 export type GeneratedReport = {
   reportId: string;
+  checkId: string;
   report: Report;
 };
 
@@ -95,10 +99,13 @@ export async function generateReport(data: CheckData): Promise<Report> {
 export async function generateReportWithId(data: CheckData): Promise<GeneratedReport> {
   const response = await requestGeneratedReport(data);
   const reportId = isObject(response) && typeof response.reportId === "string" ? response.reportId : "";
+  const checkId = isObject(response) && typeof response.checkId === "string" ? response.checkId : "";
   if (!UUID_RE.test(reportId)) throw new Error("Ungültiger KI-Bericht: reportId fehlt oder ist ungültig.");
+  if (!UUID_RE.test(checkId)) throw new Error("Ungültiger KI-Bericht: checkId fehlt oder ist ungültig.");
 
   return {
     reportId,
+    checkId,
     report: validateReport(response)
   };
 }
@@ -107,8 +114,8 @@ async function requestGeneratedReport(data: CheckData) {
   if (!data.practiceId || !UUID_RE.test(data.practiceId)) {
     throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein KI-Bericht erzeugt werden kann.");
   }
-  if (!data.checkId || !UUID_RE.test(data.checkId)) {
-    throw new Error("Ein gespeicherter, gültiger Prüfdatensatz ist erforderlich, bevor ein Bericht erzeugt werden kann.");
+  if (data.checkId !== undefined && !UUID_RE.test(data.checkId)) {
+    throw new Error("Die angegebene Prüfdatensatz-ID ist ungültig.");
   }
 
   return apiRequest<unknown>("/api/report/generate", {
@@ -126,6 +133,12 @@ export function validateReport(value: unknown): Report {
   const dsgvo = requireObject(report.dsgvo_compliance, "dsgvo_compliance");
 
   return {
+    facts_version: typeof report.facts_version === "string" ? report.facts_version : undefined,
+    scoring_version: typeof report.scoring_version === "string" ? report.scoring_version : undefined,
+    assessment_profile:
+      report.assessment_profile === "general" || report.assessment_profile === "health"
+        ? report.assessment_profile
+        : undefined,
     executive_summary: requireString(report.executive_summary, "executive_summary"),
     overall_risk: requireEnum(report.overall_risk, riskValues, "overall_risk"),
     security_score: clampScore(requireNumber(report.security_score, "security_score")),

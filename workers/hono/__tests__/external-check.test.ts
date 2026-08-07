@@ -631,7 +631,7 @@ describe("POST /api/check/external", () => {
     }
   });
 
-  it("ueberschreibt manipulierte Client-Scores im Report-Pfad vor Anthropic serverseitig", async () => {
+  it("laedt ohne Client-checkId den letzten gespeicherten Check und ignoriert manipulierte Clientdaten", async () => {
     const originalFetch = globalThis.fetch;
     let anthropicPrompt = "";
 
@@ -693,7 +693,6 @@ describe("POST /api/check/external", () => {
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
             practiceId: "11111111-1111-4111-8111-111111111111",
-            checkId: "44444444-4444-4444-8444-444444444444",
             domain: "praxis.de",
             score: 100,
             questionnaire: {
@@ -708,9 +707,17 @@ describe("POST /api/check/external", () => {
       );
 
       expect(res.status).toBe(200);
-      const report = await res.json() as { security_score?: number; ampel?: string; dsgvo_compliance?: { status?: string } };
+      const report = await res.json() as {
+        checkId?: string;
+        scoring_version?: string;
+        security_score?: number;
+        ampel?: string;
+        dsgvo_compliance?: { status?: string };
+      };
       expect(anthropicPrompt.includes('"security_score": 0')).toBe(true);
       expect(anthropicPrompt.includes("Vorberechneter Score: 100")).toBe(false);
+      expect(report.checkId).toBe("44444444-4444-4444-8444-444444444444");
+      expect(report.scoring_version).toBeDefined();
       expect(report.security_score).toBe(0);
       expect(report.ampel).toBe("rot");
       expect(report.dsgvo_compliance?.status).not.toBe("konform");

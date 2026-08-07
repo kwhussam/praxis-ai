@@ -140,16 +140,20 @@ describe("generateReport", () => {
     expect(mockApiRequestCalls).toEqual([]);
   });
 
-  it("rejects report generation without a persisted checkId", async () => {
+  it("lets the Worker resolve the latest persisted check when checkId is omitted", async () => {
     mockApiRequestCalls.length = 0;
+    mockApiRequestResult = validReport;
 
-    await expectAsyncError(generateReport({
+    await generateReport({
       practiceId: "11111111-1111-4111-8111-111111111111",
       practiceName: "Praxis",
       questionnaire: {}
-    }), /Prüfdatensatz/);
+    });
 
-    expect(mockApiRequestCalls).toEqual([]);
+    expect(mockApiRequestCalls).toHaveLength(1);
+    expect(mockApiRequestCalls[0]).toMatchObject({
+      options: { body: { practiceId: "11111111-1111-4111-8111-111111111111" } }
+    });
   });
 
   it("uses the authenticated report endpoint for valid practiceId", async () => {
@@ -182,7 +186,8 @@ describe("generateReport", () => {
     mockApiRequestCalls.length = 0;
     mockApiRequestResult = {
       ...validReport,
-      reportId: "66666666-6666-4666-8666-666666666666"
+      reportId: "66666666-6666-4666-8666-666666666666",
+      checkId: "22222222-2222-4222-8222-222222222222"
     };
 
     const result = await generateReportWithId({
@@ -193,6 +198,7 @@ describe("generateReport", () => {
     });
 
     expect(result.reportId).toBe("66666666-6666-4666-8666-666666666666");
+    expect(result.checkId).toBe("22222222-2222-4222-8222-222222222222");
     expect(result.report.executive_summary).toBe(validReport.executive_summary);
   });
 });

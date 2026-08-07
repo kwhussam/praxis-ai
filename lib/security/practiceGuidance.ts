@@ -129,6 +129,26 @@ export function guidanceFromNetworkFindings(score: number, findings: NetworkSecu
 }
 
 export function guidanceFromMonitoring(score: number, criticalCount: number, coverageScore = 100): PracticeGuidance {
+  if (criticalCount > 0) {
+    const actions = [
+      "Kontaktieren Sie Ihren IT-Dienstleister mit den kritischen Warnungen.",
+      coverageScore < 80
+        ? "Vervollständigen Sie zusätzlich die fehlenden Prüfquellen und Zugangsdaten."
+        : "Starten Sie nach der Behebung einen neuen Scan.",
+      "Prüfen Sie, ob alle wichtigen Domains und E-Mail-Adressen überwacht werden."
+    ];
+
+    return {
+      tone: "critical",
+      headline: "Die Überwachung zeigt kritische Warnungen.",
+      summary:
+        coverageScore < 80
+          ? `Die kritischen Befunde benötigen sofortige Aufmerksamkeit. Zusätzlich sind erst ${Math.max(0, Math.min(100, Math.round(coverageScore)))} % der vorgesehenen Prüfquellen verfügbar.`
+          : "Bitte behandeln Sie die kritischen Warnungen als dringend und lassen Sie die Ursachen prüfen.",
+      actions
+    };
+  }
+
   if (coverageScore < 80) {
     return {
       tone: "warning",
@@ -142,17 +162,11 @@ export function guidanceFromMonitoring(score: number, criticalCount: number, cov
     };
   }
 
-  const actions = criticalCount > 0
-    ? [
-        "Kontaktieren Sie Ihren IT-Dienstleister mit den kritischen Warnungen.",
-        "Starten Sie nach der Behebung einen neuen Scan.",
-        "Prüfen Sie, ob alle wichtigen Domains und E-Mail-Adressen überwacht werden."
-      ]
-    : [
-        "Prüfen Sie neue Warnungen einmal pro Woche.",
-        "Halten Sie Domains und E-Mail-Adressen in der Überwachung aktuell.",
-        "Exportieren Sie den Bericht für Ihre interne Dokumentation."
-      ];
+  const actions = [
+    "Prüfen Sie neue Warnungen einmal pro Woche.",
+    "Halten Sie Domains und E-Mail-Adressen in der Überwachung aktuell.",
+    "Exportieren Sie den Bericht für Ihre interne Dokumentation."
+  ];
 
   return guidanceFromScore(score, actions);
 }

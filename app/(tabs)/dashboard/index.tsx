@@ -330,41 +330,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900"
   },
-  planCard: {
-    backgroundColor: "rgba(255,255,255,0.06)",
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: 18,
-    padding: 16
-  },
-  planKicker: {
-    color: colors.electric,
-    fontSize: 12,
-    fontWeight: "900",
-    textTransform: "uppercase"
-  },
-  planHeader: {
-    alignItems: "baseline",
-    flexDirection: "row",
-    gap: 10,
-    justifyContent: "space-between",
-    marginTop: 8
-  },
-  planName: {
-    color: colors.ink,
-    fontSize: 22,
-    fontWeight: "900"
-  },
-  planPrice: {
-    color: colors.ink,
-    fontSize: 14,
-    fontWeight: "800"
-  },
-  planFeature: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8
-  }
 });

@@ -1,9 +1,12 @@
 import React from "react";
-import renderer, { type ReactTestInstance } from "react-test-renderer";
+import renderer, { act, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
+
+var mockDashboardQuestionnaireId: string | null = null;
 
 declare const jest: {
   mock(moduleName: string, factory: () => unknown): void;
 };
+declare function beforeEach(fn: () => void): void;
 
 jest.mock("react-native", () => {
   const React = require("react");
@@ -67,13 +70,31 @@ jest.mock("@/lib/config/environment", () => ({
   AppConfig: { isDemoMode: false }
 }));
 
+jest.mock("@/lib/dashboard/service", () => ({
+  loadDashboardData: async () => ({
+    latest: {
+      questionnaire: mockDashboardQuestionnaireId ? { id: mockDashboardQuestionnaireId } : null,
+      external: null,
+      wlanScan: null,
+      monitoringSnapshot: null
+    },
+    history: [],
+    hasData: Boolean(mockDashboardQuestionnaireId),
+    practiceId: "11111111-1111-4111-8111-111111111111"
+  })
+}));
+
 jest.mock("@/lib/security/wlan", () => ({
   getLatestWlanScanResult: () => null
 }));
 
 jest.mock("@/lib/store/check", () => ({
-  useCheckStore: (selector: (state: { answers: Record<string, never>; currentScore: number }) => unknown) =>
-    selector({ answers: {}, currentScore: 0 })
+  useCheckStore: (selector: (state: {
+    answers: Record<string, never>;
+    assessmentProfile: "general";
+    latestQuestionnaireCheckId: null;
+  }) => unknown) =>
+    selector({ answers: {}, assessmentProfile: "general", latestQuestionnaireCheckId: null })
 }));
 
 jest.mock("@/lib/store/report", () => ({
@@ -116,6 +137,10 @@ jest.mock("@/lib/store/session", () => ({
 import ReportsScreen from "../index";
 
 describe("ReportsScreen", () => {
+  beforeEach(() => {
+    mockDashboardQuestionnaireId = null;
+  });
+
   it("zeigt fuer eine echte Praxis ohne Bericht den Empty-State statt des Sample-Berichts", () => {
     const tree = renderer.create(<ReportsScreen />);
     const text = allText(tree.root);
@@ -123,6 +148,21 @@ describe("ReportsScreen", () => {
     expect(text).toContain("Noch kein Bericht vorhanden");
     expect(text).toContain("Praxis-Check starten");
     expect(text).not.toContain("SAMPLE_STORED_REPORT");
+  });
+
+  it("findet nach einem App-Neustart den letzten gespeicherten Fragebogencheck", async () => {
+    mockDashboardQuestionnaireId = "22222222-2222-4222-8222-222222222222";
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderer.create(<ReportsScreen />);
+      await Promise.resolve();
+    });
+
+    const text = allText(tree!.root);
+    expect(text).toContain("Gespeicherter Check vorhanden");
+    expect(text).toContain("KI-Bericht erzeugen");
+    expect(text).not.toContain("Praxis-Check starten");
   });
 });
 

@@ -846,3 +846,15 @@ Stand: **2026-08-07**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | SP1-07 | review | ADR-001 und nicht ausführbarer Schemaentwurf mit Datenklassen, Schlüsseln, Retention, Dual-Read, Backfill, Rollback und Abbruchgates erstellt | Reviews und Checkboxen in ADR-001; vor Freigabe keine Migration |
 
 Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **342 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
+
+### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review
+
+Das Review von Commit `60cc363` wurde am 2026-08-07 umgesetzt:
+
+- Kritische Monitoringwarnungen haben auch bei unzureichender Coverage Vorrang; fehlende Messquellen werden zusätzlich, nicht anstelle des Alarms genannt.
+- Nach einem App-Neustart wird der letzte autoritative Fragebogencheck serverseitig beziehungsweise über den Dashboard-Read-Pfad wiedergefunden. Der Worker bindet den erzeugten Bericht und die Antwort an die tatsächlich verwendete Check-ID.
+- Neue Berichte tragen `facts_version`, `scoring_version` und `assessment_profile`. Die noch offene Snapshotmigration bleibt notwendig, damit spätere Engineversionen historische Bewertungen nicht neu interpretieren.
+- `overall_risk=critical` setzt jetzt einen bestätigten kritischen Kernbefund voraus; ein roter Score ohne solchen Befund wird als `high` eingeordnet.
+- Coverage liegt in einem neutralen Assessment-Modul statt einer Security→Monitoring-Abhängigkeit; tote Tarifkartenstyles wurden entfernt.
+
+Nicht als erledigt markiert bleiben das vollständige Assessment-Manifest, der kanonische PDF-Pfad, die Praxis-/Techniksicht, die Claim-Inventur, aktive Native-/WLAN-Collection-Adapter und die freizugebende Datenmigration.

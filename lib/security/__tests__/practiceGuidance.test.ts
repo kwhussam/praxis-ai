@@ -15,4 +15,14 @@ describe("guidanceFromMonitoring", () => {
 
     expect(guidance.tone).toBe("safe");
   });
+
+  it("priorisiert kritische Alerts auch bei unvollständiger Messabdeckung", () => {
+    const guidance = guidanceFromMonitoring(90, 2, 33);
+
+    expect(guidance.tone).toBe("critical");
+    expect(guidance.headline).toContain("kritische Warnungen");
+    expect(guidance.summary).toContain("33 %");
+    expect(guidance.actions[0]).toContain("kritischen Warnungen");
+    expect(guidance.actions[1]).toContain("Prüfquellen");
+  });
 });

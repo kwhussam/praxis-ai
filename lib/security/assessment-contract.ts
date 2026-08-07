@@ -38,6 +38,9 @@ export type CanonicalAssessmentFacts = {
 };
 
 export type DeterministicReportFacts = {
+  facts_version: string;
+  scoring_version: string;
+  assessment_profile: AssessmentProfile;
   security_score: number;
   ampel: AmpelColor;
   overall_risk: "critical" | "high" | "medium" | "low";
@@ -89,9 +92,12 @@ export function toDeterministicReportFacts(report: ScoreReport): DeterministicRe
   const privacyMissing = privacyControl?.status !== "met";
 
   return {
+    facts_version: ASSESSMENT_FACTS_VERSION,
+    scoring_version: report.scoring_version,
+    assessment_profile: report.assessment_profile ?? "general",
     security_score: report.score,
     ampel: report.ampel,
-    overall_risk: report.ampel === "rot" ? "critical" : report.ampel === "grün" ? "low" : "medium",
+    overall_risk: overallRiskFromReport(report),
     scores_by_category: report.scores_by_category,
     dsgvo_compliance: {
       status: report.scores_by_category.dsgvo < 50 ? "nicht_konform" : "teilweise",
@@ -100,4 +106,11 @@ export function toDeterministicReportFacts(report: ScoreReport): DeterministicRe
         "Technischer Nachweisstand zum Bewertungszeitpunkt; keine Rechtsberatung und keine Feststellung vollständiger DSGVO-Konformität."
     }
   };
+}
+
+function overallRiskFromReport(report: ScoreReport): DeterministicReportFacts["overall_risk"] {
+  if (report.rule_results.some((result) => result.risk_flags.includes("core_critical_finding"))) return "critical";
+  if (report.ampel === "rot") return "high";
+  if (report.ampel === "gelb") return "medium";
+  return "low";
 }

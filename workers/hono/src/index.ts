@@ -9,7 +9,7 @@ import {
   type ScoreReport
 } from "@/lib/security/scoring";
 import { toDeterministicReportFacts, type DeterministicReportFacts } from "@/lib/security/assessment-contract";
-import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/monitoring/coverage";
+import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/assessment/coverage";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { addDays, type DeletionReport } from "./privacy";
 
@@ -342,6 +342,9 @@ type CheckData = {
 };
 
 type Report = {
+  facts_version?: string;
+  scoring_version?: string;
+  assessment_profile?: AssessmentProfile;
   executive_summary: string;
   overall_risk: "critical" | "high" | "medium" | "low";
   security_score: number;
@@ -783,10 +786,18 @@ function buildReportLimitations(data: CheckData) {
     for (const finding of findings) {
       const findingRecord = asRecordOrNull(finding);
       if (!findingRecord || typeof findingRecord.id !== "string") continue;
-      if (!findingRecord.id.startsWith("not-checked-") && !findingRecord.id.startsWith("unavailable-")) continue;
+      if (
+        !findingRecord.id.startsWith("not-checked-")
+        && !findingRecord.id.startsWith("unavailable-")
+        && !findingRecord.id.startsWith("timeout-")
+      ) continue;
       limitations.push({
         area: typeof findingRecord.title === "string" ? findingRecord.title : "Externe Prüfung",
-        reason: findingRecord.id.startsWith("not-checked-") ? "Prüfung wurde nicht ausgeführt." : "Prüfung war technisch nicht verfügbar.",
+        reason: findingRecord.id.startsWith("not-checked-")
+          ? "Prüfung wurde nicht ausgeführt."
+          : findingRecord.id.startsWith("timeout-")
+            ? "Prüfung hat das Zeitlimit überschritten."
+            : "Prüfung war technisch nicht verfügbar.",
         impact: "Der Bereich darf im KI-Bericht nicht als sicher oder unauffällig dargestellt werden."
       });
     }
@@ -839,6 +850,10 @@ function validateReport(value: unknown, facts?: DeterministicReportFacts): Repor
   const dsgvo = facts ? null : requireRecord(report.dsgvo_compliance, "dsgvo_compliance");
 
   return {
+    facts_version: facts?.facts_version ?? (typeof report.facts_version === "string" ? report.facts_version : undefined),
+    scoring_version: facts?.scoring_version ?? (typeof report.scoring_version === "string" ? report.scoring_version : undefined),
+    assessment_profile:
+      facts?.assessment_profile ?? (isAssessmentProfile(report.assessment_profile) ? report.assessment_profile : undefined),
     executive_summary: requireString(report.executive_summary, "executive_summary"),
     overall_risk: facts?.overall_risk ?? requireEnum(report.overall_risk, ["critical", "high", "medium", "low"], "overall_risk"),
     security_score: facts?.security_score ?? clampScore(requireNumber(report.security_score, "security_score")),
@@ -1370,15 +1385,21 @@ async function handleReportGenerate(
     : null;
   if (access instanceof Response) return access;
 
-  if (access && options.persist && (!payload.checkId || !isUuid(payload.checkId))) {
-    return c.json({ error: "check_id_required", message: "Ein gespeicherter Prüfdatensatz ist erforderlich." }, 400);
+  if (access && options.persist && payload.checkId !== undefined && !isUuid(payload.checkId)) {
+    return c.json({ error: "invalid_check_id", message: "Die angegebene Check-ID ist ungültig." }, 400);
   }
 
   let storedCheck: StoredSecurityCheck | null = null;
-  if (access && payload.checkId) {
-    const checkAccess = await requireSecurityCheckForPractice(c.env, access.practice.id, payload.checkId);
+  let effectiveCheckId = payload.checkId;
+  if (access && effectiveCheckId) {
+    const checkAccess = await requireSecurityCheckForPractice(c.env, access.practice.id, effectiveCheckId);
     if (checkAccess instanceof Response) return checkAccess;
     storedCheck = checkAccess;
+  } else if (access && options.persist) {
+    const latestCheck = await loadLatestQuestionnaireCheckForPractice(c.env, access.practice.id);
+    if (latestCheck instanceof Response) return latestCheck;
+    storedCheck = latestCheck;
+    effectiveCheckId = latestCheck.id;
   }
 
   const storedAssessment = storedCheck ? questionnaireAssessmentFromStoredCheck(storedCheck) : null;
@@ -1427,12 +1448,12 @@ async function handleReportGenerate(
     const reportId = await persistReport(c.env, {
       id: generatedReportId,
       practiceId: access.practice.id,
-      checkId: payload.checkId,
+      checkId: effectiveCheckId,
       report: reportResult,
       clientSyncId: payload.clientSyncId
     });
     await auditPracticeAccess(c, access, "create", "reports", { report_id: reportId });
-    return c.json({ ...reportResult, reportId });
+    return c.json({ ...reportResult, reportId, checkId: effectiveCheckId });
   }
 
   return c.json(reportResult);
@@ -1943,13 +1964,40 @@ async function requireSecurityCheckForPractice(
     { method: "GET" }
   );
 
-  const row = asRecordOrNull(checks[0]);
-  if (!row) {
+  const check = normalizeStoredSecurityCheck(checks[0], checkId);
+  if (!check) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
 
+  return check;
+}
+
+async function loadLatestQuestionnaireCheckForPractice(
+  env: Env,
+  practiceId: string
+): Promise<StoredSecurityCheck | Response> {
+  const checks = await supabaseRest<unknown[]>(
+    env,
+    `/rest/v1/security_checks?select=id,type,results,scoring_version&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.questionnaire&order=completed_at.desc&limit=1`,
+    { method: "GET" }
+  );
+  const check = normalizeStoredSecurityCheck(checks[0]);
+  if (!check) {
+    return Response.json(
+      { error: "check_data_unavailable", message: "Es ist noch kein gespeicherter Fragebogencheck vorhanden." },
+      { status: 409 }
+    );
+  }
+  return check;
+}
+
+function normalizeStoredSecurityCheck(value: unknown, fallbackId?: string): StoredSecurityCheck | null {
+  const row = asRecordOrNull(value);
+  if (!row) return null;
+  const id = typeof row.id === "string" && isUuid(row.id) ? row.id : fallbackId;
+  if (!id || !isUuid(id)) return null;
   return {
-    id: typeof row.id === "string" ? row.id : checkId,
+    id,
     type: typeof row.type === "string" ? row.type : "",
     results: row.results,
     scoringVersion: typeof row.scoring_version === "string" ? row.scoring_version : undefined
@@ -2044,7 +2092,7 @@ async function persistReport(
         practice_id: input.practiceId,
         check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
         format_version: REPORT_FORMAT_VERSION,
-        scoring_version: SCORING_VERSION,
+        scoring_version: input.report.scoring_version ?? SCORING_VERSION,
         content: redactedReportSummary(input.report),
         encrypted_content: encrypted,
         payload_sha256: payloadHash,
@@ -2141,6 +2189,9 @@ function redactedExternalSummary(result: ExternalCheckResult) {
 
 function redactedReportSummary(report: Report) {
   return {
+    facts_version: report.facts_version,
+    scoring_version: report.scoring_version,
+    assessment_profile: report.assessment_profile,
     security_score: report.security_score,
     overall_risk: report.overall_risk,
     ampel: report.ampel,

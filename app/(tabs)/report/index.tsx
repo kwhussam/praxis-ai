@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 import { AiReport } from "@/components/modules/AiReport";
@@ -10,6 +10,7 @@ import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
 import { generateReportWithId } from "@/lib/ai/report";
 import { AppConfig } from "@/lib/config/environment";
+import { loadDashboardData } from "@/lib/dashboard/service";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
 import { useCheckStore } from "@/lib/store/check";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
@@ -31,11 +32,27 @@ export default function ReportsScreen() {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const sourceCheckId = latestReport?.source?.checkId ?? latestQuestionnaireCheckId ?? null;
+  const [serverQuestionnaireCheckId, setServerQuestionnaireCheckId] = useState<string | null>(null);
+  const sourceCheckId = latestReport?.source?.checkId ?? latestQuestionnaireCheckId ?? serverQuestionnaireCheckId;
   const canGenerate = Boolean(
     practice?.id && UUID_RE.test(practice.id) && sourceCheckId && UUID_RE.test(sourceCheckId)
   ) && !generating;
   const enteredFromCheckFlow = from === "check";
+  const hasStoredCheck = Boolean(sourceCheckId && UUID_RE.test(sourceCheckId));
+
+  useEffect(() => {
+    if (!practice?.id || !UUID_RE.test(practice.id) || sourceCheckId) return;
+    let active = true;
+    void loadDashboardData(practice.id)
+      .then((dashboard) => {
+        const checkId = dashboard.latest.questionnaire?.id;
+        if (active && checkId && UUID_RE.test(checkId)) setServerQuestionnaireCheckId(checkId);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [practice?.id, sourceCheckId]);
 
   async function handleGenerate() {
     if (!practice?.id || !UUID_RE.test(practice.id)) {
@@ -63,8 +80,8 @@ export default function ReportsScreen() {
     };
 
     try {
-      const { report, reportId } = await generateReportWithId(source);
-      const storedReport = saveReport(report, source, reportId);
+      const { report, reportId, checkId } = await generateReportWithId(source);
+      const storedReport = saveReport(report, { ...source, checkId }, reportId);
       router.push({ pathname: "/(tabs)/report/[id]", params: { id: storedReport.id } });
     } catch {
       const message = "Bericht konnte nicht erstellt werden, bitte erneut versuchen.";
@@ -118,23 +135,25 @@ export default function ReportsScreen() {
       ) : (
         <GlassCard>
           <Text style={styles.emptyTitle}>
-            {enteredFromCheckFlow ? "Check abgeschlossen" : "Noch kein Bericht vorhanden"}
+            {enteredFromCheckFlow ? "Check abgeschlossen" : hasStoredCheck ? "Gespeicherter Check vorhanden" : "Noch kein Bericht vorhanden"}
           </Text>
           <Text style={styles.emptyCopy}>
             {enteredFromCheckFlow
               ? "Ihre Check-Daten sind bereit. Sie können daraus jetzt den KI-Bericht erstellen."
+              : hasStoredCheck
+                ? "Aus dem zuletzt gespeicherten Fragebogencheck kann jetzt ein neuer Bericht erstellt werden."
               : "Starten Sie den Praxis-Check. Danach erstellen wir aus den erhobenen Daten einen verständlichen Maßnahmenplan."}
           </Text>
           <AnimatedButton
-            label={enteredFromCheckFlow ? "KI-Bericht erzeugen" : "Praxis-Check starten"}
+            label={enteredFromCheckFlow || hasStoredCheck ? "KI-Bericht erzeugen" : "Praxis-Check starten"}
             onPress={
-              enteredFromCheckFlow
+              enteredFromCheckFlow || hasStoredCheck
                 ? handleGenerate
                 : () => router.push("/(tabs)/check/questionnaire")
             }
-            disabled={enteredFromCheckFlow ? !canGenerate : false}
+            disabled={enteredFromCheckFlow || hasStoredCheck ? !canGenerate : false}
             style={styles.emptyAction}
-            testID={enteredFromCheckFlow ? "report-generate" : "report-start-check"}
+            testID={enteredFromCheckFlow || hasStoredCheck ? "report-generate" : "report-start-check"}
           />
         </GlassCard>
       )}
