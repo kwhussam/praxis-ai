@@ -72,6 +72,7 @@ export type MonitoringSnapshot = {
     unknown: number;
   };
   checks: Record<string, unknown>;
+  coverage: MonitoringCoverage;
   checked_at: string;
 };
 
@@ -93,3 +94,4 @@ export const categoryLabels: Record<string, string> = {
 // MAINT-01: re-export the canonical score→tone/color helpers so monitoring consumers keep the
 // same import surface while sharing one 75/50 implementation.
 export { toneForScore, colorForScore } from "@/constants/colors";
+import type { MonitoringCoverage } from "@/lib/monitoring/coverage";

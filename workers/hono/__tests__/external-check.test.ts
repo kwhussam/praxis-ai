@@ -594,6 +594,15 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")) {
         return Response.json(false);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return Response.json([
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            type: "questionnaire",
+            results: { questionnaire: {} }
+          }
+        ]);
+      }
       return Response.json({}, { status: 404 });
     }) as typeof fetch;
 
@@ -604,6 +613,7 @@ describe("POST /api/check/external", () => {
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
             practiceId: "11111111-1111-4111-8111-111111111111",
+            checkId: "44444444-4444-4444-8444-444444444444",
             domain: "praxis.de",
             score: 80
           })
@@ -651,6 +661,15 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/security_checks")) {
+        return Response.json([
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            type: "questionnaire",
+            results: { questionnaire: { mfa: false, backups: false, patching: false } }
+          }
+        ]);
+      }
       if (url.startsWith("https://api.anthropic.com/v1/messages")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { messages?: Array<{ content?: string }> };
         anthropicPrompt = body.messages?.[0]?.content ?? "";
@@ -674,12 +693,13 @@ describe("POST /api/check/external", () => {
           headers: { authorization: "Bearer user-token" },
           body: JSON.stringify({
             practiceId: "11111111-1111-4111-8111-111111111111",
+            checkId: "44444444-4444-4444-8444-444444444444",
             domain: "praxis.de",
             score: 100,
             questionnaire: {
-              mfa: false,
-              backups: false,
-              patching: false
+              mfa: true,
+              backups: true,
+              patching: true
             }
           })
         }),
@@ -688,8 +708,12 @@ describe("POST /api/check/external", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(anthropicPrompt.includes("Vorberechneter Score: 0")).toBe(true);
+      const report = await res.json() as { security_score?: number; ampel?: string; dsgvo_compliance?: { status?: string } };
+      expect(anthropicPrompt.includes('"security_score": 0')).toBe(true);
       expect(anthropicPrompt.includes("Vorberechneter Score: 100")).toBe(false);
+      expect(report.security_score).toBe(0);
+      expect(report.ampel).toBe("rot");
+      expect(report.dsgvo_compliance?.status).not.toBe("konform");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -907,9 +931,9 @@ describe("POST /api/check/external", () => {
         findings: Array<{ id: string }>;
         checks: { reputation: { blacklisted: boolean; blacklists: string[] } };
       };
-      expect(result.provider_statuses.shodan).toBe("unavailable");
+      expect(result.provider_statuses.shodan).toBe("timeout");
       expect(result.provider_statuses.virusTotal).toBe("active");
-      expect(result.findings.some((finding) => finding.id === "unavailable-shodan")).toBe(true);
+      expect(result.findings.some((finding) => finding.id === "timeout-shodan")).toBe(true);
       expect(result.checks.reputation.blacklisted).toBe(true);
       expect(result.checks.reputation.blacklists).toContain("ExampleEngine: malware");
       expect(errors.some((entry) => entry[0] === "outbound_timeout")).toBe(true);
@@ -2420,7 +2444,12 @@ const roleGateCases: RoleGateCase[] = [
     name: "report/generate",
     method: "POST",
     path: "/api/report/generate",
-    body: { practiceId: roleGatePracticeId, domain: "praxis.de", score: 80 },
+    body: {
+      practiceId: roleGatePracticeId,
+      checkId: "44444444-4444-4444-8444-444444444444",
+      domain: "praxis.de",
+      score: 80
+    },
     requiredRole: "manager",
     deniedRole: "viewer",
     allowedRole: "manager"
@@ -2956,6 +2985,15 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
     }
     if (url.startsWith("https://example.supabase.co/rest/v1/rpc/complete_privacy_deletion")) {
       return Response.json(deletionReportFixture());
+    }
+    if (url.startsWith("https://example.supabase.co/rest/v1/security_checks") && method === "GET") {
+      return Response.json([
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          type: "questionnaire",
+          results: { questionnaire: {} }
+        }
+      ]);
     }
     if (
       url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||

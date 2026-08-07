@@ -122,8 +122,7 @@ describe("generateReport", () => {
 
     await expectAsyncError(generateReport({
       practiceName: "Praxis",
-      questionnaire: {},
-      score: 80
+      questionnaire: {}
     }), /Praxis-ID/);
 
     expect(mockApiRequestCalls).toEqual([]);
@@ -135,9 +134,20 @@ describe("generateReport", () => {
     await expectAsyncError(generateReport({
       practiceId: "demo-practice",
       practiceName: "Praxis",
-      questionnaire: {},
-      score: 80
+      questionnaire: {}
     }), /Praxis-ID/);
+
+    expect(mockApiRequestCalls).toEqual([]);
+  });
+
+  it("rejects report generation without a persisted checkId", async () => {
+    mockApiRequestCalls.length = 0;
+
+    await expectAsyncError(generateReport({
+      practiceId: "11111111-1111-4111-8111-111111111111",
+      practiceName: "Praxis",
+      questionnaire: {}
+    }), /Prüfdatensatz/);
 
     expect(mockApiRequestCalls).toEqual([]);
   });
@@ -148,9 +158,9 @@ describe("generateReport", () => {
 
     await generateReport({
       practiceId: "11111111-1111-4111-8111-111111111111",
+      checkId: "22222222-2222-4222-8222-222222222222",
       practiceName: "Praxis",
-      questionnaire: {},
-      score: 80
+      questionnaire: {}
     });
 
     expect(mockApiRequestCalls).toHaveLength(1);
@@ -160,9 +170,9 @@ describe("generateReport", () => {
         method: "POST",
         body: {
           practiceId: "11111111-1111-4111-8111-111111111111",
+          checkId: "22222222-2222-4222-8222-222222222222",
           practiceName: "Praxis",
-          questionnaire: {},
-          score: 80
+          questionnaire: {}
         }
       }
     });
@@ -177,9 +187,9 @@ describe("generateReport", () => {
 
     const result = await generateReportWithId({
       practiceId: "11111111-1111-4111-8111-111111111111",
+      checkId: "22222222-2222-4222-8222-222222222222",
       practiceName: "Praxis",
-      questionnaire: {},
-      score: 80
+      questionnaire: {}
     });
 
     expect(result.reportId).toBe("66666666-6666-4666-8666-666666666666");

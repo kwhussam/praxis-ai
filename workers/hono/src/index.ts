@@ -5,8 +5,11 @@ import type { ExecutionContext, ScheduledController } from "@cloudflare/workers-
 import {
   calculateScore,
   SCORING_VERSION as SECURITY_SCORING_VERSION,
-  type AssessmentProfile
+  type AssessmentProfile,
+  type ScoreReport
 } from "@/lib/security/scoring";
+import { toDeterministicReportFacts, type DeterministicReportFacts } from "@/lib/security/assessment-contract";
+import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/monitoring/coverage";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { addDays, type DeletionReport } from "./privacy";
 
@@ -43,7 +46,7 @@ type Env = {
 
 type FindingSeverity = "critical" | "warning" | "info";
 type ProviderName = "shodan" | "hibp" | "virusTotal" | "securityTrails" | "sslLabs" | "cloudflareDns";
-type ProviderStatus = "active" | "not_configured" | "unavailable";
+type ProviderStatus = "active" | "not_configured" | "unavailable" | "timeout";
 type ProviderExecutionContext = {
   statuses: Partial<Record<ProviderName, ProviderStatus>>;
   timeoutMs: number;
@@ -85,6 +88,13 @@ type ReportRequest = CheckData & {
   practiceId?: string;
   checkId?: string;
   clientSyncId?: string;
+};
+
+type StoredSecurityCheck = {
+  id: string;
+  type: string;
+  results: unknown;
+  scoringVersion?: string;
 };
 
 type PdfReportRequest = {
@@ -291,6 +301,7 @@ type ExternalCheckResult = {
   scoreImpact: number;
   providers: Record<string, boolean>;
   provider_statuses: Record<ProviderName, ProviderStatus>;
+  coverage: MonitoringCoverage;
 };
 
 type RiskHistoryState = "new" | "recurring" | "resolved" | "unchanged";
@@ -326,6 +337,8 @@ type CheckData = {
   wlan?: unknown;
   external?: unknown;
   score?: number;
+  assessmentProfile?: AssessmentProfile;
+  scoreReport?: ScoreReport;
 };
 
 type Report = {
@@ -637,9 +650,6 @@ NICHT-GEPRÜFT-REGEL:
 
 const REPORT_SCHEMA_HINT = `{
   "executive_summary": "2-3 Sätze für den Praxisinhaber",
-  "overall_risk": "critical|high|medium|low",
-  "security_score": 0,
-  "ampel": "rot|gelb|grün",
   "top_risks": [
     {
       "rank": 1,
@@ -654,19 +664,6 @@ const REPORT_SCHEMA_HINT = `{
       "reliability": "high|medium|low"
     }
   ],
-  "scores_by_category": {
-    "access_control": 0,
-    "backup": 0,
-    "email_security": 0,
-    "network": 0,
-    "dsgvo": 0,
-    "updates": 0
-  },
-  "dsgvo_compliance": {
-    "status": "nicht_konform|teilweise|konform",
-    "missing_documents": [],
-    "liability_risk": "Haftungseinschätzung"
-  },
   "quick_wins": [
     {
       "action": "Sofortmaßnahme",
@@ -686,13 +683,19 @@ const REPORT_SCHEMA_HINT = `{
 
 function buildReportPrompt(data: CheckData) {
   const limitations = buildReportLimitations(data);
+  if (!data.scoreReport) throw new Error("Deterministischer ScoreReport fehlt für die Berichterzeugung.");
+  const facts = toDeterministicReportFacts(data.scoreReport);
 
   return `
 Analysiere folgende Sicherheitsdaten einer Arztpraxis und erstelle einen strukturierten Bericht.
 
 Praxis: ${data.practiceName ?? "Unbekannte Praxis"}
 Domain: ${data.domain ?? "nicht angegeben"}
-Vorberechneter Score: ${typeof data.score === "number" ? data.score : "nicht angegeben"}
+AUTORITATIVE, NICHT VERÄNDERBARE SICHERHEITSFAKTEN:
+${JSON.stringify(facts, null, 2)}
+
+Die Fakten werden vom Server in den fertigen Bericht eingesetzt. Gib weder Score, Ampel,
+Gesamtrisiko, Kategoriescores noch einen DSGVO-Status aus und widersprich diesen Fakten nicht.
 
 FRAGEBOGEN-ANTWORTEN:
 ${JSON.stringify(data.questionnaire ?? {}, null, 2)}
@@ -717,8 +720,6 @@ Bewertungsregeln:
 - Nicht geprüfte oder technisch nicht verfügbare Bereiche dürfen nicht als Schutzwirkung, bestandene Kontrolle oder Entwarnung formuliert werden.
 - Ein Top-Risiko mit evidence_source "not_checked" oder "unavailable" muss klar als fehlender Nachweis, fehlende Prüfung oder technische Einschränkung benannt sein.
 - quick_wins: 2 bis 4 konkrete Maßnahmen mit geringem Aufwand.
-- security_score und scores_by_category immer zwischen 0 und 100.
-- Ampel: rot bei critical/high, gelb bei medium, grün bei low.
 - Nenne keine erfundenen Produktpreise; nutze grobe Kostenrahmen wie "0-100 EUR" oder "IT-Dienstleister, 1-2 Stunden".
 `;
 }
@@ -768,7 +769,12 @@ function buildReportLimitations(data: CheckData) {
       if (status === "active") continue;
       limitations.push({
         area: `Externer Provider ${provider}`,
-        reason: status === "not_configured" ? "API-Key oder Provider-Konfiguration fehlt." : "Provider war technisch nicht verfügbar.",
+        reason:
+          status === "not_configured"
+            ? "API-Key oder Provider-Konfiguration fehlt."
+            : status === "timeout"
+              ? "Provider hat das Zeitlimit überschritten."
+              : "Provider war technisch nicht verfügbar.",
         impact: "Fehlende Providerdaten dürfen nicht als fehlendes Risiko gewertet werden; der betroffene externe Prüfumfang ist reduziert."
       });
     }
@@ -827,31 +833,31 @@ function extractJsonObject(text: string) {
   return candidate.slice(start, end + 1);
 }
 
-function validateReport(value: unknown): Report {
+function validateReport(value: unknown, facts?: DeterministicReportFacts): Report {
   const report = asRecord(value);
-  const scores = requireRecord(report.scores_by_category, "scores_by_category");
-  const dsgvo = requireRecord(report.dsgvo_compliance, "dsgvo_compliance");
+  const scores = facts ? null : requireRecord(report.scores_by_category, "scores_by_category");
+  const dsgvo = facts ? null : requireRecord(report.dsgvo_compliance, "dsgvo_compliance");
 
   return {
     executive_summary: requireString(report.executive_summary, "executive_summary"),
-    overall_risk: requireEnum(report.overall_risk, ["critical", "high", "medium", "low"], "overall_risk"),
-    security_score: clampScore(requireNumber(report.security_score, "security_score")),
-    ampel: requireEnum(report.ampel, ["rot", "gelb", "grün"], "ampel"),
+    overall_risk: facts?.overall_risk ?? requireEnum(report.overall_risk, ["critical", "high", "medium", "low"], "overall_risk"),
+    security_score: facts?.security_score ?? clampScore(requireNumber(report.security_score, "security_score")),
+    ampel: facts?.ampel ?? requireEnum(report.ampel, ["rot", "gelb", "grün"], "ampel"),
     top_risks: requireArray(report.top_risks, "top_risks").slice(0, 5).map(validateTopRisk),
-    scores_by_category: {
-      access_control: clampScore(requireNumber(scores.access_control, "scores_by_category.access_control")),
-      backup: clampScore(requireNumber(scores.backup, "scores_by_category.backup")),
-      email_security: clampScore(requireNumber(scores.email_security, "scores_by_category.email_security")),
-      network: clampScore(requireNumber(scores.network, "scores_by_category.network")),
-      dsgvo: clampScore(requireNumber(scores.dsgvo, "scores_by_category.dsgvo")),
-      updates: clampScore(requireNumber(scores.updates, "scores_by_category.updates"))
+    scores_by_category: facts?.scores_by_category ?? {
+      access_control: clampScore(requireNumber(scores?.access_control, "scores_by_category.access_control")),
+      backup: clampScore(requireNumber(scores?.backup, "scores_by_category.backup")),
+      email_security: clampScore(requireNumber(scores?.email_security, "scores_by_category.email_security")),
+      network: clampScore(requireNumber(scores?.network, "scores_by_category.network")),
+      dsgvo: clampScore(requireNumber(scores?.dsgvo, "scores_by_category.dsgvo")),
+      updates: clampScore(requireNumber(scores?.updates, "scores_by_category.updates"))
     },
-    dsgvo_compliance: {
-      status: requireEnum(dsgvo.status, ["nicht_konform", "teilweise", "konform"], "dsgvo_compliance.status"),
-      missing_documents: requireArray(dsgvo.missing_documents, "dsgvo_compliance.missing_documents").map((item, index) =>
+    dsgvo_compliance: facts?.dsgvo_compliance ?? {
+      status: requireEnum(dsgvo?.status, ["nicht_konform", "teilweise", "konform"], "dsgvo_compliance.status"),
+      missing_documents: requireArray(dsgvo?.missing_documents, "dsgvo_compliance.missing_documents").map((item, index) =>
         requireString(item, `dsgvo_compliance.missing_documents.${index}`)
       ),
-      liability_risk: requireString(dsgvo.liability_risk, "dsgvo_compliance.liability_risk")
+      liability_risk: requireString(dsgvo?.liability_risk, "dsgvo_compliance.liability_risk")
     },
     quick_wins: requireArray(report.quick_wins, "quick_wins").map(validateQuickWin),
     not_checked_limitations: requireArray(report.not_checked_limitations, "not_checked_limitations").map(
@@ -1364,9 +1370,26 @@ async function handleReportGenerate(
     : null;
   if (access instanceof Response) return access;
 
+  if (access && options.persist && (!payload.checkId || !isUuid(payload.checkId))) {
+    return c.json({ error: "check_id_required", message: "Ein gespeicherter Prüfdatensatz ist erforderlich." }, 400);
+  }
+
+  let storedCheck: StoredSecurityCheck | null = null;
   if (access && payload.checkId) {
     const checkAccess = await requireSecurityCheckForPractice(c.env, access.practice.id, payload.checkId);
     if (checkAccess instanceof Response) return checkAccess;
+    storedCheck = checkAccess;
+  }
+
+  const storedAssessment = storedCheck ? questionnaireAssessmentFromStoredCheck(storedCheck) : null;
+  if (access && options.persist && !storedAssessment) {
+    return c.json(
+      {
+        error: "check_data_unavailable",
+        message: "Der gespeicherte Check enthält keine verwendbaren Fragebogendaten. Bitte führen Sie den Fragebogen erneut aus."
+      },
+      409
+    );
   }
 
   if (access) {
@@ -1379,11 +1402,21 @@ async function handleReportGenerate(
     }
   }
 
+  const questionnaire = storedAssessment?.questionnaire ?? payload.questionnaire ?? {};
+  const assessmentProfile = storedAssessment?.assessmentProfile
+    ?? (isAssessmentProfile(payload.assessmentProfile) ? payload.assessmentProfile : "general");
+  const scoreReport = calculateScore({
+    ...questionnaireAnswersToCheckData(questionnaire),
+    assessment_profile: assessmentProfile
+  });
   const reportInput: CheckData = {
-    ...payload,
-    score: scoreQuestionnaire(payload.questionnaire ?? {}),
-    practiceName: payload.practiceName ?? access?.practice.name,
-    domain: payload.domain ?? access?.practice.domain
+    practiceId: access?.practice.id ?? payload.practiceId,
+    questionnaire,
+    assessmentProfile,
+    score: scoreReport.score,
+    scoreReport,
+    practiceName: access?.practice.name ?? payload.practiceName,
+    domain: access?.practice.domain ?? payload.domain
   };
 
   const reportResult = await generateAiReportFromChecks(c.env, reportInput);
@@ -1524,6 +1557,10 @@ async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise
     return Response.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
   }
 
+  if (!payload.scoreReport) {
+    return Response.json({ error: "authoritative_score_report_required" }, { status: 400 });
+  }
+
   let response: Response;
   try {
     response = await fetchWithTimeout(
@@ -1558,7 +1595,7 @@ async function generateAiReportFromChecks(env: Env, payload: CheckData): Promise
 
   try {
     const data = (await response.json()) as unknown;
-    return validateReport(parseAnthropicJson(data));
+    return validateReport(parseAnthropicJson(data), toDeterministicReportFacts(payload.scoreReport));
   } catch (error) {
     return Response.json(
       {
@@ -1891,22 +1928,56 @@ async function consumeAiReportQuotaOrErrorResponse(
   }
 }
 
-async function requireSecurityCheckForPractice(env: Env, practiceId: string, checkId: string): Promise<true | Response> {
+async function requireSecurityCheckForPractice(
+  env: Env,
+  practiceId: string,
+  checkId: string
+): Promise<StoredSecurityCheck | Response> {
   if (!isUuid(checkId)) {
     return Response.json({ error: "checkId is required" }, { status: 400 });
   }
 
   const checks = await supabaseRest<unknown[]>(
     env,
-    `/rest/v1/security_checks?select=id&id=eq.${encodeURIComponent(checkId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    `/rest/v1/security_checks?select=id,type,results,scoring_version&id=eq.${encodeURIComponent(checkId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
     { method: "GET" }
   );
 
-  if (!checks[0]) {
+  const row = asRecordOrNull(checks[0]);
+  if (!row) {
     return Response.json({ error: "forbidden" }, { status: 403 });
   }
 
-  return true;
+  return {
+    id: typeof row.id === "string" ? row.id : checkId,
+    type: typeof row.type === "string" ? row.type : "",
+    results: row.results,
+    scoringVersion: typeof row.scoring_version === "string" ? row.scoring_version : undefined
+  };
+}
+
+function questionnaireAssessmentFromStoredCheck(check: StoredSecurityCheck): {
+  questionnaire: Record<string, QuestionnaireAnswerValue>;
+  assessmentProfile: AssessmentProfile;
+} | null {
+  if (check.type !== "questionnaire" && check.type !== "full") return null;
+
+  const results = asRecordOrNull(check.results);
+  const rawQuestionnaire = asRecordOrNull(results?.questionnaire);
+  if (!rawQuestionnaire) return null;
+
+  const questionnaire: Record<string, QuestionnaireAnswerValue> = {};
+  for (const [key, value] of Object.entries(rawQuestionnaire)) {
+    if (value !== true && value !== false && value !== null) return null;
+    questionnaire[key] = value;
+  }
+
+  const storedScoreReport = asRecordOrNull(results?.scoreReport);
+  const assessmentProfile = isAssessmentProfile(storedScoreReport?.assessment_profile)
+    ? storedScoreReport.assessment_profile
+    : "general";
+
+  return { questionnaire, assessmentProfile };
 }
 
 async function findByClientSyncId(env: Env, table: string, practiceId: string, clientSyncId: string) {
@@ -2063,6 +2134,7 @@ function redactedExternalSummary(result: ExternalCheckResult) {
     warning_count: result.warning_count,
     providers: result.providers,
     provider_statuses: result.provider_statuses,
+    coverage: result.coverage,
     finding_ids: result.findings.map((finding) => finding.id)
   };
 }
@@ -2075,14 +2147,6 @@ function redactedReportSummary(report: Report) {
     top_risk_count: report.top_risks.length,
     monthly_monitoring_recommendation: report.monthly_monitoring_recommendation
   };
-}
-
-function scoreQuestionnaire(questionnaire: Record<string, unknown>) {
-  const answers = Object.values(questionnaire);
-  if (answers.length === 0) return 50;
-
-  const positive = answers.filter(Boolean).length;
-  return clampScore((positive / answers.length) * 100);
 }
 
 function questionnaireFindings(questionnaire: Record<string, QuestionnaireAnswerValue>): SecurityFinding[] {
@@ -2262,6 +2326,7 @@ async function performExternalCheck(
   const critical_count = findings.filter((finding) => finding.severity === "critical").length;
   const warning_count = findings.filter((finding) => finding.severity === "warning").length;
   const overall_score = calculateOverallScore(critical_count, warning_count, findings);
+  const coverage = calculateMonitoringCoverage(provider_statuses);
 
   const result: ExternalCheckResult = {
     domain,
@@ -2281,7 +2346,8 @@ async function performExternalCheck(
       hibp: provider_statuses.hibp === "active",
       virusTotal: provider_statuses.virusTotal === "active"
     },
-    provider_statuses
+    provider_statuses,
+    coverage
   };
 
   return result;
@@ -2750,6 +2816,8 @@ function buildMonitoringSnapshot(
     },
     checks: {
       ...checks,
+      monitoring_coverage: result.coverage,
+      provider_statuses: result.provider_statuses,
       monitoring_targets: monitoredTargets,
       approved_email_count: approvedEmailCount,
       comparison: {
@@ -3078,6 +3146,8 @@ async function persistMonitoringResult(
     checks: {
       categories: snapshot.category_scores,
       checked_at: snapshot.checked_at,
+      monitoring_coverage: asRecordOrNull(snapshot.checks.monitoring_coverage),
+      provider_statuses: asRecordOrNull(snapshot.checks.provider_statuses),
       comparison: asRecordOrNull(snapshot.checks.comparison)
     },
     encrypted_checks: encryptedChecks,
@@ -4826,7 +4896,7 @@ function markProviderUnavailable(
   provider: ProviderName,
   error: unknown
 ) {
-  context.statuses[provider] = "unavailable";
+  context.statuses[provider] = error instanceof OutboundRequestTimeoutError ? "timeout" : "unavailable";
   if (!(error instanceof OutboundRequestTimeoutError)) {
     console.warn("provider_call_failed", {
       provider,
@@ -4856,6 +4926,8 @@ function buildFindings(checks: ExternalCheckResult["checks"], providers: Record<
   for (const [provider, status] of Object.entries(providers) as Array<[ProviderName, ProviderStatus]>) {
     if (status === "not_configured") {
       findings.push({ id: `not-checked-${provider}`, severity: "info", title: `${providerLabel(provider)} wurde nicht geprüft: API-Key fehlt.` });
+    } else if (status === "timeout") {
+      findings.push({ id: `timeout-${provider}`, severity: "info", title: `${providerLabel(provider)} hat das Zeitlimit überschritten.` });
     } else if (status === "unavailable") {
       findings.push({ id: `unavailable-${provider}`, severity: "info", title: `${providerLabel(provider)} war technisch nicht verfügbar.` });
     }

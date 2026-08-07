@@ -128,7 +128,20 @@ export function guidanceFromNetworkFindings(score: number, findings: NetworkSecu
   return guidanceFromScore(score, actions);
 }
 
-export function guidanceFromMonitoring(score: number, criticalCount: number): PracticeGuidance {
+export function guidanceFromMonitoring(score: number, criticalCount: number, coverageScore = 100): PracticeGuidance {
+  if (coverageScore < 80) {
+    return {
+      tone: "warning",
+      headline: "Die Überwachung ist noch nicht vollständig aussagekräftig.",
+      summary: `Aktuell sind ${Math.max(0, Math.min(100, Math.round(coverageScore)))} % der vorgesehenen Prüfquellen verfügbar. Ein guter Teilwert darf deshalb nicht als vollständige Entwarnung gelten.`,
+      actions: [
+        "Vervollständigen Sie die fehlenden Prüfquellen und Zugangsdaten.",
+        "Prüfen Sie, ob alle wichtigen Domains und E-Mail-Adressen überwacht werden.",
+        "Starten Sie anschließend einen neuen Scan."
+      ]
+    };
+  }
+
   const actions = criticalCount > 0
     ? [
         "Kontaktieren Sie Ihren IT-Dienstleister mit den kritischen Warnungen.",

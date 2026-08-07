@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import type { SecurityFinding } from "@/lib/security/scoring";
+import type { MonitoringCoverage } from "@/lib/monitoring/coverage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -130,7 +131,7 @@ export type SubdomainDiscoveryCheck = {
 };
 
 export type ExternalProviderName = "shodan" | "hibp" | "virusTotal" | "securityTrails" | "sslLabs" | "cloudflareDns";
-export type ExternalProviderStatus = "active" | "not_configured" | "unavailable";
+export type ExternalProviderStatus = "active" | "not_configured" | "unavailable" | "timeout";
 
 export type ExternalCheckResult = {
   checkId?: string;
@@ -153,6 +154,7 @@ export type ExternalCheckResult = {
   scoreImpact: number;
   providers: Record<string, boolean>;
   provider_statuses: Record<ExternalProviderName, ExternalProviderStatus>;
+  coverage: MonitoringCoverage;
 };
 
 export type ExternalCheckConsent = {

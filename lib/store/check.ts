@@ -16,6 +16,7 @@ import {
 } from "@/lib/security/questionnaire";
 
 type CheckState = {
+  latestQuestionnaireCheckId: string | null;
   currentScore: number;
   currentScoreReport: ScoreReport;
   assessmentProfile: AssessmentProfile;
@@ -24,12 +25,14 @@ type CheckState = {
   setAssessmentProfile: (profile: AssessmentProfile) => void;
   setAnswer: (key: QuestionnaireAnswerKey, value: QuestionnaireAnswerValue) => void;
   replaceAnswers: (answers: QuestionnaireAnswers, answeredKeys?: QuestionnaireAnswerKey[]) => void;
+  setLatestQuestionnaireCheck: (checkId: string, scoreReport: ScoreReport) => void;
   recalculate: (input?: Partial<ScoreInput>) => void;
 };
 
 const initialScoreReport = calculateScore(checkDataFromAnswers(DEFAULT_QUESTIONNAIRE_ANSWERS));
 
 export const useCheckStore = create<CheckState>((set, get) => ({
+  latestQuestionnaireCheckId: null,
   currentScore: initialScoreReport.score,
   currentScoreReport: initialScoreReport,
   assessmentProfile: "general",
@@ -45,6 +48,12 @@ export const useCheckStore = create<CheckState>((set, get) => ({
       answeredKeys: state.answeredKeys.includes(key) ? state.answeredKeys : [...state.answeredKeys, key]
     })),
   replaceAnswers: (answers, answeredKeys = []) => set({ answers, answeredKeys }),
+  setLatestQuestionnaireCheck: (latestQuestionnaireCheckId, currentScoreReport) =>
+    set({
+      latestQuestionnaireCheckId,
+      currentScore: currentScoreReport.score,
+      currentScoreReport
+    }),
   recalculate: (input) => {
     const answers = get().answers;
     const assessmentProfile = input?.assessmentProfile ?? get().assessmentProfile;

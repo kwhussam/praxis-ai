@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import { supabase } from "@/lib/api/supabase";
 import { AppConfig } from "@/lib/config/environment";
 import { assertDemoPracticeAccess } from "@/lib/demo/demo-data";
+import type { MonitoringCoverage } from "@/lib/monitoring/coverage";
 import {
   type DashboardData,
   type EmailSecurityStatus,
@@ -135,7 +136,7 @@ export function subscribeToMonitoringRealtime(practiceId: string, handlers: Real
 export async function startManualMonitoringScan(practice: PracticeRef, targets?: MonitoringTargets) {
   assertDemoPracticeAccess(practice.id);
 
-  return apiRequest<{ snapshot: MonitoringSnapshot; events: MonitoringEvent[] }>("/api/monitoring/run", {
+  const result = await apiRequest<{ snapshot: unknown; events: MonitoringEvent[] }>("/api/monitoring/run", {
     method: "POST",
     body: {
       practiceId: practice.id,
@@ -147,6 +148,7 @@ export async function startManualMonitoringScan(practice: PracticeRef, targets?:
       leakConsentAccepted: targets?.leakConsentAccepted === true
     }
   });
+  return { ...result, snapshot: normalizeSnapshot(result.snapshot) };
 }
 
 export function buildEmptyDashboard(practiceId: string): DashboardData {
@@ -174,6 +176,7 @@ export function buildEmptyDashboard(practiceId: string): DashboardData {
         unknown: 0
       },
       checks: {},
+      coverage: emptyMonitoringCoverage(),
       checked_at: checkedAt
     },
     events: [],
@@ -224,6 +227,7 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
       unknown: 3
     },
     checks: {},
+    coverage: { score: 100, status: "sufficient", active: 6, total: 6, missing: [] },
     checked_at: now.toISOString()
   };
 
@@ -267,6 +271,7 @@ export function buildDemoDashboard(practiceId: string): DashboardData {
 }
 
 function normalizeSnapshot(row: unknown): MonitoringSnapshot {
+  const checks = readRecord(row, "checks");
   return {
     id: readString(row, "id", "snapshot"),
     practice_id: readString(row, "practice_id", ""),
@@ -276,9 +281,30 @@ function normalizeSnapshot(row: unknown): MonitoringSnapshot {
     ssl: readSsl(row),
     email_security: readEmailSecurity(row),
     devices: readDevices(row),
-    checks: readRecord(row, "checks"),
+    checks,
+    coverage: readMonitoringCoverage(checks),
     checked_at: readString(row, "checked_at", new Date().toISOString())
   };
+}
+
+function readMonitoringCoverage(checks: Record<string, unknown>): MonitoringCoverage {
+  const value = checks.monitoring_coverage;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return emptyMonitoringCoverage();
+  const coverage = value as Record<string, unknown>;
+  const status = coverage.status === "sufficient" ? "sufficient" : "insufficient";
+  return {
+    score: readNumber(coverage, "score", 0),
+    status,
+    active: readNumber(coverage, "active", 0),
+    total: readNumber(coverage, "total", 0),
+    missing: Array.isArray(coverage.missing)
+      ? coverage.missing.filter((item): item is string => typeof item === "string")
+      : []
+  };
+}
+
+function emptyMonitoringCoverage(): MonitoringCoverage {
+  return { score: 0, status: "insufficient", active: 0, total: 0, missing: [] };
 }
 
 function normalizeEvent(row: unknown): MonitoringEvent {

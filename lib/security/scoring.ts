@@ -10,6 +10,16 @@ export type AmpelColor = "rot" | "gelb" | "grün";
 export type SecurityCategory = "access_control" | "backup" | "email_security" | "network" | "dsgvo" | "updates";
 export type EvidenceSource = "measured" | "inferred" | "self_reported" | "not_checked" | "unavailable";
 export type EvidenceKind = "technical_evidence" | "derived_signal" | "claim" | "missing";
+// Erhebungszustand ist von der fachlichen Evidenzquelle getrennt. Ein Sensorfehler
+// darf dadurch weder als negativer Befund noch als bestandene Kontrolle erscheinen.
+export type CollectionStatus =
+  | "collected"
+  | "not_checked"
+  | "unsupported"
+  | "permission_denied"
+  | "timeout"
+  | "error"
+  | "unavailable";
 export type ReviewStatus = "ok" | "review_required";
 export type AssessmentProfile = "general" | "health";
 export type CategoryApplicability = "applicable" | "not_applicable";
@@ -58,6 +68,7 @@ export type ScoreInput = {
 };
 
 export type CheckData = {
+  observed_at?: string;
   assessment_profile?: AssessmentProfile;
   mfa_enabled?: boolean;
   backup_tested?: boolean;
@@ -117,6 +128,10 @@ export interface RuleEvaluation {
 export interface EvidenceCoverage {
   source: EvidenceSource;
   kind: EvidenceKind;
+  // Optional während der additiven Migration. Neue Ergebnisse setzen den Wert immer;
+  // Altberichte werden über collectionStatusForEvidence rückwärtskompatibel gelesen.
+  collection_status?: CollectionStatus;
+  collection_reason?: string;
   score: number;
   confidence: number;
   label: string;
@@ -665,8 +680,11 @@ export function deriveControlStatus(input: {
   passed: boolean;
   source: EvidenceSource;
   applicability: Applicability;
+  collectionStatus?: CollectionStatus;
 }): ControlStatus {
   if (input.applicability === "not_applicable") return "not_applicable";
+  const collectionStatus = input.collectionStatus ?? collectionStatusForEvidence(input.source);
+  if (collectionStatus !== "collected") return "unknown";
   if (input.source === "not_checked" || input.source === "unavailable") return "unknown";
   if (input.applicability === "conditional") return "unknown";
   return input.passed ? "met" : "not_met";
@@ -739,7 +757,8 @@ function buildResult(input: {
   const status = deriveControlStatus({
     passed: effectivePassed,
     source: input.evidenceCoverage.source,
-    applicability
+    applicability,
+    collectionStatus: input.evidenceCoverage.collection_status
   });
   const applicabilityReasons = controlApplicabilityReviewReasons({
     applicability,
@@ -774,6 +793,7 @@ function buildResult(input: {
     applicability,
     applicability_reason: input.applicabilityReason,
     control_ids: input.controlIds,
+    observed_at: input.data.observed_at ?? new Date().toISOString(),
     disposition: "open",
     // Spiegelt recommendation rückwärtskompatibel; der Kundenbericht liest nur diese Variante (§2/Abnahmekriterium 4).
     management_recommendation: recommendation
@@ -791,11 +811,18 @@ function coverage(source: EvidenceSource, detail: string): EvidenceCoverage {
   return {
     source,
     kind: evidenceKind(source),
+    collection_status: collectionStatusForEvidence(source),
     score,
     confidence: score,
     label: EVIDENCE_SOURCE_LABELS[source],
     detail
   };
+}
+
+export function collectionStatusForEvidence(source: EvidenceSource): CollectionStatus {
+  if (source === "not_checked") return "not_checked";
+  if (source === "unavailable") return "unavailable";
+  return "collected";
 }
 
 function evidenceSourceFor(data: CheckData, ruleId: ScoringRuleId, fallback: EvidenceSource) {

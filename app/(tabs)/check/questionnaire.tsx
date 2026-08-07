@@ -22,6 +22,7 @@ import {
   saveQuestionnaireDraft
 } from "@/lib/store/questionnaireDraftStorage";
 import { useSessionStore } from "@/lib/store/session";
+import type { ScoreReport } from "@/lib/security/scoring";
 
 const ANSWER_OPTIONS: Array<{ value: QuestionnaireAnswerValue; label: string }> = [
   { value: true, label: "Ja" },
@@ -37,6 +38,7 @@ export default function QuestionnaireScreen() {
   const recalculate = useCheckStore((state) => state.recalculate);
   const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
   const setAssessmentProfile = useCheckStore((state) => state.setAssessmentProfile);
+  const setLatestQuestionnaireCheck = useCheckStore((state) => state.setLatestQuestionnaireCheck);
   const practice = useSessionStore((state) => state.practice);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -147,7 +149,7 @@ export default function QuestionnaireScreen() {
         assessmentProfile
       );
       recalculate();
-      await apiRequest("/api/check/questionnaire", {
+      const savedCheck = await apiRequest<{ checkId: string; scoreReport: ScoreReport }>("/api/check/questionnaire", {
         method: "POST",
         body: {
           practiceId: practice.id,
@@ -155,6 +157,7 @@ export default function QuestionnaireScreen() {
           questionnaire: answers
         }
       });
+      setLatestQuestionnaireCheck(savedCheck.checkId, savedCheck.scoreReport);
       await deleteQuestionnaireDraft(practice.id);
       router.push("/(tabs)/check/wlan-scan");
     } catch (error) {

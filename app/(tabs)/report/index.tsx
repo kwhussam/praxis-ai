@@ -20,8 +20,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export default function ReportsScreen() {
   const { from } = useLocalSearchParams<{ from?: string }>();
   const answers = useCheckStore((state) => state.answers);
-  const score = useCheckStore((state) => state.currentScore);
   const assessmentProfile = useCheckStore((state) => state.assessmentProfile);
+  const latestQuestionnaireCheckId = useCheckStore((state) => state.latestQuestionnaireCheckId);
   const practice = useSessionStore((state) => state.practice);
   const storedReport = useReportStore((state) => state.latest);
   const demoSampleReport = AppConfig.isDemoMode && practice?.id.startsWith("demo-") ? SAMPLE_STORED_REPORT : null;
@@ -31,7 +31,10 @@ export default function ReportsScreen() {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const canGenerate = Boolean(practice?.id && UUID_RE.test(practice.id)) && !generating;
+  const sourceCheckId = latestReport?.source?.checkId ?? latestQuestionnaireCheckId ?? null;
+  const canGenerate = Boolean(
+    practice?.id && UUID_RE.test(practice.id) && sourceCheckId && UUID_RE.test(sourceCheckId)
+  ) && !generating;
   const enteredFromCheckFlow = from === "check";
 
   async function handleGenerate() {
@@ -48,6 +51,7 @@ export default function ReportsScreen() {
 
     const source = {
       practiceId: practice.id,
+      checkId: sourceCheckId ?? undefined,
       practiceName: practice?.name,
       domain: practice?.domain,
       assessmentProfile,
@@ -55,8 +59,7 @@ export default function ReportsScreen() {
       wlan: getLatestWlanScanResult(),
       // TODO(external-check): runExternalCheck hier einbinden, sobald das Feature-Flag aktiv ist und
       // Provider-Timeouts (Phase G / F-025) stehen. Ergebnis in source.external einspeisen.
-      external: null,
-      score
+      external: null
     };
 
     try {

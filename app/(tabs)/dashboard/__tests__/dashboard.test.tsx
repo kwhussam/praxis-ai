@@ -151,7 +151,7 @@ describe("DashboardScreen", () => {
     });
   });
 
-  it("zeigt nach einem Fragebogen-Abschluss den echten Score und keine Demo-History", async () => {
+  it("zeigt nach einem Fragebogen-Abschluss den autoritativen Fragebogenstand und keine Demo-History", async () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
@@ -163,13 +163,73 @@ describe("DashboardScreen", () => {
     });
 
     const text = allText(tree!.root);
-    expect(text.includes("Echter Fragebogen-Score: 83")).toBe(true);
+    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 83")).toBe(true);
+    expect(text.includes("Messabdeckung: 50 Prozent")).toBe(true);
     expect(text.includes("Fragebogen")).toBe(true);
     expect(text.includes("83/100")).toBe(true);
     expect(text.includes("History:")).toBe(true);
     expect(text.includes("Mo:62")).toBe(false);
     expect(text.includes("Di:66")).toBe(false);
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
+
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
+  });
+
+  it("ersetzt den Fragebogenstand nicht durch einen neueren WLAN- oder Monitoring-Teilscore", async () => {
+    mockLoadDashboardData.mockClear();
+    const data = questionnaireDashboard(83);
+    data.latest.wlanScan = {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      checkedAt: "2026-07-15T08:15:00.000Z",
+      riskScore: 12,
+      riskLevel: "critical",
+      devicesFound: 3,
+      networkName: "Praxis",
+      securityProtocol: "WPA2"
+    };
+    data.latest.monitoringSnapshot = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      score: 99,
+      checkedAt: "2026-07-16T08:15:00.000Z",
+      source: "manual",
+      categoryScores: {}
+    };
+    data.history.push(
+      {
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        source: "security_check",
+        type: "wlan",
+        score: 12,
+        checkedAt: "2026-07-15T08:15:00.000Z"
+      },
+      {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        source: "monitoring_snapshot",
+        type: "monitoring",
+        score: 99,
+        checkedAt: "2026-07-16T08:15:00.000Z"
+      }
+    );
+    mockLoadDashboardData.mockResolvedValue(data);
+    const client = newQueryClient();
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderDashboard(client);
+      await flushQuery();
+    });
+
+    const text = allText(tree!.root);
+    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 83")).toBe(true);
+    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 99")).toBe(false);
+    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 12")).toBe(false);
+    expect(text.includes("WLAN-Scan")).toBe(true);
+    expect(text.includes("Monitoring")).toBe(true);
+    expect(text.includes(" W:12")).toBe(false);
+    expect(text.includes(" M:99")).toBe(false);
 
     await act(async () => {
       unmountRenderer(tree!);

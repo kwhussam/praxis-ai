@@ -93,6 +93,5 @@ export const SAMPLE_REPORT_SOURCE: CheckData = {
   domain: "demo.praxisshield.de",
   questionnaire: {},
   wlan: null,
-  external: null,
-  score: SAMPLE_REPORT.security_score
+  external: null
 };

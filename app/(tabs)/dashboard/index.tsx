@@ -10,7 +10,6 @@ import { PracticeGuidanceCard } from "@/components/modules/PracticeGuidanceCard"
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
-import { PLANS } from "@/lib/billing/plans";
 import { loadDashboardData } from "@/lib/dashboard/service";
 import type { DashboardData, DashboardHistoryPoint } from "@/lib/dashboard/types";
 import { guidanceFromScoreReport } from "@/lib/security/practiceGuidance";
@@ -38,11 +37,18 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
   // With enabled=false (no practice), React Query stays "pending"; treat that as not-loading.
   const loading = Boolean(practiceId) && isPending;
   const loadError = isError ? errorMessage(error) : null;
-  const plan = PLANS[practice?.plan ?? "free"];
   const scoreReport = dashboard?.latest.questionnaire?.scoreReport ?? null;
   const guidance = scoreReport ? guidanceFromScoreReport(scoreReport) : null;
   const primaryScore = dashboard ? primaryScoreFromDashboard(dashboard) : null;
-  const historyData = useMemo(() => (dashboard ? dashboard.history.map(historyPointToChartPoint) : []), [dashboard]);
+  const historyData = useMemo(
+    () =>
+      dashboard
+        ? dashboard.history
+            .filter((point: DashboardHistoryPoint) => point.type === "questionnaire")
+            .map(historyPointToChartPoint)
+        : [],
+    [dashboard]
+  );
 
   return (
     <Screen>
@@ -81,22 +87,7 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
       ) : dashboard ? (
         <LatestDataCard dashboard={dashboard} />
       ) : null}
-      <View style={styles.planCard}>
-        <Text style={styles.planKicker}>Aktueller Tarif</Text>
-        <View style={styles.planHeader}>
-          <Text style={styles.planName}>{plan.name}</Text>
-          <Text style={styles.planPrice}>
-            {plan.price === 0 ? "0 EUR" : `${plan.price} EUR`}
-            {plan.billing ? ` / ${plan.billing}` : ""}
-          </Text>
-        </View>
-        {plan.features.slice(0, 4).map((feature) => (
-          <Text key={feature} style={styles.planFeature}>
-            {feature}
-          </Text>
-        ))}
-      </View>
-      {dashboard?.hasData ? <ScoreHistory data={historyData} /> : null}
+      {historyData.length > 0 ? <ScoreHistory data={historyData} /> : null}
     </Screen>
   );
 }
@@ -152,7 +143,7 @@ function LatestDataCard({ dashboard }: { dashboard: DashboardData }) {
 
   return (
     <View style={styles.latestCard}>
-      <Text style={styles.latestTitle}>Letzte echte Prüfdaten</Text>
+      <Text style={styles.latestTitle}>Letzte Prüfdaten nach Bereich</Text>
       {items.map((item) => (
         <View key={item.label} style={styles.latestRow}>
           <View>
@@ -167,42 +158,16 @@ function LatestDataCard({ dashboard }: { dashboard: DashboardData }) {
 }
 
 function primaryScoreFromDashboard(dashboard: DashboardData) {
-  const candidates = [
-    dashboard.latest.questionnaire
-      ? {
-          score: dashboard.latest.questionnaire.score,
-          checkedAt: dashboard.latest.questionnaire.checkedAt,
-          label: "Echter Fragebogen-Score",
-          description: `Aus dem neuesten gespeicherten Fragebogen vom ${formatDateTime(dashboard.latest.questionnaire.checkedAt)}.`
-        }
-      : null,
-    dashboard.latest.external
-      ? {
-          score: dashboard.latest.external.score,
-          checkedAt: dashboard.latest.external.checkedAt,
-          label: "Echter Domain-Check",
-          description: `Aus dem neuesten gespeicherten Domain-Check vom ${formatDateTime(dashboard.latest.external.checkedAt)}.`
-        }
-      : null,
-    dashboard.latest.monitoringSnapshot
-      ? {
-          score: dashboard.latest.monitoringSnapshot.score,
-          checkedAt: dashboard.latest.monitoringSnapshot.checkedAt,
-          label: "Echter Monitoring-Score",
-          description: `Aus dem neuesten Monitoring-Snapshot vom ${formatDateTime(dashboard.latest.monitoringSnapshot.checkedAt)}.`
-        }
-      : null,
-    dashboard.latest.wlanScan && dashboard.latest.wlanScan.riskScore !== null
-      ? {
-          score: dashboard.latest.wlanScan.riskScore,
-          checkedAt: dashboard.latest.wlanScan.checkedAt,
-          label: "Echter WLAN-Scan",
-          description: `Aus dem neuesten gespeicherten WLAN-Scan vom ${formatDateTime(dashboard.latest.wlanScan.checkedAt)}.`
-        }
-      : null
-  ].filter((item): item is { score: number; checkedAt: string; label: string; description: string } => item !== null);
-
-  return candidates.sort((left, right) => new Date(right.checkedAt).getTime() - new Date(left.checkedAt).getTime())[0] ?? null;
+  const questionnaire = dashboard.latest.questionnaire;
+  if (!questionnaire) return null;
+  const coverage = questionnaire.scoreReport?.evidence_coverage_score;
+  const coverageText = typeof coverage === "number" ? ` Messabdeckung: ${coverage} Prozent.` : "";
+  return {
+    score: questionnaire.score,
+    checkedAt: questionnaire.checkedAt,
+    label: "Sicherheitsstand aus dem Fragebogen",
+    description: `Bewertung des Fragebogens vom ${formatDateTime(questionnaire.checkedAt)}.${coverageText} Andere Prüfbereiche werden getrennt angezeigt.`
+  };
 }
 
 function historyPointToChartPoint(point: DashboardHistoryPoint) {

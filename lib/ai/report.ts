@@ -20,7 +20,6 @@ export type CheckData = {
   questionnaire: Record<string, QuestionnaireAnswerValue>;
   wlan?: WlanScanResult | null;
   external?: ExternalCheckResult | null;
-  score?: number;
 };
 
 export type TopRisk = {
@@ -107,6 +106,9 @@ export async function generateReportWithId(data: CheckData): Promise<GeneratedRe
 async function requestGeneratedReport(data: CheckData) {
   if (!data.practiceId || !UUID_RE.test(data.practiceId)) {
     throw new Error("Eine gültige Praxis-ID ist erforderlich, bevor ein KI-Bericht erzeugt werden kann.");
+  }
+  if (!data.checkId || !UUID_RE.test(data.checkId)) {
+    throw new Error("Ein gespeicherter, gültiger Prüfdatensatz ist erforderlich, bevor ein Bericht erzeugt werden kann.");
   }
 
   return apiRequest<unknown>("/api/report/generate", {

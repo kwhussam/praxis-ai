@@ -128,8 +128,16 @@ export default function MonitoringScreen() {
   }, [practiceId]);
 
   const snapshot = dashboard.snapshot;
-  const tone = toneForScore(snapshot.score);
-  const statusLabel = tone === "critical" ? "Kritisch" : tone === "warning" ? "Beobachten" : "Stabil";
+  const scoreTone = toneForScore(snapshot.score);
+  const tone = snapshot.coverage.status === "insufficient" && scoreTone === "safe" ? "warning" : scoreTone;
+  const statusLabel =
+    snapshot.coverage.status === "insufficient"
+      ? "Unzureichend gemessen"
+      : tone === "critical"
+        ? "Kritisch"
+        : tone === "warning"
+          ? "Beobachten"
+          : "Stabil";
   const criticalCount = dashboard.events.filter((event) => event.severity === "critical" && !event.resolved_at).length;
 
   const categoryData = useMemo(
@@ -231,17 +239,22 @@ export default function MonitoringScreen() {
             <Text style={styles.cardKicker}>Praxiszustand</Text>
             <AmpelBadge tone={tone} label={statusLabel} pulsing={tone === "critical"} />
           </View>
-          {loading ? <ActivityIndicator color={colors.electric} /> : <Text style={styles.sync}>Live</Text>}
+          {loading ? <ActivityIndicator color={colors.electric} /> : <Text style={styles.sync}>Letzte Messung</Text>}
         </View>
         <View style={styles.scoreArea}>
-          <ScoreRing score={snapshot.score} size={214} stroke={18} label="Sicherheitswert" />
+          <ScoreRing score={snapshot.score} size={214} stroke={18} label="Geprüfte Bereiche" />
         </View>
         <View style={styles.heroStats}>
           <Metric label="Kritische Alerts" value={`${criticalCount}`} tone={criticalCount > 0 ? "critical" : "safe"} />
+          <Metric
+            label="Messabdeckung"
+            value={`${snapshot.coverage.score}%`}
+            tone={snapshot.coverage.status === "sufficient" ? "safe" : "warning"}
+          />
           <Metric label="Letzter Lauf" value={relativeTime(snapshot.checked_at)} tone="info" />
         </View>
       </GlassCard>
-      <PracticeGuidanceCard guidance={guidanceFromMonitoring(snapshot.score, criticalCount)} />
+      <PracticeGuidanceCard guidance={guidanceFromMonitoring(snapshot.score, criticalCount, snapshot.coverage.score)} />
 
       <View style={styles.actions}>
         <AnimatedButton
