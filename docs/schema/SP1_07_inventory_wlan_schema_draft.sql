@@ -12,8 +12,9 @@ Target invariants
 2. encrypted_payload_v2 is nullable during backfill. The existing wlan_scans
    encrypted_payload default `{}` is legacy state and never a valid v2 envelope.
 3. payload_hmac and identity_hmac are keyed, practice-bound and domain-separated.
-   They are not unkeyed hashes of confidential plaintext.
-4. No authenticated/anon grant exists on the key registry.
+   They are not unkeyed hashes of confidential plaintext. identity_hmac uses a
+   separate, routine-DEK-rotation-stable Identity Index Key (IIK).
+4. No authenticated/anon grant exists on either key registry.
 5. Draft suffixes make accidental coupling to application code less likely.
 
 -- One row per practice and DEK version. A practice_id primary key would make
@@ -41,6 +42,35 @@ create unique index practice_data_keys_one_active_draft
 revoke all on public.practice_data_keys_draft from public, anon, authenticated;
 -- A reviewed migration grants only the minimum operations to service_role.
 
+-- Independent, rotation-stable keys for equality indexes. Routine DEK
+-- rotation never changes these HMACs. IIK rotation uses the explicit
+-- identity_hmac_next reindex path below and is a separate operation.
+create table public.practice_identity_keys_draft (
+  practice_id uuid not null references public.practices(id) on delete cascade,
+  identity_key_version text not null,
+  wrapped_iik jsonb not null,
+  kek_version text not null,
+  wrap_algorithm text not null,
+  status text not null check (status in ('active', 'reindexing', 'verify_only', 'retired')),
+  created_at timestamptz not null default now(),
+  activated_at timestamptz,
+  verify_only_at timestamptz,
+  retired_at timestamptz,
+  primary key (practice_id, identity_key_version),
+  check ((status <> 'active') or activated_at is not null),
+  check ((status <> 'retired') or retired_at is not null)
+);
+
+create unique index practice_identity_keys_one_active_draft
+  on public.practice_identity_keys_draft(practice_id)
+  where status = 'active';
+
+create unique index practice_identity_keys_one_reindexing_draft
+  on public.practice_identity_keys_draft(practice_id)
+  where status = 'reindexing';
+
+revoke all on public.practice_identity_keys_draft from public, anon, authenticated;
+
 -- Reused target columns are shown explicitly on every sensitive table because
 -- the source tables differ. Envelope validation is staged: nullable in M1-M4,
 -- required and schema-validated only in M5.
@@ -64,6 +94,9 @@ alter table public.inventory_items
 
 alter table public.inventory_known_devices
   add column identity_hmac_draft text,
+  add column identity_key_version_draft text,
+  add column identity_hmac_next_draft text,
+  add column identity_key_version_next_draft text,
   add column encrypted_payload_v2_draft jsonb,
   add column payload_hmac_draft text,
   add column key_version_draft text,
@@ -83,6 +116,9 @@ alter table public.inventory_known_devices
 
 alter table public.inventory_access_points
   add column identity_hmac_draft text,
+  add column identity_key_version_draft text,
+  add column identity_hmac_next_draft text,
+  add column identity_key_version_next_draft text,
   add column encrypted_payload_v2_draft jsonb,
   add column payload_hmac_draft text,
   add column key_version_draft text,
@@ -127,6 +163,9 @@ alter table public.router_firewall_rules
 -- value and normalized_value are D2. Equality uses a keyed identity HMAC.
 alter table public.monitoring_targets
   add column identity_hmac_draft text,
+  add column identity_key_version_draft text,
+  add column identity_hmac_next_draft text,
+  add column identity_key_version_next_draft text,
   add column encrypted_payload_v2_draft jsonb,
   add column payload_hmac_draft text,
   add column key_version_draft text,
@@ -168,8 +207,12 @@ alter table public.inventory_items
 -- M5-only constraints, expressed as examples rather than executable DDL:
 --   envelope is an object and has exactly the allowed v2 keys/types;
 --   alg='A256GCM', payload_version=2, aad_version=1;
+--   alg and canonical server-created created_at are bound into AAD together
+--   with practice/entity/payload/key/AAD versions;
 --   envelope key_version matches the relational key_version and registry FK;
 --   migrated live rows require envelope + payload_hmac + key_version;
+--   identity_hmac requires an identity_key_version FK to the separate IIK
+--   registry and never changes during routine DEK rotation;
 --   D3 key names are rejected in the Worker before encryption;
 --   sync_policy='local_only' is rejected by every Cloud write endpoint.
 
@@ -187,9 +230,24 @@ create unique index monitoring_targets_identity_draft
   on public.monitoring_targets(practice_id, target_type, identity_hmac_draft)
   where identity_hmac_draft is not null;
 
+-- IIK rotation only: build and validate next-version indexes while the active
+-- indexes remain authoritative. Dual-HMAC writes plus an exact backfill run
+-- first; a short Worker write pause then swaps columns/indexes transactionally.
+create unique index inventory_known_devices_identity_next_draft
+  on public.inventory_known_devices(practice_id, identity_hmac_next_draft)
+  where deleted_at_draft is null and identity_hmac_next_draft is not null;
+
+create unique index inventory_access_points_identity_next_draft
+  on public.inventory_access_points(practice_id, identity_hmac_next_draft)
+  where deleted_at_draft is null and identity_hmac_next_draft is not null;
+
+create unique index monitoring_targets_identity_next_draft
+  on public.monitoring_targets(practice_id, target_type, identity_hmac_next_draft)
+  where identity_hmac_next_draft is not null;
+
 -- Final grants are intentionally not declared here. M6 must prove:
 --   authenticated/anon: no direct INSERT/UPDATE/DELETE on sensitive tables;
 --   service_role: only reviewed Worker/RPC operations;
 --   viewer/manager access: exclusively via tenant-validated Worker endpoints;
---   key registry: inaccessible outside the minimum Worker/rotation functions.
+--   DEK/IIK registries: inaccessible outside the minimum Worker/rotation functions.
 */

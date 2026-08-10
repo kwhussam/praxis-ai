@@ -843,7 +843,7 @@ Stand: **2026-08-10**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | SP1-04 | verification | Report verlangt gespeicherte Check-ID, lädt den mandantengebundenen Fragebogencheck und berechnet Fakten serverseitig; Clientwerte sind nicht autoritativ | Übergang von `check_id` auf vollständiges Assessment-Manifest/Snapshot in SP2/SP3 |
 | SP1-05 | verification | Dashboardprimärwert und Historie nutzen nur vergleichbare Fragebogenergebnisse; WLAN/Monitoring können ihn nicht ersetzen | finale Praxis-/Techniksicht und A11y-Abnahme in SP2-03 |
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
-| SP1-07 | review | ADR-001 technisch gegen Schema, Worker, Grants, Export und Löschung geprüft; nicht ausführbarer Vollschemaentwurf sowie Zwei-Mandanten-, Backfill-, Rollback-, D3-, Export-/Lösch- und Restore-Verifikationsplan erstellt; Abbruchmetriken sind messbar | benannte Sign-offs von Technical Owner, Datenschutz, Operations, Mobile, Security und Product sowie Umsetzung der spezifizierten Tests vor M1; keine Migration freigegeben |
+| SP1-07 | review | ADR-001 technisch gegen Schema, Worker, Grants, Export und Löschung geprüft; DEK-unabhängiger IIK-/Reindex-Lifecycle, vollständig authentifiziertes Envelope und feste API-Canary-Baseline definiert; nicht ausführbarer Vollschemaentwurf sowie Zwei-Mandanten-, Backfill-, Rollback-, D3-, Export-/Lösch- und Restore-Verifikationsplan erstellt | benannte Sign-offs von Technical Owner, Datenschutz, Operations, Mobile, Security und Product sowie Umsetzung der spezifizierten Tests vor M1; keine Migration freigegeben |
 
 Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **363 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
 
@@ -872,3 +872,9 @@ Der Review vom 2026-08-10 hat vier migrationskritische Lücken im ersten Entwurf
 - Der aktuelle Privacy-Export und die transaktionale Praxislöschung decken die neuen Inventar-/Router-/Monitoringzieltabellen noch nicht vollständig ab. Dies ist ausdrücklich ein blockierendes Gate vor dem Klartext-Scrub.
 
 `docs/adr/ADR-001_VERIFICATION_PLAN.md` teilt die Freigabe in V0 Review/Testgerüst, V1 additive Migration/Dual-Write, V2 Backfill/Dual-Read, V3 Scrub/Zugriffshärtung und V4 Legacybereinigung. SP1-07 bleibt bis zu den menschlichen Freigaben im Status `review`; insbesondere ersetzt die technische Dokumentprüfung keine Datenschutz- oder Betriebsentscheidung.
+
+Claudes Nachreview des Commits `f2a896a` ergab drei weitere Designpräzisierungen, die anschließend geschlossen wurden:
+
+- `identity_hmac` verwendet einen eigenen, rotationsstabilen Identity Index Key je Praxis und bleibt bei regulärer DEK-Rotation unverändert. Eine seltene IIK-Rotation besitzt einen separaten Dual-HMAC-, Backfill-, Next-Index- und transaktionalen Swap-Pfad.
+- `alg` und der serverseitig kanonisch erzeugte `created_at`-Wert sind neben Mandant, Entität und Versionen Bestandteil der AAD; Manipulation dieser Envelope-Metadaten führt zur geschlossenen Entschlüsselungsablehnung.
+- Die neue Detail-API erhält nach M2 und vor M3 eine eingefrorene Baseline aus produktionsähnlichem Staging und einem mindestens 24 Stunden sowie 1.000 Requests umfassenden Produktions-Canary. Ohne signiertes Baseline-Artefakt beginnt kein Backfill.

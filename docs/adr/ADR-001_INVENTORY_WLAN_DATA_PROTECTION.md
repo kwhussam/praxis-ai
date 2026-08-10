@@ -99,7 +99,22 @@ Aus Praxisprofilen abgeleitete Seeds sind `source=practice_profile`, `synthetic=
 - Rotation erstellt zuerst eine neue aktive Version. Alte DEKs bleiben `decrypt_only`, bis alle referenzierenden Payloads erfolgreich re-encrypted, Restore getestet und die definierte Sicherheitsfrist abgelaufen sind. Erst dann werden sie `retired`.
 - Die bestehende globale `DATA_ENCRYPTION_KEY` bleibt zeitlich begrenzt nur für Legacy-Reads verfügbar. Neue v2-Payloads dürfen ihn nicht verwenden.
 
-### 6.2 Nutzdaten-Envelope und AAD
+### 6.2 Rotationsstabiler Identity-HMAC-Schlüssel
+
+`identity_hmac` verwendet **keinen aus dem DEK abgeleiteten Schlüssel**. Jede Praxis erhält einen separaten zufälligen 256-Bit Identity Index Key (IIK), der wie ein DEK unter dem versionierten KEK gewrappt, aber in einer eigenen Registry verwaltet wird. Eine normale DEK-Rotation verändert deshalb weder bestehende Identity-HMACs noch Unique-Indizes oder Deduplizierung.
+
+Die IIK-Version ist Bestandteil der domain-separierten HMAC-Eingabe und wird als `identity_key_version` am Datensatz geführt. Eine IIK-Rotation ist ein eigenes, seltenes Reindex-Ereignis:
+
+1. neue IIK-Version als `reindexing` erzeugen; alte Version bleibt `active`;
+2. neue Writes atomar mit bisheriger und neuer `identity_hmac` schreiben;
+3. `identity_hmac_next` praxisweise backfillen und auf Zeilenzahl, kanonische Identität, Kollision und Dedupe prüfen;
+4. neuen partiellen Unique-Index aufbauen und validieren;
+5. in einer kurzen Worker-Write-Pause Index und Primär-/Next-Spalten transaktional umschalten;
+6. alte Version für das Rollbackfenster `verify_only` halten und erst danach samt alten HMACs entfernen/retiren.
+
+Jede Abweichung stoppt den Reindex global; es gibt niemals ein Mischschema, in dem Identitäten verschiedener IIK-Versionen über denselben Unique-Index verglichen werden. Praxislöschung entfernt DEKs und IIKs. Zugriff, Backup und Restore beider Registries unterliegen denselben strengen Gates.
+
+### 6.3 Nutzdaten-Envelope und AAD
 
 Nutzdaten werden mit AES-256-GCM und zufälliger 96-Bit-IV verschlüsselt. Das kanonische v2-Envelope ist:
 
@@ -115,15 +130,16 @@ Nutzdaten werden mit AES-256-GCM und zufälliger 96-Bit-IV verschlüsselt. Das k
 }
 ```
 
-`ciphertext_b64u` enthält Ciphertext und Authentifizierungstag gemäß der eingesetzten Web-Crypto-Repräsentation. AAD wird deterministisch aus `practice_id`, `entity_type`, `entity_id`, `payload_version`, `key_version` und `aad_version` gebildet und nicht als vertrauenswürdiger Klartext aus dem Request übernommen. Damit scheitert das Verschieben eines Ciphertexts zwischen Mandanten oder Entitäten.
+`ciphertext_b64u` enthält Ciphertext und Authentifizierungstag gemäß der eingesetzten Web-Crypto-Repräsentation. `alg` ist serverseitig fest auf `A256GCM` gesetzt. `created_at` wird serverseitig als kanonischer RFC-3339-UTC-Zeitpunkt mit Millisekunden erzeugt. AAD wird über eine längenpräfixierte kanonische Serialisierung von `practice_id`, `entity_type`, `entity_id`, `alg`, `payload_version`, `key_version`, `aad_version` und `created_at` gebildet. Kein AAD-Feld wird als vertrauenswürdiger Klartext aus dem Request übernommen. Damit scheitert sowohl das Verschieben des Ciphertexts als auch die Manipulation seiner sicherheits- oder auditrelevanten Envelope-Metadaten.
 
-Ein unkeyed SHA-256 des Klartexts ist verboten: kleine Wertebereiche wie MAC, BSSID oder SSID wären offline korrelierbar. Für Migrations-/Deduplizierungsvergleiche wird eine domain-separierte HMAC verwendet:
+Ein unkeyed SHA-256 des Klartexts ist verboten: kleine Wertebereiche wie MAC, BSSID oder SSID wären offline korrelierbar. Die beiden HMAC-Zwecke besitzen getrennte Schlüssel und Eingaben:
 
-`HMAC(key, practice_id || entity_type || purpose || canonicalization_version || canonical_value)`
+- `identity_hmac = HMAC(IIK, practice_id || entity_type || identity-purpose || identity_key_version || canonicalization_version || canonical_identity)`
+- `payload_hmac = HMAC(HKDF(DEK, payload-hmac-purpose), practice_id || entity_type || payload-purpose || key_version || payload_version || canonical_payload)`
 
-Der HMAC-Schlüssel wird vom DEK getrennt abgeleitet. `identity_hmac` ist nur für eng definierte Identitätsfelder zulässig; `payload_hmac` vergleicht kanonische Payloads während Migration/Dual-Write. Ein optionaler `ciphertext_sha256` darf ausschließlich Transportkorruption erkennen und hat keine fachliche Identitätsfunktion.
+`identity_hmac` nutzt ausschließlich den rotationsstabilen IIK und ist nur für eng definierte Identitätsfelder zulässig. `payload_hmac` nutzt einen getrennten, domain-separiert aus der jeweiligen DEK-Version abgeleiteten Subkey und vergleicht kanonische Payloads während Migration, Dual-Write oder Re-encryption; er ist kein stabiler Dedupe-Index. Ein optionaler `ciphertext_sha256` darf ausschließlich Transportkorruption erkennen und hat keine fachliche Identitätsfunktion.
 
-### 6.3 Mobile Offline-Persistenz
+### 6.4 Mobile Offline-Persistenz
 
 - Pro Installation/Praxis wird ein separater lokaler DEK erzeugt und mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` im iOS-Keychain beziehungsweise hardwaregestützten Android-Keystore abgelegt, soweit verfügbar.
 - Größere Datensätze liegen als AES-GCM-verschlüsselte Datensätze in SQLite; SecureStore ist nur Schlüsselspeicher.
@@ -148,7 +164,7 @@ Der HMAC-Schlüssel wird vom DEK getrennt abgeleitet. `identity_hmac` ist nur f�
 | WLAN-Aggregate | 12 Monate | mit Praxislöschung entfernen oder vollständig entkoppeln | D1-Zeitreihe |
 | D3-Credentials | bis Widerruf/Rotation | sofort lokal löschen | ausgeschlossen |
 
-Export und Praxislöschung decken `inventory_items`, `inventory_known_devices`, `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules`, `monitoring_targets`, `wlan_scans`, Tombstones und Praxis-DEKs ab. Die derzeitigen Pfade tun dies nicht vollständig; dies ist ein bestätigter Blocker vor M5. Backups folgen der dokumentierten Providerlöschfrist, während der Applikationszugriff nach Löschung sofort ausgeschlossen wird.
+Export und Praxislöschung decken `inventory_items`, `inventory_known_devices`, `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules`, `monitoring_targets`, `wlan_scans`, Tombstones sowie Praxis-DEKs und -IIKs ab. Schlüsselmaterial selbst erscheint nie im Nutzerdatenexport, wird bei der Löschung aber vollständig und testbar vernichtet. Die derzeitigen Pfade tun dies nicht vollständig; dies ist ein bestätigter Blocker vor M5. Backups folgen der dokumentierten Providerlöschfrist, während der Applikationszugriff nach Löschung sofort ausgeschlossen wird.
 
 ## 9. Migrationsablauf
 
@@ -182,6 +198,8 @@ Die Migration stoppt automatisch und M5/M6 bleiben gesperrt bei:
 
 RPO/RTO sind keine stillschweigenden Produktclaims. Operations dokumentiert die verbindlichen Werte vor M1; bis dahin gibt es keine Produktionsfreigabe.
 
+Die Detail-API-v1-Baseline wird nach M2 und vor M3 eingefroren. Zuvor läuft ein kontrollierter Canary mindestens 24 zusammenhängende Stunden und mindestens 1.000 erfolgreiche synthetische beziehungsweise freigegebene Canary-Detailrequests über repräsentative kleine, mittlere und maximal zulässige Payloadgrößen; maßgeblich ist der später erreichte Grenzwert. Referenz-p95 ist der höhere Wert aus produktionsähnlichem Staging-Lasttest und Produktions-Canary, Referenz-5xx die im Canary gemessene Quote. Testfehler werden nicht herausgerechnet. Das signierte Baseline-Artefakt bindet Commit, Worker-Version, Region, Payloadmix, Requestzahl und Zeitfenster. Ohne dieses Artefakt startet M3 nicht.
+
 ## 12. Verifikation und Nachweise
 
 Der separate Verifikationsplan definiert synthetische Zwei-Mandanten-Fixtures, Rollen, D3-Poison-Payloads, zwei Keyversionen, Backfill, Dual-Read/-Write, Grants, Restore, Export und Löschung. Er enthält keine Patienten- oder realen Praxisdaten.
@@ -202,7 +220,7 @@ SP1-07 bleibt `review`, bis alle menschlichen Freigaben vorliegen. Eine technisc
 |---|---|---|
 | Schema, API, Dual-Read/-Write | reviewbereit | benannter Technical Owner signiert ADR, Schemaentwurf und Migrationsreihenfolge |
 | Datenklassen, Zweck, Retention, Export, Löschung | offen | Datenschutz/Fachreview mit Verarbeitungszweck und Fristen |
-| KEK/DEK, Rotation, Backup, Restore, RPO/RTO | offen | Operations plus Security; produktiver Schlüsselprovider und Runbook |
+| KEK/DEK/IIK, Rotation/Reindex, Backup, Restore, RPO/RTO | offen | Operations plus Security; produktiver Schlüsselprovider und Runbook |
 | Mobile Keystore und Offlineverlust | reviewbereit | Mobile Owner; Android-/iOS-Gerätematrix und Recovery-UX |
 | AAD, HMAC, Logging, RLS, Cross-Tenant | reviewbereit | Security Review; ausführbare Tests aus dem Verifikationsplan |
 | Seed-/Coverage-Darstellung | technisch belegt, Product-Sign-off offen | Product Owner; UI-Fixture zeigt Seed nicht als Messung |
@@ -212,7 +230,7 @@ Freigabecheckliste:
 
 - [ ] Technical Owner bestätigt Schema, API und Dual-Read-/Dual-Write-Strategie.
 - [ ] Datenschutz bestätigt Datenklassen, Zweck, Aufbewahrung, Export und Löschung.
-- [ ] Operations bestätigt KEK/DEK-Verwaltung, Rotation, Backup, Restore und RPO/RTO.
+- [ ] Operations bestätigt KEK/DEK/IIK-Verwaltung, DEK-Rotation, IIK-Reindex, Backup, Restore und RPO/RTO.
 - [ ] Mobile Owner bestätigt sicheren Keystore und Offlineverlust-Verhalten.
 - [ ] Security bestätigt AAD, HMAC, Logging-Allowlist, RLS und Cross-Tenant-Tests.
 - [ ] Product Owner bestätigt Seed- und Coverage-Darstellung.

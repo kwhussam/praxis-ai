@@ -3,7 +3,7 @@
 - **Ticket:** SP1-07
 - **Stand:** 2026-08-10
 - **Status:** Tests und Nachweise spezifiziert; noch nicht als Produktionsmigration umgesetzt
-- **Geltungsbereich:** Inventar, bekannte Geräte, Access Points, Router-WLAN, Firewallregeln, Monitoringziele, WLAN-Scans, Schlüsselregistry, Worker-API, Mobile Offline-Repository
+- **Geltungsbereich:** Inventar, bekannte Geräte, Access Points, Router-WLAN, Firewallregeln, Monitoringziele, WLAN-Scans, DEK-/IIK-Schlüsselregistries, Worker-API, Mobile Offline-Repository
 
 ## 1. Zweck und harte Grenze
 
@@ -15,7 +15,7 @@ Dieser Plan macht ADR-001 vor M1 prüfbar. Er ist keine Migrationsfreigabe. Fixt
 |---|---|---|---|
 | Schema/API/Migration | zu benennender Technical Owner | ADR- und DDL-Sign-off, M0–M7-Runbook, Client-Kompatibilitätsmatrix | offen |
 | Datenklassen/DSGVO | Datenschutz/Fachowner | Zweck, Rechtsgrundlage, Datenminimierung, Retention, Export/Löschung, AV-/Providerprüfung | offen |
-| Schlüssel/Betrieb | Operations | KEK-Provider, Zugriff, Rotation, Backup, Restore, Monitoring, freigegebene RPO/RTO | offen |
+| Schlüssel/Betrieb | Operations | KEK-Provider, DEK-Rotation, IIK-Reindex, Zugriff, Backup, Restore, Monitoring, freigegebene RPO/RTO | offen |
 | Kryptographie/Tenantgrenzen | Security Owner | Crypto-, D3-, Logging-, Worker-Auth-, RLS-/Cross-Tenant-Testlauf | offen |
 | Mobile Offline | Android-/iOS-Owner | Keystore-, Logout-, Praxiswechsel-, Schlüsselverlust- und Device-Smoke-Nachweis | offen |
 | Seed/Coverage/UX | Product Owner | freigegebene Screens/Fixtures für `synthetic`, `local_only`, fehlende Coverage und Datenverlust | offen |
@@ -52,7 +52,8 @@ Für A und B wird je ein eindeutig unterschiedliches Objekt erzeugt:
 - WLAN-Scan mit IP, Gateway, DNS, Geräten, Findings, Methodik und D1-Aggregaten;
 - Seedobjekt `source=practice_profile`, `synthetic=true`, `confidence=30`, `sync_policy=local_only`;
 - beobachtetes Objekt `source=observed`, `synthetic=false`, `sync_policy=cloud_allowed`;
-- DEK-Versionen `k1` (`decrypt_only`) und `k2` (`active`).
+- DEK-Versionen `k1` (`decrypt_only`) und `k2` (`active`);
+- davon unabhängige Identity-Index-Key-Versionen `i1` (`active`) und `i2` (`reindexing`).
 
 Zusätzlich existieren D3-Poison-Payloads mit verschachtelten und unterschiedlich geschriebenen Schlüsseln wie `password`, `passphrase`, `psk`, `apiToken`, `private_key`, `credentials` und überlangen/unerwarteten Feldern. Testwerte sind zufällige Fixturemarker, keine nutzbaren Geheimnisse.
 
@@ -64,13 +65,17 @@ Zusätzlich existieren D3-Poison-Payloads mit verschachtelten und unterschiedlic
 |---|---|---|
 | CR-01 | v2 Roundtrip je Entität mit k1/k2 | identischer kanonischer Inhalt; keine Klartextspalte |
 | CR-02 | Ciphertext von A nach B oder auf andere Entity-ID kopieren | AES-GCM/AAD-Verifikation scheitert geschlossen |
-| CR-03 | IV, Ciphertext, Tag, Payload-/AAD-/Keyversion manipulieren | Entschlüsselung scheitert; kein Fallback auf ungeprüften Klartext |
+| CR-03 | IV, Ciphertext, Tag, `alg`, `created_at`, Payload-/AAD-/Keyversion manipulieren | Entschlüsselung scheitert; kein Fallback auf ungeprüften Klartext |
 | CR-04 | 100.000 Encryptions mit gleicher Payload/DEK | keine IV-Wiederverwendung; statistisch/implementierungsseitig geprüft |
 | CR-05 | gleiche MAC in A und B | unterschiedliche `identity_hmac`; Dedupe nur innerhalb einer Praxis |
 | CR-06 | Kanonisierung von MAC/BSSID/Domain/E-Mail | definierte Äquivalente deduplizieren, unterschiedliche Werte kollidieren nicht |
 | CR-07 | Keyrotation k1 → k2 → k1-Referenz | neue Writes k2; alte Reads k1; Retirement mit Referenz wird blockiert |
 | CR-08 | unbekannte/fehlende Keyversion | harter Fehler, Alarm und automatischer Migrationsstopp |
 | CR-09 | `payload_hmac` versus unkeyed Hash | Schema/API enthält keinen Klartext-SHA-256; HMAC ist domain-separiert |
+| CR-10 | routinemäßige DEK-Rotation k1 → k2 | `identity_hmac`, IIK-Version, Unique-Indizes und Dedupe bleiben unverändert |
+| CR-11 | IIK-Reindex i1 → i2 mit parallelen Writes | beide HMACs werden atomar geschrieben; Backfill und Next-Indizes sind exakt |
+| CR-12 | Fehler/Kollision beim IIK-Reindex | Umschaltung stoppt; i1 und bisheriger Unique-Index bleiben autoritativ |
+| CR-13 | erfolgreicher IIK-Swap und Rollbackfenster | Spalten/Indizes wechseln transaktional; i1 bleibt `verify_only`, bis Rollback abgelaufen ist |
 
 ### 4.2 API, Autorisierung und D3
 
@@ -94,7 +99,7 @@ Zusätzlich existieren D3-Poison-Payloads mit verschachtelten und unterschiedlic
 | DB-01 | A-Viewer liest alle sieben A-Entitätsgruppen | nur A und nur erlaubte D1-Daten |
 | DB-02 | A-Viewer/B-Manager/Outsider lesen oder ändern fremde Zeilen | null Zeilen/keine Änderung; keine Timing-/Fehlerdetails |
 | DB-03 | direkte `authenticated` Inserts/Updates/Deletes nach M6 | für alle sensiblen Tabellen widerrufen |
-| DB-04 | anon/authenticated gegen Schlüsselregistry | keinerlei Privilegien |
+| DB-04 | anon/authenticated gegen DEK- und IIK-Registry | keinerlei Privilegien |
 | DB-05 | Constraints/Unique-HMAC innerhalb/zwischen Praxen | Duplikat A blockiert; gleicher kanonischer Wert in B zulässig |
 | DB-06 | ungültiges/leeres `{}`-Envelope als `verified` | Constraint beziehungsweise Zustandsübergang blockiert |
 | DB-07 | service_role-Worker mit fremder Objekt-ID | Worker-Praxisprüfung blockiert trotz RLS-Bypass |
@@ -156,6 +161,19 @@ Der Orchestrator besitzt einen Kill Switch für Dual-Write und Backfill. Folgend
 
 Ein Stopp kann nur nach Root-Cause, Fix, neuem vollständigem Testlauf und signiertem Go/No-Go aufgehoben werden. Quarantäne speichert IDs, Fehlerklasse und Hash-/Versionsmetadata, niemals den Rohwert.
 
+### 5.1 Festschreiben der Detail-API-Baseline
+
+Die v1-Detail-API existiert vor M2 noch nicht produktiv. Deshalb wird ihre Baseline nicht aus einem Legacy-Endpunkt abgeleitet, sondern nach M2 und zwingend vor M3 wie folgt erzeugt:
+
+1. produktionsähnlicher Staging-Lasttest mit kleinen, mittleren und maximal zulässigen Payloads;
+2. kontrollierter Produktions-Canary bei deaktiviertem Backfill über mindestens 24 zusammenhängende Stunden;
+3. mindestens 1.000 erfolgreiche synthetische beziehungsweise freigegebene Canary-Detailrequests; 24 Stunden und 1.000 Requests müssen beide erreicht sein;
+4. keine Ausfilterung von Testfehlern, kalten Starts, Regionen oder Payloadklassen;
+5. Referenz-p95 ist der höhere p95-Wert aus Staging und Canary, Referenz-5xx die gemessene Canary-Quote;
+6. Technical Owner und Operations signieren das unveränderliche Baseline-Artefakt mit Commit, Worker-Version, Region, Payloadmix, Requestzahl und Start-/Endzeit.
+
+Die laufende Bewertung verwendet rollierende 15-Minuten-Fenster. M3 bleibt gesperrt, solange Umfang oder Signatur fehlen. Ändern sich Kryptographie, Runtime, Region oder Payloadlimit wesentlich, wird vor Fortsetzung eine neue Baseline erzeugt; eine nachträgliche Anpassung zur Vermeidung eines Abbruchs ist verboten.
+
 ## 6. Phasen und Definition of Done
 
 ### Phase V0 – Review und Testgerüst, vor M1
@@ -163,7 +181,7 @@ Ein Stopp kann nur nach Root-Cause, Fix, neuem vollständigem Testlauf und signi
 - Owner benennen und alle offenen Entscheidungen dokumentieren.
 - Fixtures, Crypto-/API-/SQL-/Migrationstests ausführbar implementieren.
 - Privacy-Export und Lösch-RPC um alle Entitäten erweitern.
-- KEK-Provider, Wrap-Algorithmus, RPO/RTO und mobile Gerätematrix freigeben.
+- KEK-Provider, Wrap-Algorithmus, DEK-/IIK-Lifecycle, RPO/RTO und mobile Gerätematrix freigeben.
 
 **Done:** alle automatisierbaren Tests laufen in CI grün; alle ADR-Gates signiert. Erst dann darf M1 entwickelt/ausgerollt werden.
 
@@ -172,8 +190,9 @@ Ein Stopp kann nur nach Root-Cause, Fix, neuem vollständigem Testlauf und signi
 - additive Migration und versionierte Worker-API hinter Feature Flags;
 - M0-Baseline und vollständiger Testlauf in lokaler/Staging-Umgebung;
 - Dual-Write-Metriken und Kill Switch aktiv.
+- nach M2 den 24-Stunden-/1.000-Request-Canary durchführen und die Detail-API-Baseline vor M3 signieren.
 
-**Done:** mindestens der freigegebene Beobachtungszeitraum ohne Divergenz; Legacyclients funktionieren; keine D2/D3-Leckage.
+**Done:** Baseline-Artefakt vollständig und signiert; mindestens der freigegebene Beobachtungszeitraum ohne Divergenz; Legacyclients funktionieren; keine D2/D3-Leckage.
 
 ### Phase V2 – Backfill und Dual-Read, M3–M4
 
@@ -202,6 +221,7 @@ Ein Stopp kann nur nach Root-Cause, Fix, neuem vollständigem Testlauf und signi
 ## 7. Erforderliche CI-/Release-Artefakte
 
 - Unit-Testreport für Canonicalization, HMAC, AAD, Envelope und Rotation;
+- IIK-Dual-HMAC-/Reindex-/Index-Swap-/Rollbackreport;
 - Worker-Contract- und Cross-Tenant-Testreport;
 - SQL/RLS-/Grant-Testreport;
 - Migration-/Rollback-/Reconciliationreport;
