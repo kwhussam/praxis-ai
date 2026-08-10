@@ -1,173 +1,227 @@
 # ADR-001: Datenschutz- und Migrationsvertrag für Inventar und WLAN
 
-- **Status:** vorgeschlagen – Fach-, Datenschutz- und Betriebsreview ausstehend
+- **Status:** technisch geprüft und reviewbereit – externe Freigaben ausstehend; keine Migration autorisiert
 - **Ticket:** SP1-07
-- **Datum:** 2026-08-07
-- **Entscheider:** Technical Owner, Datenschutz, Operations
+- **Datum:** 2026-08-10
+- **Entscheider:** benannter Technical Owner, Datenschutz, Operations, Mobile Owner, Security und Product
 - **Betroffene Plattformen:** Android, iOS, Cloud, Web/API, Supabase
 - **Schemaentwurf:** `docs/schema/SP1_07_inventory_wlan_schema_draft.sql`
+- **Verifikation:** `docs/adr/ADR-001_VERIFICATION_PLAN.md`
 
 ## 1. Entscheidung
 
-PraxisShield speichert detaillierte Inventar-, Router-, Firewall- und WLAN-Daten künftig nach dem Prinzip **verschlüsselter Inhalt plus minimales, nicht identifizierendes Betriebsmetadata**. Mobile Offline-Daten und Cloud-Daten erhalten getrennte Schlüssel. Router-, WLAN- oder Provider-Zugangsdaten verlassen das Endgerät nie.
+PraxisShield speichert detaillierte Inventar-, Router-, Firewall-, Monitoringziel- und WLAN-Daten künftig nach dem Prinzip **verschlüsselter Inhalt plus minimales, nicht identifizierendes Betriebsmetadata**. Mobile Offline-Daten und Cloud-Daten erhalten getrennte Schlüssel. Router-, WLAN- oder Provider-Zugangsdaten verlassen das Endgerät nie.
 
-Direkte Client-Schreibzugriffe auf sensible Cloudtabellen werden nach der Übergangsphase durch versionierte Worker-Endpunkte ersetzt. Der Worker validiert Mandant, Rolle, Herkunft, Schema und Idempotenz, verschlüsselt sensible Felder und schreibt nur freigegebene Metadaten im Klartext.
+Direkte Client-Schreibzugriffe auf sensible Cloudtabellen werden nach der Übergangsphase durch versionierte Worker-Endpunkte ersetzt. Der Worker validiert Mandant, Rolle, Herkunft, Schema und Idempotenz, verwirft D3-Felder rekursiv, verschlüsselt sensible Felder und schreibt nur freigegebene Metadaten im Klartext.
 
-Diese ADR autorisiert noch keine Produktionsmigration. Die Migration beginnt erst nach den Reviews und den in Abschnitt 11 definierten Freigabegates.
+Diese ADR autorisiert weder eine Produktionsmigration noch produktive Schlüssel. M1 beginnt erst, wenn alle menschlichen Freigaben in Abschnitt 13 dokumentiert sind und der Verifikationsplan als ausführbare Tests umgesetzt wurde.
 
-## 2. Anlass und bestätigter Iststand
+## 2. Anlass und belegter Iststand
 
-Der aktuelle Zustand erfüllt den Zielvertrag nicht:
+Der technische Review hat den aktuellen Code und die Migrationen geprüft. Der Iststand erfüllt den Zielvertrag noch nicht:
 
-- `wlan_scans.network_info` enthält unter anderem SSID, private IP, Gateway, DNS, Findings und Methodik als Klartext-JSON. `vulnerabilities` ist ebenfalls offen. `encrypted_payload` existiert, wird vom mobilen Syncpfad aber nicht befüllt.
-- `inventory_known_devices` speichert MAC-Adresse, Hostname, Raum und Verantwortliche offen; `inventory_access_points` speichert SSID und BSSID offen.
-- Allgemeine Inventarobjekte können Domains, E-Mail-Adressen, Systemnamen, Details und verantwortliche Personen offen enthalten.
-- Firewallregeln können interne Netze, Ziele, Zwecke und Verantwortliche offenlegen.
-- Der Zustand-Store ist nur flüchtig. Seed-Objekte sind lediglich am ID-Präfix erkennbar und besitzen keinen belastbaren Herkunfts- oder Syncvertrag.
-- Die bestehende Worker-Verschlüsselung verwendet zwar AES-256-GCM, aber einen globalen Schlüssel ohne Mandantenschlüssel, Key-Version oder Associated Data.
+| Befund | Beleg im Repository | Konsequenz |
+|---|---|---|
+| WLAN-Topologie und Findings liegen in Klartext-JSON; das bestehende `encrypted_payload` hat den Default `{}` | `supabase/migrations/20260624150000_initial_schema.sql` | `{}` darf nicht als gültiges v2-Envelope gelten; Backfill benötigt eine neue nullable v2-Spalte und expliziten Status |
+| Inventar, bekannte Geräte, Access Points, Router-WLAN, Firewallregeln und Monitoringziele enthalten D2-Klartext | `supabase/migrations/20260715120000_inventory_monitoring_targets.sql` | alle sechs Entitätsgruppen müssen in Scope und Backfill enthalten sein |
+| Authentifizierte Clients besitzen direkte Schreibrechte | `20260714170000_authenticated_table_grants.sql`, `20260715120000_inventory_monitoring_targets.sql` | Rechte bleiben nur für die kompatible Übergangsphase und werden in M6 nach Client-Cutover widerrufen |
+| Der Worker verwendet einen globalen AES-GCM-Schlüssel ohne AAD, Mandantenschlüssel oder Keyversion | `workers/hono/src/index.ts`, `encryptJson`/`decryptJson` | Legacy ausschließlich lesbar; v2 verwendet pro Praxis versionierte DEKs und gebundene AAD |
+| Privacy-Export enthält WLAN, aber nicht das vollständige Inventar-/Router-/Monitoringziel-Schema | `workers/hono/src/index.ts`, `handlePrivacyExport` | Exporttest über alle D2-Entitäten ist ein blockierendes Gate |
+| Die transaktionale Praxislöschung erfasst WLAN, aber nicht diese Inventar-/Router-/Monitoringziel-Tabellen | `supabase/migrations/20260721121000_privacy_deletion_transaction_rpc.sql` | Löschtest und RPC-Erweiterung sind vor Cutover zwingend |
+| Der Inventarstore ist flüchtig; Seed-Herkunft ist nur indirekt am ID-Präfix erkennbar | `lib/store/inventory.ts`, `lib/inventory/inventory.ts` | SP2-01 muss Herkunft, lokale Verschlüsselung und Syncblock technisch erzwingen |
 
-Diese Daten sind keine Behandlungsdaten, bilden aber die Angriffsfläche einer Praxis sehr genau ab und können personenbezogene Angaben enthalten. Ein Datenbankexport oder falsch berechtigter Supportzugriff darf deshalb keine interne Topologie offenlegen.
+Ein Datenbankexport oder falsch berechtigter Supportzugriff darf keine interne Topologie offenlegen. Die Daten sind keine Behandlungsdaten, können aber personenbezogene Angaben enthalten und bilden die Angriffsfläche einer Praxis präzise ab.
 
 ## 3. Datenklassen
 
 | Klasse | Bedeutung | Beispiele | Klartext Cloud | Export | Standardaufbewahrung |
 |---|---|---|---|---|---|
 | D0 | öffentlich | Produktversion, öffentliche Normquelle | ja | ja | fachlich bestimmt |
-| D1 | internes Betriebsmetadata ohne direkten Identifikator | Objekttyp, Kritikalität, Finding-Anzahl, Risiko-/Coverage-Wert, Zeitstempel, Status | ja, minimiert | ja | nach Entität |
-| D2 | vertrauliche Praxis-/Netz- oder Personendaten | SSID, BSSID/MAC, Hostname, private IP, DNS/Gateway, Raum, Owner, Domain/E-Mail, interne Firewallquelle/-ziele | nur verschlüsselt | nach Autorisierung entschlüsselt | kurzestmöglich |
+| D1 | minimiertes Betriebsmetadata ohne direkten Identifikator | Objekttyp, Kritikalität, Finding-Anzahl, Risiko-/Coverage-Wert, Zeitstempel, Status | ja | ja | nach Entität |
+| D2 | vertrauliche Praxis-/Netz- oder Personendaten | SSID, BSSID/MAC, Hostname, private IP, DNS/Gateway, Raum, Owner, Domain/E-Mail, interne Firewallquelle/-ziele | nur verschlüsselt | autorisiert entschlüsselt | kürzestmöglich |
 | D3 | Geheimnis/Zugangsdaten | Routerpasswort, TR-064-Token, API-Token, PSK, private Schlüssel | **nie** | **nie** | lokal bis Widerruf/Rotation |
 
-Freitext und unbekannte `metadata`-Felder werden standardmäßig D2 behandelt. Ein neues Klartextfeld benötigt eine explizite Klassifikation und Review.
+Freitext und unbekannte `metadata`-Felder sind standardmäßig D2. Ein neues Klartextfeld benötigt Datenklasse, Zweck, Aufbewahrung und Review. Patientendaten und Behandlungsdaten sind in diesen Payloads verboten.
 
 ## 4. Feldvertrag je Entität
 
 ### 4.1 Inventarobjekte
 
-Klartext D1: `id`, `practice_id`, `type`, `criticality`, `source`, `synthetic`, `confidence`, Versions-, Revisions- und Zeitfelder.
+Klartext D1: `id`, `practice_id`, `type`, `criticality`, Herkunft, Confidence, Synchronisations-, Versions- und Zeitfelder.
 
-Verschlüsselt D2: `name`, `detail`, `owner`, Aliase, Standort, technische Details und freie Metadaten. Domains und E-Mail-Adressen sind auch dann D2, wenn sie öffentlich auffindbar sind, weil ihre Zuordnung zum Praxisinventar vertraulich ist.
+Verschlüsselt D2: Name, Detail, Owner, Aliase, Standort, technische Details und freie Metadaten. Domains und E-Mail-Adressen bleiben D2, weil ihre Zuordnung zum Praxisinventar vertraulich ist.
 
-### 4.2 Bekannte Geräte
+### 4.2 Bekannte Geräte und Access Points
 
-Klartext D1: Gerätetyp, Kritikalität, Herkunft, Confidence, letzter Bestätigungszeitpunkt und Syncmetadata.
+Klartext D1: Gerätetyp beziehungsweise erwartete Verschlüsselung, Kritikalität, Herkunft, Confidence, bestätigte Zeitpunkte und Syncmetadata. Ein Kanal darf nur dann D1 bleiben, wenn die Auswertungslogik ihn ohne Gerätebezug benötigt.
 
-Verschlüsselt D2: MAC, Hostname, Raum, Owner, Modell, Version und Notizen. Für Deduplizierung wird `identity_hmac` verwendet: HMAC über kanonische Identität und Praxisbindung. Ein einfacher Hash ist wegen des kleinen MAC-Adressraums unzulässig.
+Verschlüsselt D2: MAC/BSSID, Hostname/SSID, Raum/Standort, Owner, Modell, Version und Notizen. Deduplizierung erfolgt ausschließlich über eine praxisgebundene, domain-separierte `identity_hmac`.
 
-### 4.3 Access Points
+### 4.3 Router-WLAN- und Firewallkonfiguration
 
-Klartext D1: erwartete Verschlüsselung, Kanal nur wenn für Auswertung erforderlich, Herkunft, Confidence und Zeitfelder.
+Klartext D1 sind ausschließlich abgeleitete Ergebnisse: Risiko-/Coverage-Werte, Finding-Zahlen, Reviewstatus, Zeitpunkte und nicht identifizierende Kategorien. Auch Rohwerte wie WPS aktiv, offenes Netz, TKIP, versteckte SSID, Gastisolierung, konkrete Ports, Richtung oder Protokoll können die Schutzkonfiguration offenlegen und werden als D2 verschlüsselt.
 
-Verschlüsselt D2: SSID, BSSID, Standort, Anzeigename und Notizen. BSSID-Deduplizierung erfolgt über `identity_hmac`.
+Verschlüsselt D2: sämtliche Rohkonfiguration, Quell-/Zielnetze, Portlisten, Regelname, Zweck, Owner und Freitext. D3-Credentials, WLAN-Schlüssel und Connector-Tokens bleiben ausschließlich im mobilen Secure Store oder Agent-Keystore.
 
-### 4.4 Router-/Firewallkonfiguration
+### 4.4 Monitoringziele
 
-Klartext D1: Richtung, Protokoll, Aktion, Aktivstatus, abstrakte Portklasse und Reviewdatum. Konkrete Quell-/Zielnetze, Portlisten, Regelname, Zweck, Owner und Freitext sind D2.
+Klartext D1: Zieltyp, Aktivstatus, Einwilligungsstatus, minimale Provider-/Statusfelder und Zeitpunkte.
 
-Routercredentials, WLAN-Schlüssel und Connector-Tokens sind D3 und werden ausschließlich im mobilen Secure Store bzw. im Agent-Keystore gespeichert.
+Verschlüsselt D2: Domain oder E-Mail-Adresse, Anzeigename und Metadaten. Für Gleichheit und Deduplizierung wird eine `identity_hmac` verwendet. Das heute erzeugte Klartextfeld `normalized_value` wird nach dem Backfill entfernt.
 
 ### 4.5 WLAN-Scans
 
-Klartext D1: Scan-ID, Praxis, Zeitpunkt, Modus, `risk_score`, `risk_level`, `coverage_score`, Zahl gefundener Geräte sowie aggregierte Finding-Zahlen. Weder ein grüner Wert noch ein niedriger Risikowert ist ohne ausreichende Coverage zulässig.
+Klartext D1: Scan-ID, Praxis, Zeitpunkt, Modus, `risk_score`, `risk_level`, `coverage_score`, Geräteanzahl und aggregierte Finding-Zahlen. Ein grüner Wert oder niedriger Risikowert ist ohne ausreichende Coverage verboten.
 
 Verschlüsselt D2: SSID, BSSID, IP/Subnetz, Gateway, DNS, Geräte, MACs, Hostnamen, vollständige Findings/Evidenz, Segmentbeobachtungen und Methodikdetails mit Identifikatoren.
 
-Die bisherigen Felder `network_info` und `vulnerabilities` werden nach erfolgreichem Backfill geleert und später entfernt. Das Dashboard liest dann nur D1-Aggregate; Detailansichten laden autorisiert den verschlüsselten Inhalt über den Worker.
+Die bestehenden D2-Felder `network_info` und `vulnerabilities` werden erst nach vollständiger Backfill- und Restore-Verifikation geleert. Das bestehende `encrypted_payload = {}` ist kein v2-Envelope. M1 ergänzt deshalb `encrypted_payload_v2` nullable; erst M5 erzwingt Envelope-Constraints.
 
 ## 5. Herkunfts- und Seed-Vertrag
 
 Jedes Inventarobjekt erhält:
 
 - `source`: `manual`, `observed`, `imported`, `practice_profile`, `connector` oder `agent`;
-- `synthetic`: kennzeichnet nicht beobachtete Beispiel-/abgeleitete Objekte;
+- `synthetic`: nicht beobachtetes Beispiel oder abgeleitetes Objekt;
 - `confidence`: 0–100;
 - `sync_policy`: `local_only` oder `cloud_allowed`;
 - `observed_at`, `confirmed_at`, optional `expires_at`;
-- `created_by_actor` und `source_ref`, soweit ohne zusätzliche D2-Leckage möglich.
+- `created_by_actor` und `source_ref`, sofern dadurch keine weitere D2-Leckage entsteht.
 
-Aus Praxisprofilen abgeleitete Seed-Objekte sind `source=practice_profile`, `synthetic=true`, `confidence=30`, `sync_policy=local_only`. Sie dürfen nicht automatisch als beobachtete Assets hochgeladen oder als technische Evidenz bewertet werden. Erst eine bewusste Bestätigung erzeugt ein reguläres Objekt oder ändert die Herkunft nachvollziehbar.
+Aus Praxisprofilen abgeleitete Seeds sind `source=practice_profile`, `synthetic=true`, `confidence=30`, `sync_policy=local_only`. Sie werden weder automatisch hochgeladen noch als technische Evidenz bewertet. Bewusste Bestätigung erzeugt ein reguläres Objekt oder eine revisionssichere Herkunftsänderung.
 
 ## 6. Schlüssel- und Kryptovertrag
 
-### 6.1 Cloud
+### 6.1 Cloud-Schlüssel
 
-- Pro Praxis wird ein zufälliger 256-Bit Data Encryption Key (DEK) geführt.
-- Der DEK wird mit einem versionierten Key Encryption Key (KEK) gewrappt. Der KEK liegt als Cloudflare Secret; mittelfristig wird ein KMS/HSM-gestützter KEK verwendet.
-- Nutzdaten werden mit AES-256-GCM und zufälliger 96-Bit-IV verschlüsselt.
-- Associated Data bindet mindestens `practice_id`, `entity_type`, `entity_id`, `payload_version` und `key_version`. Ein Ciphertext kann damit nicht unbemerkt zwischen Mandanten oder Entitäten verschoben werden.
-- Das Envelope enthält `alg`, `iv`, `ciphertext`, `key_version`, `payload_version` und `created_at`; `payload_sha256` dient nur Integritäts-/Migrationskontrollen und enthält keine Rohdaten.
-- Entschlüsselung ist ausschließlich im Worker für autorisierte Detail-, Export-, Migrations- und Löschpfade erlaubt. Klartext darf nicht geloggt werden.
+- Jede Praxis erhält einen zufälligen 256-Bit-DEK. Jede Version ist ein eigener Registry-Datensatz mit Primärschlüssel `(practice_id, key_version)`; pro Praxis darf nur eine Version `active` sein.
+- Der DEK wird mit einem versionierten KEK gewrappt. Der produktive Wrap-Algorithmus, Cloudflare-/KMS-Betrieb und Rotation werden von Security und Operations freigegeben. `wrapped_dek` ist ein eigenes versioniertes Envelope; Nutzdaten- und Wrap-Algorithmus werden nicht vermischt.
+- Rotation erstellt zuerst eine neue aktive Version. Alte DEKs bleiben `decrypt_only`, bis alle referenzierenden Payloads erfolgreich re-encrypted, Restore getestet und die definierte Sicherheitsfrist abgelaufen sind. Erst dann werden sie `retired`.
+- Die bestehende globale `DATA_ENCRYPTION_KEY` bleibt zeitlich begrenzt nur für Legacy-Reads verfügbar. Neue v2-Payloads dürfen ihn nicht verwenden.
 
-Die bestehende globale `DATA_ENCRYPTION_KEY` bleibt nur als zeitlich begrenzter Legacy-Key lesbar. Neue Payloads verwenden nach Cutover den Mandantenschlüssel.
+### 6.2 Nutzdaten-Envelope und AAD
 
-### 6.2 Mobile Offline-Persistenz
+Nutzdaten werden mit AES-256-GCM und zufälliger 96-Bit-IV verschlüsselt. Das kanonische v2-Envelope ist:
 
-- Pro Installation/Praxis wird ein separater lokaler DEK erzeugt und mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` im iOS-Keychain/Android-Keystore abgelegt.
-- Größere Datensätze liegen als AES-GCM-verschlüsselte Datensätze in einer lokalen SQLite-Repositoryschicht; SecureStore ist nur Schlüsselspeicher, nicht Massendatenspeicher.
-- Der lokale DEK wird nie in die Cloud synchronisiert. Bei fehlendem sicheren Keystore bleibt der Zustand flüchtig und die UI weist auf fehlende Offline-Persistenz hin.
-- Logout/Praxiswechsel leert Arbeitsspeicher. Praxislöschung entfernt Ciphertexte und Schlüssel; ein Schlüsselverlust ist ein nicht wiederherstellbarer lokaler Datenverlust und wird entsprechend behandelt.
+```json
+{
+  "alg": "A256GCM",
+  "iv_b64u": "…",
+  "ciphertext_b64u": "…",
+  "key_version": "…",
+  "payload_version": 2,
+  "aad_version": 1,
+  "created_at": "…"
+}
+```
 
-## 7. API- und Berechtigungsvertrag
+`ciphertext_b64u` enthält Ciphertext und Authentifizierungstag gemäß der eingesetzten Web-Crypto-Repräsentation. AAD wird deterministisch aus `practice_id`, `entity_type`, `entity_id`, `payload_version`, `key_version` und `aad_version` gebildet und nicht als vertrauenswürdiger Klartext aus dem Request übernommen. Damit scheitert das Verschieben eines Ciphertexts zwischen Mandanten oder Entitäten.
 
-- Sensible Writes laufen nach Cutover über `/api/v1/inventory/*` und `/api/v1/wlan-scans`; Managerrolle ist erforderlich.
-- Detail-Reads und Exporte benötigen mindestens Viewerrolle, werden auditiert und entschlüsseln nur den angeforderten Mandantenkontext.
-- Direkte `authenticated`-Writes auf Inventar- und WLAN-Tabellen werden nach Clientmigration widerrufen. `service_role` bleibt auf die Worker-Funktionen begrenzt.
-- Listenendpunkte liefern standardmäßig D1-Metadaten; D2-Payloads nur über explizite Detailendpunkte. Pagination, Maximalgrößen, Idempotenz und Schema-Version sind verpflichtend.
-- D3-Felder sind in Requestschemas verboten. Logger und Fehlerobjekte verwenden Allowlists.
-- RLS bleibt Defense in Depth; zusätzlich prüft jeder Workerpfad Praxis, Rolle und Objektzuordnung.
+Ein unkeyed SHA-256 des Klartexts ist verboten: kleine Wertebereiche wie MAC, BSSID oder SSID wären offline korrelierbar. Für Migrations-/Deduplizierungsvergleiche wird eine domain-separierte HMAC verwendet:
+
+`HMAC(key, practice_id || entity_type || purpose || canonicalization_version || canonical_value)`
+
+Der HMAC-Schlüssel wird vom DEK getrennt abgeleitet. `identity_hmac` ist nur für eng definierte Identitätsfelder zulässig; `payload_hmac` vergleicht kanonische Payloads während Migration/Dual-Write. Ein optionaler `ciphertext_sha256` darf ausschließlich Transportkorruption erkennen und hat keine fachliche Identitätsfunktion.
+
+### 6.3 Mobile Offline-Persistenz
+
+- Pro Installation/Praxis wird ein separater lokaler DEK erzeugt und mit `WHEN_UNLOCKED_THIS_DEVICE_ONLY` im iOS-Keychain beziehungsweise hardwaregestützten Android-Keystore abgelegt, soweit verfügbar.
+- Größere Datensätze liegen als AES-GCM-verschlüsselte Datensätze in SQLite; SecureStore ist nur Schlüsselspeicher.
+- Der lokale DEK wird nie synchronisiert. Fehlt ein sicherer Keystore, bleibt der Zustand flüchtig und die UI weist auf fehlende Offline-Persistenz hin.
+- Logout und Praxiswechsel leeren Arbeitsspeicher. Praxislöschung entfernt Ciphertexte und Schlüssel. Schlüsselverlust bedeutet nicht wiederherstellbaren lokalen Datenverlust und wird als solcher angezeigt.
+
+## 7. Payload-, API- und Logging-Vertrag
+
+- Sensible Writes laufen nach Cutover über `/api/v1/inventory/*` und `/api/v1/wlan-scans`; Managerrolle und `Idempotency-Key` sind erforderlich.
+- Detail-Reads und Exporte benötigen mindestens Viewerrolle, werden auditiert und entschlüsseln nur den angeforderten Mandantenkontext. Listen liefern standardmäßig nur D1.
+- Requestschemas verwenden Allowlists, rekursive D3-Denylisten, maximale Objekt-/String-/Arraygrößen und `additionalProperties: false` an allen sicherheitsrelevanten Knoten. Verboten sind unter anderem `password`, `passphrase`, `psk`, `secret`, `token`, `credential`, `private_key` und semantische Varianten.
+- Klartext, Ciphertext, Schlüsselmaterial, HMAC-Eingaben sowie rohe Request-/Response-Bodies dürfen nicht in Logs, Traces, Analytics oder Fehlerobjekte gelangen. Logs enthalten nur IDs, Datenklasse, Version, Größe, Status und Korrelations-ID.
+- Direkte `authenticated`-Writes bleiben nur bis zum nachgewiesenen Client-Cutover bestehen und werden in M6 widerrufen. `service_role` bleibt auf Worker-/Wartungspfade begrenzt.
+- RLS ist Defense in Depth. Da `service_role` RLS umgeht, sind Praxisfilter, Objektzuordnung, Rollenprüfung und serverseitig erzeugte AAD in jedem Workerpfad primäre Kontrollen.
 
 ## 8. Aufbewahrung, Export und Löschung
 
 | Entität | Standard | Löschung | Export |
 |---|---|---|---|
-| aktives Inventar | bis Entfernung durch Praxis bzw. Praxislöschung | Payload sofort entfernen; D1-Tombstone maximal 30 Tage für Sync | entschlüsselte, strukturierte Nutzdaten plus Herkunft |
+| aktives Inventar/Router/Monitoringziele | bis Entfernung durch Praxis beziehungsweise Praxislöschung | Payload sofort entfernen; D1-Tombstone maximal 30 Tage für Sync | entschlüsselte Nutzdaten plus Herkunft |
 | rohe WLAN-Scans | 90 Tage, konfigurierbar 30/90/180 | Hard Delete; keine anonymisierte Topologie behalten | autorisiert entschlüsselt, solange vorhanden |
 | WLAN-Aggregate | 12 Monate | mit Praxislöschung entfernen oder vollständig entkoppeln | D1-Zeitreihe |
 | D3-Credentials | bis Widerruf/Rotation | sofort lokal löschen | ausgeschlossen |
 
-Patienten- oder Behandlungsdaten sind in Inventar, Router- und WLAN-Freitext ausdrücklich verboten. Export- und Löschtests müssen alle neuen Tabellen, Ciphertexte, Tombstones und Schlüsselobjekte abdecken. Backups folgen der dokumentierten Providerlöschfrist; Applikationszugriff nach Löschung ist sofort ausgeschlossen.
+Export und Praxislöschung decken `inventory_items`, `inventory_known_devices`, `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules`, `monitoring_targets`, `wlan_scans`, Tombstones und Praxis-DEKs ab. Die derzeitigen Pfade tun dies nicht vollständig; dies ist ein bestätigter Blocker vor M5. Backups folgen der dokumentierten Providerlöschfrist, während der Applikationszugriff nach Löschung sofort ausgeschlossen wird.
 
 ## 9. Migrationsablauf
 
-1. **M0 – Baseline:** Zeilenzahlen, Nullquoten, Payloadgrößen, RLS-/Export-/Löschtests und verschlüsseltes Restorefixture erfassen. Keine Rohwerte in Migrationslogs.
-2. **M1 – additive Spalten:** Envelope-, Hash-, Key-, Herkunfts-, Revisions- und D1-Aggregatfelder ergänzen; bestehende Leser unverändert lassen.
-3. **M2 – API und Dual Write:** Worker-Endpunkte ausrollen. Neue Writes erzeugen verschlüsselten Payload und vorübergehend Legacyfelder. D3 wird abgewiesen.
-4. **M3 – Backfill:** Praxisweise in kleinen, idempotenten Batches verschlüsseln. Jeder Datensatz erhält Status, Hash und Keyversion. Fehler werden quarantänisiert, nicht übersprungen.
-5. **M4 – Dual Read:** Neue Clients lesen verschlüsselt bevorzugt und fallen nur für noch nicht migrierte Datensätze auf Legacy zurück. Dashboard/Export/Löschung werden umgestellt.
-6. **M5 – Klartext-Scrub:** Nach 100-%-Verifikation Legacy-D2-Felder leeren. Not-null-/Unique-Verträge auf HMAC/Envelope umstellen. Ab diesem Schritt ist ein App-Rollback nur auf dual-read-fähige Versionen erlaubt.
-7. **M6 – Zugriffshärtung:** Direkte Clientwrites widerrufen, API v1 erzwingen, alte Appversionen kontrolliert ablehnen/aktualisieren.
+1. **M0 – Baseline:** Zeilenzahlen, Nullquoten, Payloadgrößen, Schlüsselreferenzen, Grants sowie RLS-/Export-/Lösch-/Restoretests erfassen. Keine D2-Rohwerte in Migrationslogs.
+2. **M1 – additive Spalten:** v2-Envelope, HMACs, Key-, Herkunfts-, Revisions- und D1-Aggregatfelder ergänzen. Legacyleser bleiben unverändert; `{}` gilt nicht als migriert.
+3. **M2 – API und Dual Write:** Worker-Endpunkte ausrollen. Neue Writes erzeugen v2-Envelope und vorübergehend Legacyfelder. D3 wird rekursiv abgewiesen. Jede Seite wird durch `payload_hmac` verglichen.
+4. **M3 – Backfill:** Praxisweise, idempotente Batches. Jeder Datensatz erhält Status und Keyversion. Kryptographie-/Integritätsfehler stoppen global; validierungsbedingte Zeilenfehler pausieren die Praxis und werden ohne Rohdaten quarantänisiert.
+5. **M4 – Dual Read:** Neue Clients lesen v2 bevorzugt und fallen nur bei explizitem Status `legacy_pending` zurück. Dashboard, Export und Löschung werden vollständig umgestellt.
+6. **M5 – Klartext-Scrub:** Nach 100-%-Verifikation Legacy-D2 leeren. Envelope-/HMAC-/Unique-Verträge aktivieren. App-Rollback ist danach nur auf dual-read-fähige Versionen erlaubt.
+7. **M6 – Zugriffshärtung:** Direkte Clientwrites widerrufen, API v1 erzwingen und inkompatible Appversionen kontrolliert ablehnen beziehungsweise aktualisieren.
 8. **M7 – Bereinigung:** Legacyspalten frühestens nach 30 Tagen stabiler Produktion und erfolgreichem Restore-/Export-/Löschtest entfernen.
 
-## 10. Rollback und Abbruchkriterien
+## 10. Rollbackvertrag
 
-Vor M5 kann auf Legacy Read/Write zurückgeschaltet werden. Nach M5 wird Klartext **nicht** erneut in die Datenbank geschrieben; Rollback bedeutet verschlüsseltes Lesen mit der vorherigen dual-read-fähigen Anwendungsversion.
+- Vor M5 schalten Feature Flags Reads und Writes auf Legacy zurück. Bereits erzeugte v2-Ciphertexte und Schlüssel werden nicht gelöscht.
+- M5 wird nur freigegeben, wenn die aktuell produktive und die unmittelbar vorherige Appversion v2/dual-read beherrschen.
+- Nach M5 wird niemals Klartext rehydriert. Rollback bedeutet Deployment der vorher freigegebenen dual-read-fähigen Anwendung gegen v2.
+- Eine Schlüsselrotation wird erst nach dem Verifikationsfenster finalisiert. Solange referenzierende Payloads existieren, bleibt die alte Version `decrypt_only`; Rückkehr bedeutet Reaktivierung der Leseversion, nicht Keyverlust.
+- M7 besitzt einen separaten Go/No-Go-Entscheid und ein zuvor erfolgreich wiederhergestelltes verschlüsseltes Backup.
 
-Die Migration stoppt automatisch bei:
+## 11. Messbare Abbruchkriterien
 
-- einem Entschlüsselungs-, AAD- oder Hashfehler;
-- Abweichung von Quell-/Zielzeilenzahl oder Objektidentität;
-- RLS-/Cross-Tenant-, Export-, Lösch- oder Restoretestfehlern;
-- unbekannter Keyversion oder fehlendem Praxis-DEK;
-- erhöhter Fehlerquote des produktiven Detailpfads;
-- unklassifiziertem neuen Feld oder D3-Fund in einer Cloudpayload.
+Die Migration stoppt automatisch und M5/M6 bleiben gesperrt bei:
 
-Vor jedem irreversiblen Schritt existieren ein verschlüsseltes Backup, getestete Wiederherstellung, ein Dry Run mit Produktionsstatistik ohne Rohdaten und ein protokollierter Go/No-Go-Entscheid.
+- **sofort und global:** ein Auth-, RLS-/Cross-Tenant-, D3-, AAD-, Kryptographie-, unbekannte-Keyversion-, Export-, Lösch- oder Restorefehler;
+- **Datenintegrität:** Quell-/Zielzeilenzahl, Objektidentität, `payload_hmac` oder Dual-Write weichen ab; tolerierte Abweichung ist null;
+- **Backfill:** eine fachlich nicht migrierbare Zeile pausiert die betroffene Praxis; mehr als zehn Zeilen oder mehr als 0,1 % des gesamten Laufs stoppen global – maßgeblich ist der zuerst erreichte Grenzwert;
+- **Produktion:** Detailpfad-5xx steigt über ein 15-Minuten-Fenster um mehr als 0,5 Prozentpunkte gegenüber der freigegebenen Baseline oder p95-Latenz überschreitet das Zweifache der Baseline;
+- **Schema/Logs:** ein unklassifiziertes Feld, ein D2/D3-Wert in Klartext/Logs oder ein ungültiges Envelope;
+- **Betrieb:** das von Operations freigegebene RPO/RTO oder die Aufbewahrungs-/Löschfrist wird im Restore-/Retentiontest verfehlt.
 
-## 11. Freigabegates
+RPO/RTO sind keine stillschweigenden Produktclaims. Operations dokumentiert die verbindlichen Werte vor M1; bis dahin gibt es keine Produktionsfreigabe.
 
-SP1-07 gilt erst als `reviewed`, wenn alle Punkte bestätigt sind:
+## 12. Verifikation und Nachweise
 
-- [ ] Technical Owner bestätigt Schema, API und Dual-Read-Strategie.
+Der separate Verifikationsplan definiert synthetische Zwei-Mandanten-Fixtures, Rollen, D3-Poison-Payloads, zwei Keyversionen, Backfill, Dual-Read/-Write, Grants, Restore, Export und Löschung. Er enthält keine Patienten- oder realen Praxisdaten.
+
+M0 erzeugt mindestens:
+
+- signierte Test-/CI-Ergebnisse und Schema-/Grant-Snapshot;
+- nur aggregierte Baselinezahlen ohne D2-Rohwerte;
+- Restoreprotokoll mit gemessenem RPO/RTO;
+- Backfill-/Rollbackprotokoll mit null Abweichungen;
+- Freigabematrix mit Name, Rolle, Datum, Artefaktversion und Entscheidung.
+
+## 13. Freigabegates
+
+SP1-07 bleibt `review`, bis alle menschlichen Freigaben vorliegen. Eine technische Vorbereitung durch Codereview ersetzt keinen benannten Verantwortlichen.
+
+| Gate | Stand 2026-08-10 | Benötigter Nachweis/Entscheider |
+|---|---|---|
+| Schema, API, Dual-Read/-Write | reviewbereit | benannter Technical Owner signiert ADR, Schemaentwurf und Migrationsreihenfolge |
+| Datenklassen, Zweck, Retention, Export, Löschung | offen | Datenschutz/Fachreview mit Verarbeitungszweck und Fristen |
+| KEK/DEK, Rotation, Backup, Restore, RPO/RTO | offen | Operations plus Security; produktiver Schlüsselprovider und Runbook |
+| Mobile Keystore und Offlineverlust | reviewbereit | Mobile Owner; Android-/iOS-Gerätematrix und Recovery-UX |
+| AAD, HMAC, Logging, RLS, Cross-Tenant | reviewbereit | Security Review; ausführbare Tests aus dem Verifikationsplan |
+| Seed-/Coverage-Darstellung | technisch belegt, Product-Sign-off offen | Product Owner; UI-Fixture zeigt Seed nicht als Messung |
+| Backfill, Rollback und Abbruchmetriken | **spezifiziert** | Verifikationsplan; vor M1 als ausführbare Tests/Runbook umgesetzt |
+
+Freigabecheckliste:
+
+- [ ] Technical Owner bestätigt Schema, API und Dual-Read-/Dual-Write-Strategie.
 - [ ] Datenschutz bestätigt Datenklassen, Zweck, Aufbewahrung, Export und Löschung.
-- [ ] Operations bestätigt KEK/DEK-Verwaltung, Rotation, Backup und Restore.
+- [ ] Operations bestätigt KEK/DEK-Verwaltung, Rotation, Backup, Restore und RPO/RTO.
 - [ ] Mobile Owner bestätigt sicheren Keystore und Offlineverlust-Verhalten.
-- [ ] Security Review bestätigt AAD, HMAC, Logging-Allowlist, RLS und Cross-Tenant-Tests.
-- [ ] Product Owner bestätigt, dass Seedobjekte und Coverage in der UI nicht als Messung erscheinen.
-- [ ] Rollbackfixture, Backfillfixture und Abbruchmetriken sind vor M1 als Tests spezifiziert.
+- [ ] Security bestätigt AAD, HMAC, Logging-Allowlist, RLS und Cross-Tenant-Tests.
+- [ ] Product Owner bestätigt Seed- und Coverage-Darstellung.
+- [x] Rollbackfixture, Backfillfixture und messbare Abbruchkriterien sind spezifiziert.
 
-## 12. Konsequenzen
+## 14. Konsequenzen
 
-Positiv: Ein Datenbank- oder Supportzugriff legt keine detaillierte Praxistopologie offen; Seed- und Messdaten sind unterscheidbar; Offlinefähigkeit und Cloudsync erhalten einen belastbaren Vertrag; Export/Löschung und Schlüsselrotation werden testbar.
+Positiv: Datenbank- oder Supportzugriff legt keine detaillierte Praxistopologie offen; Seed und Messung sind unterscheidbar; Offlinefähigkeit, Cloudsync, Export/Löschung und Schlüsselrotation besitzen prüfbare Verträge.
 
-Kosten: Worker-API, Repository, Key-Lifecycle, Dual-Read und Backfill erhöhen den Umsetzungsaufwand. D2-Felder sind nicht mehr direkt per SQL suchbar. Wo Deduplizierung erforderlich ist, wird ein eng begrenzter HMAC-Index verwendet; fachliche Suche erfolgt nach autorisierter Entschlüsselung oder lokal.
+Kosten: Worker-API, lokales Repository, Key-Lifecycle, Dual-Read/-Write und Backfill erhöhen den Aufwand. D2 ist nicht direkt per SQL durchsuchbar. Zulässige Deduplizierung nutzt eng begrenzte HMAC-Indizes; fachliche Suche erfolgt autorisiert nach Entschlüsselung oder lokal.
 
-Nicht gewählt wurden Klartext mit ausschließlich RLS, ein globaler Dauerschlüssel, ein einfacher MAC-Hash, Speicherung großer JSON-Daten im SecureStore und eine Big-Bang-Migration. Diese Varianten erfüllen Mandantentrennung, Rotierbarkeit, Offlinegröße oder Rollbackanforderungen nicht ausreichend.
+Nicht gewählt wurden Klartext nur mit RLS, ein globaler Dauerschlüssel, Klartext-SHA-256 kleiner Identitäten, rohe Router-Sicherheitsflags als D1, Massendaten im SecureStore und eine Big-Bang-Migration. Diese Varianten erfüllen Mandantentrennung, Vertraulichkeit, Rotierbarkeit, Offlinegröße oder Rollback nicht ausreichend.

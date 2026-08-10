@@ -530,7 +530,7 @@ Kein Paket startet, wenn es autonome Exploitation, ungesicherte Remote-Shell, Pa
 | SP1-04 | Report-API auf autoritative ID vorbereiten | Report Service, Worker Route, Schema/Migration | Clientpayload darf vorhandene serverseitige Fakten nicht überschreiben |
 | SP1-05 | Dashboard-Heterogenität durch Tests festnageln | Dashboard Selector/Tests | WLAN-Wert kann nicht mehr Fragebogengesamtscore ersetzen |
 | SP1-06 | Monitoring-Coverage-Fälle ergänzen | Monitoring Service/Tests | `not_configured`, `unavailable`, `timeout` verhindern falsches Grün |
-| SP1-07 | Datenschutz-/Migrationsdesign für Inventar und WLAN freigeben | ADR + Schemaentwurf | Datenklassen, Schlüssel, Rollback und Bestandsmigration reviewed |
+| SP1-07 | Datenschutz-/Migrationsdesign für Inventar und WLAN freigeben | ADR + Schemaentwurf + Verifikationsplan | Technischer Entwurf geprüft; Datenklassen, Schlüssel, Rollback, Fixtures und Bestandsmigration durch alle benannten Owner signiert |
 
 **Sprint-1-Demo:** Ein bewusst manipulierter LLM-Output und drei fehlende Provider verändern den kanonischen Score nicht bzw. erzeugen sichtbar unzureichende Coverage.
 
@@ -843,7 +843,7 @@ Stand: **2026-08-10**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | SP1-04 | verification | Report verlangt gespeicherte Check-ID, lädt den mandantengebundenen Fragebogencheck und berechnet Fakten serverseitig; Clientwerte sind nicht autoritativ | Übergang von `check_id` auf vollständiges Assessment-Manifest/Snapshot in SP2/SP3 |
 | SP1-05 | verification | Dashboardprimärwert und Historie nutzen nur vergleichbare Fragebogenergebnisse; WLAN/Monitoring können ihn nicht ersetzen | finale Praxis-/Techniksicht und A11y-Abnahme in SP2-03 |
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
-| SP1-07 | review | ADR-001 und nicht ausführbarer Schemaentwurf mit Datenklassen, Schlüsseln, Retention, Dual-Read, Backfill, Rollback und Abbruchgates erstellt | Reviews und Checkboxen in ADR-001; vor Freigabe keine Migration |
+| SP1-07 | review | ADR-001 technisch gegen Schema, Worker, Grants, Export und Löschung geprüft; nicht ausführbarer Vollschemaentwurf sowie Zwei-Mandanten-, Backfill-, Rollback-, D3-, Export-/Lösch- und Restore-Verifikationsplan erstellt; Abbruchmetriken sind messbar | benannte Sign-offs von Technical Owner, Datenschutz, Operations, Mobile, Security und Product sowie Umsetzung der spezifizierten Tests vor M1; keine Migration freigegeben |
 
 Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **363 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
 
@@ -861,3 +861,14 @@ Die Reviews der Commits `60cc363` und `6df194f` wurden bis 2026-08-10 umgesetzt:
 - Coverage liegt in einem neutralen Assessment-Modul statt einer Security→Monitoring-Abhängigkeit; tote Tarifkartenstyles wurden entfernt.
 
 Nicht als erledigt markiert bleiben das vollständige Assessment-Manifest, der kanonische PDF-Pfad, die Praxis-/Techniksicht, die Claim-Inventur, die Native-Device-Smokes und die freizugebende Datenmigration.
+
+### 22.2 SP1-07 – Ergebnis des technischen ADR-Reviews
+
+Der Review vom 2026-08-10 hat vier migrationskritische Lücken im ersten Entwurf geschlossen:
+
+- Die Schlüsselregistry ist jetzt auf `(practice_id, key_version)` ausgelegt und kann aktive, nur-lesbare und stillgelegte DEK-Versionen sicher abbilden.
+- Ein korrelierbarer Klartext-SHA-256 wurde durch praxisgebundene, domain-separierte Identity-/Payload-HMACs ersetzt. WLAN erhält eine eigene nullable v2-Envelope-Spalte; das bestehende `{}` zählt nicht als migriert.
+- Router-WLAN-Konfigurationen und Monitoringziele sind neben Inventar, bekannten Geräten, Access Points, Firewallregeln und WLAN-Scans vollständig im D2-Scope enthalten. Rohe Sicherheitsflags gelten nicht als harmloses D1-Metadata.
+- Der aktuelle Privacy-Export und die transaktionale Praxislöschung decken die neuen Inventar-/Router-/Monitoringzieltabellen noch nicht vollständig ab. Dies ist ausdrücklich ein blockierendes Gate vor dem Klartext-Scrub.
+
+`docs/adr/ADR-001_VERIFICATION_PLAN.md` teilt die Freigabe in V0 Review/Testgerüst, V1 additive Migration/Dual-Write, V2 Backfill/Dual-Read, V3 Scrub/Zugriffshärtung und V4 Legacybereinigung. SP1-07 bleibt bis zu den menschlichen Freigaben im Status `review`; insbesondere ersetzt die technische Dokumentprüfung keine Datenschutz- oder Betriebsentscheidung.
