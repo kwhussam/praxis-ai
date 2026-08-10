@@ -81,6 +81,7 @@ export interface WlanFinding<TValue> {
 
 export type WlanCollectionState = {
   currentWifi: CollectionMetadata;
+  securityProtocol: CollectionMetadata;
   visibleWifiNetworks: CollectionMetadata;
   localDevices: CollectionMetadata;
 };
@@ -150,7 +151,7 @@ export interface WlanScanResult {
   timestamp: Date;
   findings: {
     networkName: WlanFinding<string>;
-    securityProtocol: WlanFinding<SecurityProtocol>;
+    securityProtocol: WlanFinding<SecurityProtocol | null>;
     ipAddress: WlanFinding<string>;
     subnetMask: WlanFinding<string>;
     gatewayIp: WlanFinding<string>;
@@ -393,6 +394,7 @@ type ScanContext = {
   dnsServers: string[];
   securityProtocol: SecurityProtocol;
   wifiSecurity: WifiSecurityDetails;
+  securityProtocolSourceDetail: string;
   visibleNetworks: NativeWifiNetwork[];
   devices: DeviceInfo[];
   vulnerabilities: Vulnerability[];
@@ -572,6 +574,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     collection,
     coverage: calculateCollectionCoverage({
       currentWifi: collection.currentWifi.status,
+      securityProtocol: collection.securityProtocol.status,
       visibleWifiNetworks: collection.visibleWifiNetworks.status,
       localDevices: collection.localDevices.status
     }),
@@ -991,6 +994,13 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
   const nativeWifiSecurity = await getNativeWifiSecurityDetails();
   const wifiSecurity = resolveWifiSecurityDetails(ssid, visibleNetworks, nativeWifiSecurity, Platform.OS);
   const securityProtocol = state.type === "wifi" ? wifiSecurity.protocol : "UNKNOWN";
+  const securityProtocolObservation = collectSecurityProtocolObservation({
+    state,
+    wifiSecurity,
+    nativeWifiSecurity,
+    ssidResult,
+    visibleNetworksResult
+  });
   const dnsServers = getStringArrayProperty(details, "dns") || getStringArrayProperty(details, "dnsServers") || [];
   const devices = buildBaseDevices(ipAddress, gatewayIp);
 
@@ -1003,6 +1013,7 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
     dnsServers,
     securityProtocol,
     wifiSecurity,
+    securityProtocolSourceDetail: securityProtocolObservation.sourceDetail,
     visibleNetworks,
     devices,
     vulnerabilities: [],
@@ -1020,10 +1031,77 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
     },
     collection: {
       currentWifi: collectionMetadata(ssidResult),
+      securityProtocol: collectionMetadata(securityProtocolObservation.result),
       visibleWifiNetworks: collectionMetadata(visibleNetworksResult),
       localDevices: collectionMetadata(notCollected("not_checked", "Die lokale Geräteerkennung wurde noch nicht ausgeführt."))
     }
   };
+}
+
+function collectSecurityProtocolObservation(input: {
+  state: NetInfoState;
+  wifiSecurity: WifiSecurityDetails;
+  nativeWifiSecurity: Partial<WifiSecurityDetails> | null;
+  ssidResult: CollectionResult<string>;
+  visibleNetworksResult: CollectionResult<NativeWifiNetwork[]>;
+}): { result: CollectionResult<SecurityProtocol>; sourceDetail: string } {
+  if (input.state.type !== "wifi") {
+    return {
+      result: notCollected("unavailable", "Das Gerät ist aktuell nicht mit einem WLAN verbunden."),
+      sourceDetail: "Network connection state"
+    };
+  }
+
+  const hasProtocol = input.wifiSecurity.protocol !== "UNKNOWN";
+  const nativeProvidedProtocol = input.nativeWifiSecurity?.protocol !== undefined;
+  if (hasProtocol && input.wifiSecurity.source === "measured" && nativeProvidedProtocol) {
+    return {
+      result: collected(input.wifiSecurity.protocol, { ttlMs: WIFI_OBSERVATION_TTL_MS }),
+      sourceDetail: "Native WiFi security details"
+    };
+  }
+
+  if (hasProtocol && input.wifiSecurity.source === "inferred" && nativeProvidedProtocol) {
+    return {
+      result: collected(input.wifiSecurity.protocol, { ttlMs: WIFI_OBSERVATION_TTL_MS }),
+      sourceDetail: "Native WiFi-derived security details"
+    };
+  }
+
+  if (hasProtocol && input.wifiSecurity.source === "measured" && isCollected(input.visibleNetworksResult)) {
+    return {
+      result: collectedFromObservation(input.wifiSecurity.protocol, input.visibleNetworksResult),
+      sourceDetail: "Visible WiFi capabilities"
+    };
+  }
+
+  if (hasProtocol && input.wifiSecurity.source === "inferred" && isCollected(input.ssidResult)) {
+    return {
+      result: collectedFromObservation(input.wifiSecurity.protocol, input.ssidResult),
+      sourceDetail: "SSID-based inference"
+    };
+  }
+
+  const status = Platform.OS === "ios" ? "unsupported" : "unavailable";
+  return {
+    result: notCollected(
+      status,
+      Platform.OS === "ios"
+        ? "iOS stellt das WLAN-Sicherheitsprotokoll über öffentliche APIs nicht zuverlässig bereit."
+        : "Das WLAN-Sicherheitsprotokoll konnte nicht bestimmt werden."
+    ),
+    sourceDetail: Platform.OS === "ios" ? "iOS platform capability" : "WiFi security detection"
+  };
+}
+
+function collectedFromObservation<TValue, TSource>(
+  value: TValue,
+  source: CollectionResult<TSource> & { status: "collected" }
+) {
+  return collected(value, {
+    observedAt: source.observed_at,
+    expiresAt: source.expires_at
+  });
 }
 
 async function collectSsid(state: NetInfoState): Promise<CollectionResult<string>> {
@@ -1375,7 +1453,9 @@ async function mapWithConcurrency<TInput, TResult>(
 function buildFindings(context: ScanContext): WlanScanResult["findings"] {
   const measuredAt = new Date();
   const gatewayPorts = context.devices.find((device) => device.ipAddress === context.gatewayIp)?.openPorts ?? [];
-  const securitySource: DataSource = context.wifiSecurity.source;
+  const securitySource: DataSource = context.collection.securityProtocol.status === "collected"
+    ? context.wifiSecurity.source
+    : "unavailable";
   const deviceSource: DataSource = context.collection.localDevices.status === "collected" ? "measured" : "unavailable";
   const securityChecks = dedupeSecurityFindings(context.securityFindings);
   const classifications = context.devices.flatMap((device) => (device.classification ? [device.classification] : []));
@@ -1392,12 +1472,12 @@ function buildFindings(context: ScanContext): WlanScanResult["findings"] {
     ),
     securityProtocol: makeFinding(
       "security_protocol",
-      context.securityProtocol,
+      context.collection.securityProtocol.status === "collected" ? context.securityProtocol : null,
       securitySource,
-      context.visibleNetworks.length > 0 ? "Native WiFi capabilities" : "SSID and platform inference",
-      context.visibleNetworks.length > 0 ? "high" : "low",
+      context.securityProtocolSourceDetail,
+      context.collection.securityProtocol.status === "collected" ? context.wifiSecurity.confidence : "low",
       measuredAt,
-      context.collection.visibleWifiNetworks
+      context.collection.securityProtocol
     ),
     ipAddress: makeFinding("ip_address", context.ipAddress, context.ipAddress !== "0.0.0.0" ? "measured" : "unavailable", "NetInfo / Expo Network", "high", measuredAt),
     subnetMask: makeFinding("subnet_mask", context.subnetMask, context.subnetMask === "unbekannt" ? "unavailable" : "inferred", "NetInfo or RFC1918 inference", "medium", measuredAt),

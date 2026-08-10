@@ -12,7 +12,7 @@ export type { CollectionStatus, EvidenceFreshness } from "@/lib/assessment/colle
 // 2.2 führt die bewertungsrelevante Freshness-Semantik ein: abgelaufene Evidenz
 // wird unknown und erhält keine Punkte. Historische Ergebnisse bleiben über die
 // persistierte Scoring-Version reproduzierbar.
-export const SCORING_VERSION = "2.2.0";
+export const SCORING_VERSION = "2.2.1";
 
 export type FindingSeverity = "critical" | "warning" | "info";
 export type AmpelColor = "rot" | "gelb" | "grün";

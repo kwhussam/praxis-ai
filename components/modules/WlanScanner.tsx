@@ -612,6 +612,7 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
   );
   const collection = {
     currentWifi: next.collection.currentWifi,
+    securityProtocol: next.collection.securityProtocol,
     visibleWifiNetworks: next.collection.visibleWifiNetworks,
     localDevices: next.collection.localDevices.status === "not_checked"
       ? previous.collection.localDevices
@@ -619,6 +620,7 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
   };
   const coverage = calculateCollectionCoverage({
     currentWifi: collection.currentWifi.status,
+    securityProtocol: collection.securityProtocol.status,
     visibleWifiNetworks: collection.visibleWifiNetworks.status,
     localDevices: collection.localDevices.status
   });
@@ -791,6 +793,7 @@ function Methodology({ result }: { result: WlanScanResult }) {
 
 function collectionSensorLabel(sensor: string) {
   if (sensor === "currentWifi") return "aktuelles WLAN";
+  if (sensor === "securityProtocol") return "WLAN-Sicherheitsprotokoll";
   if (sensor === "visibleWifiNetworks") return "sichtbare WLAN-Netze";
   if (sensor === "localDevices") return "native Geräteerkennung";
   return sensor;

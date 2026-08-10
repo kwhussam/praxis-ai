@@ -1,5 +1,6 @@
 import {
   COLLECTION_STATUSES,
+  DEFAULT_CLOCK_SKEW_TOLERANCE_MS,
   collected,
   collectionStatusForProvider,
   deriveEvidenceFreshness,
@@ -26,6 +27,10 @@ describe("shared assessment collection contract", () => {
     expect(deriveEvidenceFreshness({ observed_at: "2026-08-07T07:59:00.000Z", expires_at: "2026-08-07T08:01:00.000Z" }, now)).toBe("fresh");
     expect(deriveEvidenceFreshness({ observed_at: "2026-08-07T07:00:00.000Z", expires_at: "2026-08-07T08:00:00.000Z" }, now)).toBe("stale");
     expect(deriveEvidenceFreshness({ observed_at: "2026-08-07T07:00:00.000Z" }, now)).toBe("unknown");
+    expect(deriveEvidenceFreshness({ observed_at: "2026-08-07T08:01:30.000Z", expires_at: "2026-08-07T08:05:00.000Z" }, now)).toBe("fresh");
+    expect(hasInvalidEvidenceWindow({ observed_at: "2026-08-07T08:02:00.000Z" }, now)).toBe(false);
+    expect(hasInvalidEvidenceWindow({ observed_at: "2026-08-07T08:02:00.001Z" }, now)).toBe(true);
+    expect(DEFAULT_CLOCK_SKEW_TOLERANCE_MS).toBe(120_000);
     expect(deriveEvidenceFreshness({ observed_at: "2026-08-07T09:00:00.000Z", expires_at: "2026-08-07T10:00:00.000Z" }, now)).toBe("unknown");
     expect(hasInvalidEvidenceWindow({ observed_at: "2026-08-07T09:00:00.000Z" }, now)).toBe(true);
     expect(hasInvalidEvidenceWindow({ observed_at: "2026-08-07T07:00:00.000Z" }, now)).toBe(false);

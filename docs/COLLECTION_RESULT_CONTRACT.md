@@ -1,6 +1,6 @@
 # Collection- und Freshness-Vertrag
 
-> **Stand:** 2026-08-07
+> **Stand:** 2026-08-10
 > **Status:** Implementiert, technische Verifikation abgeschlossen; Native-Device-Smoke steht als Release-Gate aus.
 > **Bezug:** `SP1-02`, `lib/assessment/collection.ts`
 
@@ -39,7 +39,14 @@ exklusiv: `expires_at <= now` ist `stale`. Abgelaufene Evidenz wird im Scoring
 wie unbekannte Evidenz behandelt, erhält keine Punkte und löst eine erneute
 Prüfung aus. Fehlendes `expires_at` bleibt aus Gründen der Rückwärtskompatibilität
 bewertbar, wird aber ausdrücklich als `unknown` gekennzeichnet. Diese neue
-Bewertungssemantik ist als `SCORING_VERSION = 2.2.0` versioniert.
+Bewertungssemantik ist als `SCORING_VERSION = 2.2.1` versioniert.
+
+Für Zeitstempel von Clientgeräten gilt eine maximale positive Uhrabweichung von
+zwei Minuten. `observed_at` bis einschließlich dieser Grenze bleibt gültig;
+größere Zukunftsabweichungen, ungültige Datumswerte und `expires_at < observed_at`
+werden als fehlerhafte Evidenz behandelt. Die Toleranz verhindert Fehlalarme
+durch leicht abweichende Geräteuhren, ohne beliebige Zukunftszeitstempel zu
+akzeptieren.
 
 ## 3. Adapter- und Plattformverhalten
 
@@ -60,6 +67,7 @@ Neue Assessment-Pfade müssen die `collect*`-Funktionen verwenden.
 Ein `WlanScanResult` enthält ab jetzt:
 
 - `collection.currentWifi`;
+- `collection.securityProtocol`;
 - `collection.visibleWifiNetworks`;
 - `collection.localDevices`;
 - `coverage` mit Anteil erfolgreich erhobener, auf der Plattform unterstützter
@@ -76,6 +84,11 @@ Die relevanten `WlanFinding`-Objekte tragen Collection-Status, Grund,
 Beobachtungszeit, Ablaufzeit und Freshness weiter. Nicht erfolgreiche Sensoren
 werden zusätzlich in der Methodik/Limitation dokumentiert und beim Sync im
 `network_info`-Payload erhalten.
+
+Das Finding `securityProtocol` besitzt eine eigene Erhebungsherkunft. Native
+Security-Details, sichtbare WLAN-Capabilities und eine SSID-basierte Inferenz
+werden getrennt dokumentiert. Ist die Erhebung auf iOS nicht unterstützt, trägt
+das Finding `value: null` statt eines scheinbar gemessenen `UNKNOWN`-Werts.
 
 ## 5. Monitoring-Mapping
 

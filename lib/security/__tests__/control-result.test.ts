@@ -324,6 +324,24 @@ describe("calculateScore – Integration der Matrix (produktiv erreichbare Zust�
     expect(report.rule_results.every((rule) => rule.status === "unknown" || rule.status === "not_applicable")).toBe(true);
   });
 
+  it("toleriert kleine Geräteuhr-Abweichungen, aber keine Zukunftszeit außerhalb des Limits", () => {
+    const now = Date.now();
+    const tolerated = calculateScore({
+      ...FULL_MET,
+      observed_at: new Date(now + 90_000).toISOString(),
+      expires_at: new Date(now + 5 * 60_000).toISOString()
+    });
+    const rejected = calculateScore({
+      ...FULL_MET,
+      observed_at: new Date(now + 5 * 60_000).toISOString(),
+      expires_at: new Date(now + 10 * 60_000).toISOString()
+    });
+
+    expect(tolerated.total_points).toBeGreaterThan(0);
+    expect(rejected.total_points).toBe(0);
+    expect(rejected.review_status).toBe("review_required");
+  });
+
   it("management_recommendation spiegelt recommendation rückwärtskompatibel", () => {
     const report = calculateScore({ ...FULL_MET, mfa_enabled: false });
     for (const rule of report.rule_results) {

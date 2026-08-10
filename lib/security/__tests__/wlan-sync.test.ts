@@ -4,6 +4,7 @@ declare const jest: {
 
 let mockInsertResult: { error: { code?: string; message: string } | null };
 let mockSelectedRow: unknown;
+var mockNativeWifiSecurityDetails: Record<string, unknown> | null = null;
 
 jest.mock("@react-native-community/netinfo", () => ({
   __esModule: true,
@@ -24,7 +25,7 @@ jest.mock("@/lib/security/nativeWifi", () => ({
   collectVisibleWifiNetworks: async () => ({ status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" })
 }));
 jest.mock("@/lib/security/networkProbes", () => ({
-  getNativeWifiSecurityDetails: async () => null,
+  getNativeWifiSecurityDetails: async () => mockNativeWifiSecurityDetails,
   probeDeviceServices: async () => ({ http: [], tcp: [], smb: [], ssdp: [], mdns: [], snmp: [] }),
   probeGatewaySecurity: async () => null,
   probeIpv6TcpPorts: async () => [],
@@ -49,6 +50,7 @@ import { runWlanSecurityScan, syncWlanScanResultToSupabase, type WlanScanResult 
 
 describe("WLAN collection contract", () => {
   it("surfaces platform limitations and coverage instead of treating them as empty measurements", async () => {
+    mockNativeWifiSecurityDetails = null;
     const result = await runWlanSecurityScan({ phaseDelayMs: 0, phaseIds: ["network_info"] });
 
     expect(result.networkName).toBe("Praxis-WLAN");
@@ -58,11 +60,28 @@ describe("WLAN collection contract", () => {
     expect(result.coverage).toMatchObject({
       score: 50,
       status: "insufficient",
-      unsupported: ["visibleWifiNetworks"]
+      unsupported: ["securityProtocol", "visibleWifiNetworks"]
     });
     expect(result.findings.networkName.collection_status).toBe("collected");
     expect(result.findings.securityProtocol.collection_status).toBe("unsupported");
+    expect(result.findings.securityProtocol.value).toBe(null);
+    expect(result.findings.securityProtocol.collection_reason).toContain("iOS");
     expect(result.methodology.some((line) => line.includes("visibleWifiNetworks: unsupported"))).toBe(true);
+  });
+
+  it("uses native security evidence independently from unsupported visible-network scanning", async () => {
+    mockNativeWifiSecurityDetails = { protocol: "WPA2", source: "measured", confidence: "high" };
+
+    const result = await runWlanSecurityScan({ phaseDelayMs: 0, phaseIds: ["network_info"] });
+
+    expect(result.collection.visibleWifiNetworks.status).toBe("unsupported");
+    expect(result.collection.securityProtocol.status).toBe("collected");
+    expect(result.findings.securityProtocol).toMatchObject({
+      value: "WPA2",
+      source: "measured",
+      source_detail: "Native WiFi security details",
+      collection_status: "collected"
+    });
   });
 });
 
@@ -107,14 +126,15 @@ function minimalScanResult(): WlanScanResult {
     methodology: [],
     collection: {
       currentWifi: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" },
+      securityProtocol: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" },
       visibleWifiNetworks: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
       localDevices: { status: "not_checked", reason: "Nicht ausgeführt", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
     },
     coverage: {
-      score: 50,
+      score: 67,
       status: "insufficient",
-      active: 1,
-      total: 2,
+      active: 2,
+      total: 3,
       missing: ["localDevices"],
       unsupported: ["visibleWifiNetworks"]
     }

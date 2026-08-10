@@ -183,7 +183,7 @@ describe("WlanScanner", () => {
 
     await waitForText(screen, "Scan konnte nicht gespeichert werden. Bitte erneut versuchen.");
     expect(findText(screen.root, "Speichern erneut versuchen")).toBeDefined();
-    expect(allText(screen.root)).toContain("Auf diesem Gerät nicht unterstützt: sichtbare WLAN-Netze, native Geräteerkennung");
+    expect(allText(screen.root)).toContain("Auf diesem Gerät nicht unterstützt: WLAN-Sicherheitsprotokoll, sichtbare WLAN-Netze, native Geräteerkennung");
     expect(allText(screen.root)).toContain("Prüfabdeckung der unterstützten Sensoren: 100% (1/1)");
 
     const firstErrorCall = consoleError.mock.calls[0];
@@ -244,6 +244,7 @@ function minimalScanResult() {
     connectedDevices: [],
     collection: {
       currentWifi: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", freshness: "fresh" },
+      securityProtocol: { status: "unsupported", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
       visibleWifiNetworks: { status: "unsupported", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
       localDevices: { status: "unsupported", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
     },
@@ -253,7 +254,7 @@ function minimalScanResult() {
       active: 1,
       total: 1,
       missing: [],
-      unsupported: ["visibleWifiNetworks", "localDevices"]
+      unsupported: ["securityProtocol", "visibleWifiNetworks", "localDevices"]
     },
     dnsServers: ["192.168.1.1"],
     findings: {

@@ -10,6 +10,7 @@ export const COLLECTION_STATUSES = [
 
 export type CollectionStatus = (typeof COLLECTION_STATUSES)[number];
 export type EvidenceFreshness = "fresh" | "stale" | "unknown";
+export const DEFAULT_CLOCK_SKEW_TOLERANCE_MS = 2 * 60 * 1000;
 
 export type CollectionMetadata = {
   status: CollectionStatus;
@@ -36,9 +37,10 @@ type CollectionObservationOptions = Pick<CollectionTimeOptions, "now" | "observe
 
 export function deriveEvidenceFreshness(
   input: Pick<CollectionMetadata, "observed_at" | "expires_at">,
-  now = new Date()
+  now = new Date(),
+  clockSkewToleranceMs = DEFAULT_CLOCK_SKEW_TOLERANCE_MS
 ): EvidenceFreshness {
-  if (hasInvalidEvidenceWindow(input, now)) return "unknown";
+  if (hasInvalidEvidenceWindow(input, now, clockSkewToleranceMs)) return "unknown";
   const expiresAt = input.expires_at ? Date.parse(input.expires_at) : Number.NaN;
   if (!Number.isFinite(expiresAt)) return "unknown";
   return expiresAt > now.getTime() ? "fresh" : "stale";
@@ -46,10 +48,12 @@ export function deriveEvidenceFreshness(
 
 export function hasInvalidEvidenceWindow(
   input: Pick<CollectionMetadata, "observed_at" | "expires_at">,
-  now = new Date()
+  now = new Date(),
+  clockSkewToleranceMs = DEFAULT_CLOCK_SKEW_TOLERANCE_MS
 ) {
   const observedAt = Date.parse(input.observed_at);
-  if (!Number.isFinite(observedAt) || observedAt > now.getTime()) return true;
+  const latestAcceptedObservation = now.getTime() + Math.max(0, clockSkewToleranceMs);
+  if (!Number.isFinite(observedAt) || observedAt > latestAcceptedObservation) return true;
   if (input.expires_at === undefined) return false;
   const expiresAt = Date.parse(input.expires_at);
   return !Number.isFinite(expiresAt) || expiresAt < observedAt;

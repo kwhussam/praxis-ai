@@ -1,6 +1,6 @@
 # PraxisShield — Umsetzungsplan 2026
 
-**Stand:** 2026-08-06
+**Stand:** 2026-08-10
 **Grundlage:** `docs/PRODUKTANALYSE_2026.md` (Analyse A) und `docs/CTO_SECURITY_ARCHITECTURE_REVIEW_2026.md` (Analyse B, Codex)
 **Zweck:** Beide Analysen am Code gegenprüfen, Widersprüche auflösen und sämtliche konsolidierten Themen in einen umsetzbaren, phasenbasierten Masterplan überführen. Der Plan trennt den sofortigen kritischen Pfad, den Ausbau innerhalb des ersten Produktjahres und die späteren strategischen Fähigkeiten. Kein Punkt darf ohne expliziten Status verschwinden.
 
@@ -833,29 +833,31 @@ Die erste Implementierungsänderung ist nicht der Windows-Agent und nicht der FR
 
 ## 22. Umsetzungsstatus
 
-Stand: **2026-08-07**, lokaler Arbeitsstand; noch kein Produktionsrelease.
+Stand: **2026-08-10**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 
 | Ticket | Status | Gelieferter Stand | Noch offen bis `released` |
 |---|---|---|---|
 | SP1-01 | verification | Golden-Testpraxis, kanonischer Faktenvertrag und Regressionstest; Score 100 bei 115 Rohpunkten vertraglich fixiert | fachliche Freigabe der Fixture-Erwartungen |
-| SP1-02 | verification | gemeinsamer diskriminierter Collection-Vertrag für Scoring, Monitoring und WLAN; Native-Adapter unterscheiden `unsupported`, `permission_denied`, `timeout`, `error` und `unavailable`; `observed_at`/`expires_at`/Freshness, WLAN-Coverage und Unknown-/Nullpunkte-Mapping sind getestet und dokumentiert | Android-/iOS-Smoke auf der freigegebenen Gerätematrix, danach Status `released` |
+| SP1-02 | verification | gemeinsamer diskriminierter Collection-Vertrag für Scoring, Monitoring und WLAN; Native-Adapter unterscheiden `unsupported`, `permission_denied`, `timeout`, `error` und `unavailable`; `observed_at`/`expires_at`/Freshness, plattformfähige Coverage, eigenständige Security-Protocol-Evidenz und Unknown-/Nullpunkte-Mapping sind getestet und dokumentiert | Android-/iOS-Smoke auf der freigegebenen Gerätematrix, danach Status `released` |
 | SP1-03 | verification | LLM erzeugt keine autoritativen Score-, Ampel-, Kategorie- oder Compliancefakten mehr; serverseitige Faktenprojektion überschreibt Modelloutput | Reportformat-Versionierung im Snapshotpfad aus SP2/SP3 |
 | SP1-04 | verification | Report verlangt gespeicherte Check-ID, lädt den mandantengebundenen Fragebogencheck und berechnet Fakten serverseitig; Clientwerte sind nicht autoritativ | Übergang von `check_id` auf vollständiges Assessment-Manifest/Snapshot in SP2/SP3 |
 | SP1-05 | verification | Dashboardprimärwert und Historie nutzen nur vergleichbare Fragebogenergebnisse; WLAN/Monitoring können ihn nicht ersetzen | finale Praxis-/Techniksicht und A11y-Abnahme in SP2-03 |
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
 | SP1-07 | review | ADR-001 und nicht ausführbarer Schemaentwurf mit Datenklassen, Schlüsseln, Retention, Dual-Read, Backfill, Rollback und Abbruchgates erstellt | Reviews und Checkboxen in ADR-001; vor Freigabe keine Migration |
 
-Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **361 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
+Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **363 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
 
 ### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review
 
-Die Reviews der Commits `60cc363` und `6df194f` wurden am 2026-08-07 umgesetzt:
+Die Reviews der Commits `60cc363` und `6df194f` wurden bis 2026-08-10 umgesetzt:
 
 - Kritische Monitoringwarnungen haben auch bei unzureichender Coverage Vorrang; fehlende Messquellen werden zusätzlich, nicht anstelle des Alarms genannt.
 - Nach einem App-Neustart wird der letzte autoritative Fragebogencheck serverseitig beziehungsweise über den Dashboard-Read-Pfad wiedergefunden. Der Worker bindet den erzeugten Bericht und die Antwort an die tatsächlich verwendete Check-ID.
 - Neue Berichte tragen `facts_version`, `scoring_version` und `assessment_profile`. Die noch offene Snapshotmigration bleibt notwendig, damit spätere Engineversionen historische Bewertungen nicht neu interpretieren.
 - Der SP1-02-Review-Fund zur iOS-Coverage ist behoben: plattformbedingt `unsupported` wird aus dem erreichbaren Nenner entfernt, separat persistiert und in der WLAN-Oberfläche ausdrücklich als nicht unterstützt ausgewiesen. Fehlende, verweigerte oder fehlgeschlagene unterstützte Messungen bleiben im Nenner und verhindern weiterhin falsche Vollabdeckung.
+- Das Security-Protocol-Finding verwendet die tatsächliche Quelle der Protokollerkennung statt pauschal die Metadaten sichtbarer WLAN-Netze; nicht unterstützte iOS-Erhebung liefert keinen Scheinsachwert.
+- Eine dokumentierte Clock-Skew-Toleranz von zwei Minuten verhindert Reviewfehler durch geringfügig abweichende Geräteuhren; größere Zukunftsabweichungen bleiben ungültig.
 - `overall_risk=critical` setzt jetzt einen bestätigten kritischen Kernbefund voraus; ein roter Score ohne solchen Befund wird als `high` eingeordnet.
 - Coverage liegt in einem neutralen Assessment-Modul statt einer Security→Monitoring-Abhängigkeit; tote Tarifkartenstyles wurden entfernt.
 
-Nicht als erledigt markiert bleiben das vollständige Assessment-Manifest, der kanonische PDF-Pfad, die Praxis-/Techniksicht, die Claim-Inventur, aktive Native-/WLAN-Collection-Adapter und die freizugebende Datenmigration.
+Nicht als erledigt markiert bleiben das vollständige Assessment-Manifest, der kanonische PDF-Pfad, die Praxis-/Techniksicht, die Claim-Inventur, die Native-Device-Smokes und die freizugebende Datenmigration.
