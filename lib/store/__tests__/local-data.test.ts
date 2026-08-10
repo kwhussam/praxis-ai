@@ -4,6 +4,22 @@ declare const jest: {
 
 declare function afterEach(fn: () => void): void;
 
+jest.mock("expo-crypto", () => ({
+  getRandomBytesAsync: async (length: number) => new Uint8Array(length)
+}));
+jest.mock("expo-secure-store", () => ({
+  WHEN_UNLOCKED_THIS_DEVICE_ONLY: "when-unlocked-this-device-only",
+  isAvailableAsync: async () => false,
+  getItemAsync: async () => null,
+  setItemAsync: async () => undefined,
+  deleteItemAsync: async () => undefined
+}));
+jest.mock("expo-sqlite", () => ({
+  openDatabaseAsync: async () => {
+    throw new Error("unexpected_native_database_access");
+  }
+}));
+
 import { SAMPLE_REPORT, SAMPLE_REPORT_SOURCE } from "@/lib/ai/sample-report";
 import { useInventoryStore } from "@/lib/store/inventory";
 import { useReportStore } from "@/lib/store/report";

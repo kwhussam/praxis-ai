@@ -54,6 +54,7 @@ export default function InventoryScreen() {
   const knownDevices = useInventoryStore((state) => state.getKnownDevices(practice?.id));
   const accessPoints = useInventoryStore((state) => state.getAccessPoints(practice?.id));
   const routerWifiConfig = useInventoryStore((state) => state.getRouterWifiConfig(practice?.id));
+  const persistence = useInventoryStore((state) => state.getPersistenceState(practice?.id));
   const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const addKnownDevice = useInventoryStore((state) => state.addKnownDevice);
@@ -89,6 +90,7 @@ export default function InventoryScreen() {
     openWifi: routerWifiConfig?.openWifi ?? false,
     wps: routerWifiConfig?.wps ?? false
   });
+  const inventoryWritable = persistence.status === "ready" || persistence.status === "volatile";
 
   useEffect(() => {
     ensurePracticeInventory(practice);
@@ -238,6 +240,25 @@ export default function InventoryScreen() {
             <Metric label="Access Points" value={accessPointSummary.total} />
           </View>
 
+          {persistence.status === "loading" || persistence.status === "idle" ? (
+            <GlassCard style={styles.persistenceCard}>
+              <Text style={styles.persistenceTitle}>Geschütztes Inventar wird geladen</Text>
+              <Text style={styles.persistenceCopy}>Eingaben werden freigeschaltet, sobald der praxisgebundene lokale Speicher bereit ist.</Text>
+            </GlassCard>
+          ) : null}
+          {persistence.status === "volatile" ? (
+            <GlassCard style={styles.persistenceCard} tone="warning">
+              <Text style={styles.persistenceTitle}>Nur flüchtiger Speicher</Text>
+              <Text style={styles.persistenceCopy}>Der sichere Gerätespeicher ist nicht verfügbar. Änderungen bleiben nur bis zum Abmelden, Praxiswechsel oder Beenden der App erhalten und werden nicht synchronisiert.</Text>
+            </GlassCard>
+          ) : null}
+          {persistence.status === "error" ? (
+            <GlassCard style={styles.persistenceCard} tone="critical">
+              <Text style={styles.persistenceTitle}>Verschlüsseltes Inventar nicht verfügbar</Text>
+              <Text style={styles.persistenceCopy}>Die vorhandenen lokalen Daten werden nicht überschrieben. Starten Sie die App erneut oder wenden Sie sich an den Support.</Text>
+            </GlassCard>
+          ) : null}
+
           <View style={styles.filters}>
             <FilterChip label="Alle" active={filter === "all"} onPress={() => setFilter("all")} />
             {INVENTORY_CATEGORIES.map((category) => (
@@ -311,7 +332,7 @@ export default function InventoryScreen() {
               ))}
             </View>
 
-            <AnimatedButton label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} />
+            <AnimatedButton label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} disabled={!inventoryWritable} />
           </GlassCard>
 
           <GlassCard style={styles.card}>
@@ -395,7 +416,7 @@ export default function InventoryScreen() {
               ))}
             </View>
 
-            <AnimatedButton label="Known Device hinzufügen" onPress={handleAddKnownDevice} icon={<Plus color={colors.ink} size={18} />} />
+            <AnimatedButton label="Known Device hinzufügen" onPress={handleAddKnownDevice} icon={<Plus color={colors.ink} size={18} />} disabled={!inventoryWritable} />
           </GlassCard>
 
           <View style={styles.listHeader}>
@@ -481,7 +502,7 @@ export default function InventoryScreen() {
               ))}
             </View>
 
-            <AnimatedButton label="Access Point hinzufügen" onPress={handleAddAccessPoint} icon={<Plus color={colors.ink} size={18} />} />
+            <AnimatedButton label="Access Point hinzufügen" onPress={handleAddAccessPoint} icon={<Plus color={colors.ink} size={18} />} disabled={!inventoryWritable} />
           </GlassCard>
 
           <View style={styles.listHeader}>
@@ -536,7 +557,7 @@ export default function InventoryScreen() {
               value={routerConfig.wps}
               onChange={(value) => setRouterConfig((current) => ({ ...current, wps: value }))}
             />
-            <AnimatedButton label="Konfiguration speichern" onPress={handleSaveRouterConfig} variant="ghost" />
+            <AnimatedButton label="Konfiguration speichern" onPress={handleSaveRouterConfig} variant="ghost" disabled={!inventoryWritable} />
           </GlassCard>
 
           <View style={styles.listHeader}>
@@ -574,6 +595,7 @@ export default function InventoryScreen() {
             <View style={styles.listRow}>
               <KnownDeviceRow
                 device={row.device}
+                disabled={!inventoryWritable}
                 onConfirm={() => handleConfirmKnownDevice(row.device)}
                 onRemove={() => handleRemoveKnownDevice(row.device)}
               />
@@ -584,6 +606,7 @@ export default function InventoryScreen() {
             <View style={styles.listRow}>
               <AccessPointRow
                 accessPoint={row.accessPoint}
+                disabled={!inventoryWritable}
                 onRemove={() => practice && removeAccessPoint(practice.id, row.accessPoint.id)}
               />
             </View>
@@ -591,13 +614,13 @@ export default function InventoryScreen() {
         case "inventory":
           return (
             <View style={styles.listRow}>
-              <InventoryRow item={row.item} onRemove={() => handleRemove(row.item)} />
+              <InventoryRow item={row.item} disabled={!inventoryWritable} onRemove={() => handleRemove(row.item)} />
             </View>
           );
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [practice]
+    [inventoryWritable, practice]
   );
 
   return (
@@ -644,7 +667,7 @@ function FilterChip({ label, active, onPress }: { label: string; active: boolean
   );
 }
 
-function InventoryRow({ item, onRemove }: { item: InventoryItem; onRemove: () => void }) {
+function InventoryRow({ item, disabled, onRemove }: { item: InventoryItem; disabled: boolean; onRemove: () => void }) {
   const Icon = iconByType[item.type];
   const criticalityColor = criticalityColors[item.criticality];
 
@@ -656,12 +679,16 @@ function InventoryRow({ item, onRemove }: { item: InventoryItem; onRemove: () =>
         </View>
         <View style={styles.itemText}>
           <Text style={styles.itemName}>{item.name}</Text>
-          <Text style={styles.itemMeta}>{inventoryCategoryLabel(item.type)}</Text>
+          <Text style={styles.itemMeta}>
+            {inventoryCategoryLabel(item.type)}{item.provenance.synthetic ? " · Vorschlag, nicht gemessen" : ""}
+          </Text>
         </View>
         <Pressable
+          disabled={disabled}
           onPress={onRemove}
-          style={styles.deleteButton}
+          style={[styles.deleteButton, disabled ? styles.disabledAction : null]}
           accessibilityRole="button"
+          accessibilityState={{ disabled }}
           accessibilityLabel={`Eintrag entfernen: ${item.name}`}
         >
           <Trash2 color={colors.muted} size={18} />
@@ -680,10 +707,12 @@ function InventoryRow({ item, onRemove }: { item: InventoryItem; onRemove: () =>
 
 function KnownDeviceRow({
   device,
+  disabled,
   onConfirm,
   onRemove
 }: {
   device: KnownDevice;
+  disabled: boolean;
   onConfirm: () => void;
   onRemove: () => void;
 }) {
@@ -703,9 +732,11 @@ function KnownDeviceRow({
           </Text>
         </View>
         <Pressable
+          disabled={disabled}
           onPress={onRemove}
-          style={styles.deleteButton}
+          style={[styles.deleteButton, disabled ? styles.disabledAction : null]}
           accessibilityRole="button"
+          accessibilityState={{ disabled }}
           accessibilityLabel={`Gerät entfernen: ${device.hostname}`}
         >
           <Trash2 color={colors.muted} size={18} />
@@ -722,7 +753,13 @@ function KnownDeviceRow({
         <View style={[styles.criticalityBadge, { borderColor: criticalityColor }]}>
           <Text style={[styles.criticalityText, { color: criticalityColor }]}>{inventoryCriticalityLabel(device.criticality)}</Text>
         </View>
-        <Pressable onPress={onConfirm} style={styles.confirmButton}>
+        <Pressable
+          disabled={disabled}
+          onPress={onConfirm}
+          style={[styles.confirmButton, disabled ? styles.disabledAction : null]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled }}
+        >
           <CalendarCheck color={stale ? colors.warning : colors.safe} size={15} />
           <Text style={styles.confirmText}>{stale ? "Bestätigen" : "Heute bestätigt"}</Text>
         </Pressable>
@@ -731,7 +768,15 @@ function KnownDeviceRow({
   );
 }
 
-function AccessPointRow({ accessPoint, onRemove }: { accessPoint: AccessPoint; onRemove: () => void }) {
+function AccessPointRow({
+  accessPoint,
+  disabled,
+  onRemove
+}: {
+  accessPoint: AccessPoint;
+  disabled: boolean;
+  onRemove: () => void;
+}) {
   return (
     <GlassCard style={styles.itemCard}>
       <View style={styles.itemHeader}>
@@ -743,9 +788,11 @@ function AccessPointRow({ accessPoint, onRemove }: { accessPoint: AccessPoint; o
           <Text style={styles.itemMeta}>{accessPoint.bssid}</Text>
         </View>
         <Pressable
+          disabled={disabled}
           onPress={onRemove}
-          style={styles.deleteButton}
+          style={[styles.deleteButton, disabled ? styles.disabledAction : null]}
           accessibilityRole="button"
+          accessibilityState={{ disabled }}
           accessibilityLabel={`Access Point entfernen: ${accessPoint.ssid}`}
         >
           <Trash2 color={colors.muted} size={18} />
@@ -857,6 +904,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginBottom: 16
+  },
+  persistenceCard: {
+    marginBottom: 16
+  },
+  persistenceTitle: {
+    color: colors.ink,
+    fontSize: 16,
+    fontWeight: "900"
+  },
+  persistenceCopy: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 6
   },
   metricCard: {
     flex: 1
@@ -1007,6 +1068,9 @@ const styles = StyleSheet.create({
     height: 38,
     justifyContent: "center",
     width: 38
+  },
+  disabledAction: {
+    opacity: 0.35
   },
   itemDetail: {
     color: colors.muted,

@@ -5,6 +5,8 @@ import type {
   InventoryDraft,
   InventoryItem,
   InventoryItemType,
+  InventoryProvenance,
+  InventoryProvenanceDraft,
   KnownDevice,
   KnownDeviceDraft,
   RouterFirewallRule,
@@ -71,6 +73,7 @@ export function createInventoryItem(draft: InventoryDraft, now = new Date()): In
     detail: normalizeOptional(draft.detail),
     owner: normalizeOptional(draft.owner),
     criticality: draft.criticality,
+    provenance: createInventoryProvenance(draft.provenance, now),
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -87,6 +90,7 @@ export function createKnownDevice(draft: KnownDeviceDraft, now = new Date()): Kn
     location: draft.location.trim(),
     owner: draft.owner.trim(),
     criticality: draft.criticality,
+    provenance: createInventoryProvenance(draft.provenance, now),
     lastConfirmedAt: normalizeDateInput(draft.lastConfirmedAt, now),
     createdAt: timestamp,
     updatedAt: timestamp
@@ -104,6 +108,7 @@ export function createAccessPoint(draft: AccessPointDraft, now = new Date()): Ac
     vendor: draft.vendor.trim(),
     channel: draft.channel.trim(),
     expectedEncryption: draft.expectedEncryption,
+    provenance: createInventoryProvenance(draft.provenance, now),
     createdAt: timestamp,
     updatedAt: timestamp
   };
@@ -125,6 +130,10 @@ export function createRouterFirewallRule(draft: RouterFirewallRuleDraft, now = n
     purpose: draft.purpose.trim(),
     owner: draft.owner.trim(),
     enabled: draft.enabled,
+    provenance: createInventoryProvenance(
+      draft.provenance ?? (importedAt ? { source: "imported", confidence: 80 } : undefined),
+      now
+    ),
     lastReviewedAt: normalizeOptionalDateInput(draft.lastReviewedAt),
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -220,7 +229,8 @@ export function createPracticeSeedInventory(practice: Practice | null): Inventor
       type: "domain",
       name: practice.domain,
       detail: "Praxis-Hauptdomain",
-      criticality: "high"
+      criticality: "high",
+      provenance: practiceSeedProvenance()
     });
   }
 
@@ -229,7 +239,8 @@ export function createPracticeSeedInventory(practice: Practice | null): Inventor
       type: "email",
       name: practice.email,
       detail: "Praxis-Kontaktadresse",
-      criticality: "medium"
+      criticality: "medium",
+      provenance: practiceSeedProvenance()
     });
   }
 
@@ -237,6 +248,46 @@ export function createPracticeSeedInventory(practice: Practice | null): Inventor
     ...createInventoryItem(draft, new Date(seedDate.getTime() + index)),
     id: `seed-${practice?.id ?? "practice"}-${draft.type}-${index}`
   }));
+}
+
+export function createInventoryProvenance(
+  draft: InventoryProvenanceDraft | undefined,
+  now = new Date()
+): InventoryProvenance {
+  const source = draft?.source ?? "manual";
+  const synthetic = source === "practice_profile" || draft?.synthetic === true;
+  const syncPolicy = synthetic ? "local_only" : draft?.syncPolicy ?? "cloud_allowed";
+  const observedAt = draft?.observedAt ?? (source === "observed" ? now.toISOString() : undefined);
+  const confirmedAt = draft?.confirmedAt ?? (source === "manual" ? now.toISOString() : undefined);
+
+  return {
+    source,
+    synthetic,
+    confidence: normalizeConfidence(draft?.confidence ?? (source === "practice_profile" ? 30 : 100)),
+    syncPolicy,
+    observedAt: normalizeOptionalDateInput(observedAt),
+    confirmedAt: normalizeOptionalDateInput(confirmedAt),
+    expiresAt: normalizeOptionalDateInput(draft?.expiresAt)
+  };
+}
+
+export function canUploadInventoryRecord(record: { provenance: InventoryProvenance }) {
+  return record.provenance.syncPolicy === "cloud_allowed" && !record.provenance.synthetic;
+}
+
+export function assertInventoryRecordCloudSyncAllowed(record: { provenance: InventoryProvenance }) {
+  if (!canUploadInventoryRecord(record)) {
+    throw new Error("inventory_record_local_only");
+  }
+}
+
+function practiceSeedProvenance(): InventoryProvenanceDraft {
+  return {
+    source: "practice_profile",
+    synthetic: true,
+    confidence: 30,
+    syncPolicy: "local_only"
+  };
 }
 
 function normalizeOptional(value?: string) {
@@ -255,6 +306,11 @@ function normalizeOptionalDateInput(value?: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return undefined;
   return parsed.toISOString();
+}
+
+function normalizeConfidence(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function normalizePorts(value: string) {

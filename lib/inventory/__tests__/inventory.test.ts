@@ -1,5 +1,8 @@
 import {
+  assertInventoryRecordCloudSyncAllowed,
+  canUploadInventoryRecord,
   createAccessPoint,
+  createInventoryItem,
   createKnownDevice,
   createRouterFirewallRule,
   createPracticeSeedInventory,
@@ -40,6 +43,33 @@ describe("PracticeInventory", () => {
 
     expect(items.map((entry) => entry.type)).toEqual(["domain", "email"]);
     expect(items.map((entry) => entry.name)).toEqual(["praxis.test", "kontakt@praxis.test"]);
+    expect(items.every((entry) => entry.provenance.source === "practice_profile")).toBe(true);
+    expect(items.every((entry) => entry.provenance.synthetic)).toBe(true);
+    expect(items.every((entry) => entry.provenance.syncPolicy === "local_only")).toBe(true);
+    expect(items.every((entry) => !canUploadInventoryRecord(entry))).toBe(true);
+    expect(() => assertInventoryRecordCloudSyncAllowed(items[0])).toThrow("inventory_record_local_only");
+  });
+
+  it("erzwingt den Syncblock auch bei widersprüchlichen Seed-Eingaben", () => {
+    const item = createInventoryItem({
+      type: "domain",
+      name: "praxis.test",
+      criticality: "high",
+      provenance: {
+        source: "practice_profile",
+        synthetic: false,
+        syncPolicy: "cloud_allowed",
+        confidence: 99
+      }
+    });
+
+    expect(item.provenance).toMatchObject({
+      source: "practice_profile",
+      synthetic: true,
+      syncPolicy: "local_only",
+      confidence: 99
+    });
+    expect(() => assertInventoryRecordCloudSyncAllowed(item)).toThrow("inventory_record_local_only");
   });
 
   it("normalisiert MAC-Adressen für bekannte Geräte", () => {
@@ -158,6 +188,12 @@ function item(type: InventoryItem["type"], name: string, criticality: InventoryI
     type,
     name,
     criticality,
+    provenance: {
+      source: "manual",
+      synthetic: false,
+      confidence: 100,
+      syncPolicy: "cloud_allowed"
+    },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z"
   };

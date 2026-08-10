@@ -844,8 +844,9 @@ Stand: **2026-08-10**, lokaler Arbeitsstand; noch kein Produktionsrelease.
 | SP1-05 | verification | Dashboardprimärwert und Historie nutzen nur vergleichbare Fragebogenergebnisse; WLAN/Monitoring können ihn nicht ersetzen | finale Praxis-/Techniksicht und A11y-Abnahme in SP2-03 |
 | SP1-06 | verification | Provider-Coverage mit `not_configured`, `unavailable` und `timeout`; unzureichende Abdeckung verhindert Entwarnung und wird separat angezeigt | Einbindung weiterer Scanquellen in den gemeinsamen Coverage-Vertrag |
 | SP1-07 | review | ADR-001 technisch gegen Schema, Worker, Grants, Export und Löschung geprüft; DEK-unabhängiger IIK-/Reindex-Lifecycle, vollständig authentifiziertes Envelope und feste API-Canary-Baseline definiert; nicht ausführbarer Vollschemaentwurf sowie Zwei-Mandanten-, Backfill-, Rollback-, D3-, Export-/Lösch- und Restore-Verifikationsplan erstellt | benannte Sign-offs von Technical Owner, Datenschutz, Operations, Mobile, Security und Product sowie Umsetzung der spezifizierten Tests vor M1; keine Migration freigegeben |
+| SP2-01A | verification | Versioniertes Inventarrepository mit praxisgebundener AES-256-GCM-Verschlüsselung, SecureStore-DEK, verschlüsseltem SQLite-Snapshot, CAS-Revisionen, Hydrierungs-/Praxiswechsel-Raceschutz, Herkunftsfeldern, hartem Seed-Syncblock und sichtbarem Volatile-/Fehlerstatus implementiert | Android-/iOS-Device-Smokes für SecureStore und SQLite; SP2-01B Delta-/Cloudsync bleibt bis ADR-001/V0-Freigabe gesperrt |
 
-Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **363 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests.
+Verifikation dieses Arbeitsstands: `npm run verify` ist grün (Lint, TypeScript, **380 bestandene Tests**, 4 bewusst übersprungen). Die erwarteten Warn-/Fehlerlogs stammen aus simulierten Provider- und Auditfehlerfällen der Tests. Zusätzlich wurden die iOS- und Android-Metro-Exporte mit den neuen Crypto-/SQLite-Modulen erfolgreich erzeugt.
 
 ### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review
 

@@ -357,6 +357,12 @@ describe("network security assessment", () => {
           vendor: "Ubiquiti",
           channel: "6",
           expectedEncryption: "WPA2_AES",
+          provenance: {
+            source: "manual",
+            synthetic: false,
+            confidence: 100,
+            syncPolicy: "cloud_allowed"
+          },
           createdAt: "2026-07-09T00:00:00.000Z",
           updatedAt: "2026-07-09T00:00:00.000Z"
         }
@@ -388,6 +394,12 @@ describe("network security assessment", () => {
           location: "Empfang",
           owner: "Praxis",
           criticality: "high",
+          provenance: {
+            source: "manual",
+            synthetic: false,
+            confidence: 100,
+            syncPolicy: "cloud_allowed"
+          },
           lastConfirmedAt: "2026-07-01T00:00:00.000Z",
           createdAt: "2026-07-01T00:00:00.000Z",
           updatedAt: "2026-07-01T00:00:00.000Z"

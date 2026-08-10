@@ -23,6 +23,20 @@ export type RouterFirewallRuleDirection = "wan_to_lan" | "lan_to_wan" | "lan_to_
 export type RouterFirewallRuleProtocol = "tcp" | "udp" | "icmp" | "any";
 export type RouterFirewallRuleAction = "allow" | "deny";
 export type RouterFirewallRuleSourceView = "external" | "internal";
+export type InventorySource = "manual" | "observed" | "imported" | "practice_profile" | "connector" | "agent";
+export type InventorySyncPolicy = "local_only" | "cloud_allowed";
+
+export type InventoryProvenance = {
+  source: InventorySource;
+  synthetic: boolean;
+  confidence: number;
+  syncPolicy: InventorySyncPolicy;
+  observedAt?: string;
+  confirmedAt?: string;
+  expiresAt?: string;
+};
+
+export type InventoryProvenanceDraft = Partial<InventoryProvenance>;
 
 export type InventoryItem = {
   id: string;
@@ -31,6 +45,7 @@ export type InventoryItem = {
   detail?: string;
   owner?: string;
   criticality: InventoryCriticality;
+  provenance: InventoryProvenance;
   createdAt: string;
   updatedAt: string;
 };
@@ -41,6 +56,7 @@ export type InventoryDraft = {
   detail?: string;
   owner?: string;
   criticality: InventoryCriticality;
+  provenance?: InventoryProvenanceDraft;
 };
 
 export type KnownDevice = {
@@ -51,6 +67,7 @@ export type KnownDevice = {
   location: string;
   owner: string;
   criticality: InventoryCriticality;
+  provenance: InventoryProvenance;
   lastConfirmedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -64,6 +81,7 @@ export type KnownDeviceDraft = {
   owner: string;
   criticality: InventoryCriticality;
   lastConfirmedAt: string;
+  provenance?: InventoryProvenanceDraft;
 };
 
 export type AccessPoint = {
@@ -74,6 +92,7 @@ export type AccessPoint = {
   vendor: string;
   channel: string;
   expectedEncryption: AccessPointExpectedEncryption;
+  provenance: InventoryProvenance;
   createdAt: string;
   updatedAt: string;
 };
@@ -85,6 +104,7 @@ export type AccessPointDraft = {
   vendor: string;
   channel: string;
   expectedEncryption: AccessPointExpectedEncryption;
+  provenance?: InventoryProvenanceDraft;
 };
 
 export type RouterWifiConfiguration = {
@@ -94,6 +114,7 @@ export type RouterWifiConfiguration = {
   tkip: boolean;
   openWifi: boolean;
   wps: boolean;
+  provenance: InventoryProvenance;
   updatedAt?: string;
 };
 
@@ -110,6 +131,7 @@ export type RouterFirewallRule = {
   purpose: string;
   owner: string;
   enabled: boolean;
+  provenance: InventoryProvenance;
   lastReviewedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -129,6 +151,7 @@ export type RouterFirewallRuleDraft = {
   owner: string;
   enabled: boolean;
   lastReviewedAt?: string;
+  provenance?: InventoryProvenanceDraft;
 };
 
 export type InventoryCategory = {

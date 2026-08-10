@@ -61,6 +61,7 @@ export default function MonitoringScreen() {
   const practiceId = practice?.id ?? "";
   const ensurePracticeInventory = useInventoryStore((state) => state.ensurePracticeInventory);
   const inventoryItems = useInventoryStore((state) => state.getItems(practiceId));
+  const inventoryPersistence = useInventoryStore((state) => state.getPersistenceState(practiceId));
   const addInventoryItem = useInventoryStore((state) => state.addItem);
   const removeInventoryItem = useInventoryStore((state) => state.removeItem);
   const [dashboard, setDashboard] = useState<DashboardData>(() =>
@@ -201,6 +202,15 @@ export default function MonitoringScreen() {
 
   function handleAddTarget(type: InventoryItemType, rawValue: string, clear: (value: string) => void) {
     if (!practice) return;
+    if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "volatile") {
+      Alert.alert(
+        "Monitoring-Ziel",
+        inventoryPersistence.status === "error"
+          ? "Das verschlüsselte Inventar ist derzeit nicht verfügbar. Vorhandene Daten werden nicht überschrieben."
+          : "Das geschützte Inventar wird noch geladen. Bitte versuchen Sie es gleich erneut."
+      );
+      return;
+    }
     const value = type === "email" ? rawValue.trim().toLowerCase() : normalizeDomainInput(rawValue);
     if (!value) {
       Alert.alert("Monitoring-Ziel", "Bitte einen gültigen Wert eintragen.");
@@ -288,6 +298,10 @@ export default function MonitoringScreen() {
         onToggleLeakConsent={() => setLeakConsentAccepted((current) => !current)}
         onRemoveTarget={(value) => {
           if (!practice) return;
+          if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "volatile") {
+            Alert.alert("Monitoring-Ziel", "Das geschützte Inventar ist derzeit nicht beschreibbar.");
+            return;
+          }
           const item = inventoryItems.find((candidate) => candidate.name === value && (candidate.type === "domain" || candidate.type === "subdomain" || candidate.type === "email"));
           if (item) removeInventoryItem(practice.id, item.id);
         }}

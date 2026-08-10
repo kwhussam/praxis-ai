@@ -28,7 +28,7 @@ Der technische Review hat den aktuellen Code und die Migrationen geprüft. Der I
 | Der Worker verwendet einen globalen AES-GCM-Schlüssel ohne AAD, Mandantenschlüssel oder Keyversion | `workers/hono/src/index.ts`, `encryptJson`/`decryptJson` | Legacy ausschließlich lesbar; v2 verwendet pro Praxis versionierte DEKs und gebundene AAD |
 | Privacy-Export enthält WLAN, aber nicht das vollständige Inventar-/Router-/Monitoringziel-Schema | `workers/hono/src/index.ts`, `handlePrivacyExport` | Exporttest über alle D2-Entitäten ist ein blockierendes Gate |
 | Die transaktionale Praxislöschung erfasst WLAN, aber nicht diese Inventar-/Router-/Monitoringziel-Tabellen | `supabase/migrations/20260721121000_privacy_deletion_transaction_rpc.sql` | Löschtest und RPC-Erweiterung sind vor Cutover zwingend |
-| Der Inventarstore ist flüchtig; Seed-Herkunft ist nur indirekt am ID-Präfix erkennbar | `lib/store/inventory.ts`, `lib/inventory/inventory.ts` | SP2-01 muss Herkunft, lokale Verschlüsselung und Syncblock technisch erzwingen |
+| SP2-01A hat den zuvor flüchtigen Inventarstore durch praxisgebundene AES-GCM-/SQLite-Persistenz ersetzt und Seed-Herkunft/Syncblock technisch erzwungen; Native-Smokes und Cloudsync fehlen noch | `lib/store/inventory.ts`, `lib/inventory/*Repository.ts`, `lib/inventory/nativeInventoryPersistence.ts` | Android-/iOS-Smokes bleiben Gate; SP2-01B/02 dürfen keinen Cloudpfad vor V0-/ADR-Freigabe aktivieren |
 
 Ein Datenbankexport oder falsch berechtigter Supportzugriff darf keine interne Topologie offenlegen. Die Daten sind keine Behandlungsdaten, können aber personenbezogene Angaben enthalten und bilden die Angriffsfläche einer Praxis präzise ab.
 
