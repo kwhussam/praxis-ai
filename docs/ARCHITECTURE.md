@@ -97,6 +97,23 @@ Customer-facing labels avoid unbounded claims such as “sicher”, “echte Pr�
 monitoring tab is therefore labelled “Ereignisse”. Commercial tariff/upgrade prompts do not appear
 inside the security posture or evidence hierarchy.
 
+## Canonical report artifacts (SP2-04)
+
+Persisted reports are created only from a tenant-bound stored security check. The Worker derives one
+canonical assessment snapshot containing the questionnaire and canonical scoring facts, encrypts it
+with AES-256-GCM, and hashes its canonical (recursively key-sorted) JSON representation. A public-safe
+manifest binds that snapshot hash to the source check, facts/scoring/report versions, generated report
+payload hash and PDF template version. `persist_assessment_report` writes manifest and report in one
+database transaction and returns an existing pair for an idempotent client retry.
+
+`POST /api/report/pdf` accepts only `practiceId` and a persisted `reportId`. It reloads the
+tenant-scoped encrypted report, verifies the manifest and report hashes, and renders every PDF page
+from the stored artifact with the manifest's original timestamp. Repeated exports are byte-identical;
+the response exposes PDF and manifest integrity metadata. Android/iOS never render an alternative
+report: they cache the returned server bytes through `expo-file-system`. Legacy reports without a
+manifest remain readable but fail closed for canonical PDF export. The report index reloads persisted
+history after restart, and each detail view can export its own canonical artifact.
+
 ## Security Model
 
 - No third-party API key is bundled into the app.
@@ -109,7 +126,7 @@ inside the security posture or evidence hierarchy.
 
 - Add a custom Expo config plugin for the WLAN native module.
 - Implement push token registration and alert notification channels.
-- Add PDF rendering with partner logo/theme inputs.
+- Add versioned partner logo/theme inputs to the server-owned PDF template without introducing a client renderer.
 - Add Supabase generated TypeScript types after the local schema is running.
 - Persist external check results and monitoring deltas after SecurityTrails, Shodan, HIBP, VirusTotal, SSL Labs and Cloudflare DNS return normalized Worker output.
 - External checks expose per-provider status (`active`, `not_configured`, `unavailable`) so missing API keys are reported as not checked instead of being interpreted as no risk.

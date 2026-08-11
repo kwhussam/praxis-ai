@@ -12,6 +12,7 @@ jest.mock("react-native", () => {
   const React = require("react");
   return {
     ActivityIndicator: () => React.createElement("ActivityIndicator"),
+    Alert: { alert: () => undefined },
     StyleSheet: { create: (styles: unknown) => styles },
     Text: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("Text", props, children),
     View: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("View", props, children)
@@ -61,6 +62,10 @@ jest.mock("@/components/ui/Screen", () => ({
 
 jest.mock("@/lib/ai/report-findings", () => ({
   buildReportScore: () => null
+}));
+
+jest.mock("@/lib/ai/report-pdf", () => ({
+  exportReportPdf: () => Promise.reject(new Error("not used"))
 }));
 
 jest.mock("@/lib/ai/report-service", () => {
@@ -126,6 +131,7 @@ describe("ReportDetailScreen", () => {
       }
     ]);
     expect(text.includes("ECHTER SERVERBERICHT")).toBe(true);
+    expect(text.includes("Kanonisches PDF exportieren")).toBe(true);
     expect(text.includes("SAMPLE_STORED_REPORT")).toBe(false);
   });
 

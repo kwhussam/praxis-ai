@@ -1,6 +1,6 @@
 import { useLocalSearchParams, router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 
 import { BarChart } from "@/components/charts/BarChart";
 import { RadarChart } from "@/components/charts/RadarChart";
@@ -12,6 +12,7 @@ import { Screen } from "@/components/ui/Screen";
 import { colors, colorForScore } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
+import { exportReportPdf } from "@/lib/ai/report-pdf";
 import { loadReportById, ReportNotFoundError, type LoadedReport } from "@/lib/ai/report-service";
 import { AppConfig } from "@/lib/config/environment";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
@@ -26,6 +27,7 @@ export default function ReportDetailScreen() {
   const [loadedReport, setLoadedReport] = useState<LoadedReport | null>(null);
   const [viewState, setViewState] = useState<"loading" | "ready" | "error" | "not-found">("loading");
   const [reloadKey, setReloadKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const isDemoReport =
     AppConfig.isDemoMode && practice?.id.startsWith("demo-") === true && id === SAMPLE_STORED_REPORT.id;
 
@@ -120,6 +122,19 @@ export default function ReportDetailScreen() {
 
   const report = loadedReport.report;
 
+  async function handleExportPdf() {
+    if (!practice?.id || !id || !UUID_RE.test(practice.id) || !UUID_RE.test(id)) return;
+    setExporting(true);
+    try {
+      const path = await exportReportPdf({ practiceId: practice.id, reportId: id });
+      Alert.alert("PDF erstellt", `Der kanonische Bericht wurde gespeichert:\n${path}`);
+    } catch (error) {
+      Alert.alert("PDF-Export fehlgeschlagen", error instanceof Error ? error.message : "Unbekannter Fehler");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <Screen>
       <Text style={styles.title}>Audit-Bericht</Text>
@@ -128,6 +143,17 @@ export default function ReportDetailScreen() {
       </Text>
 
       <AiReport report={report} />
+
+      {!isDemoReport ? (
+        <AnimatedButton
+          label={exporting ? "PDF wird geladen..." : "Kanonisches PDF exportieren"}
+          onPress={handleExportPdf}
+          disabled={exporting}
+          variant="ghost"
+          style={styles.pdfButton}
+          icon={exporting ? <ActivityIndicator color={colors.ink} /> : undefined}
+        />
+      ) : null}
 
       <View style={styles.space} />
       <RadarChart title="Risikoprofil" data={categoryRadar(report)} />
@@ -268,6 +294,9 @@ const styles = StyleSheet.create({
   },
   space: {
     height: 16
+  },
+  pdfButton: {
+    marginTop: 14
   },
   action: {
     flexDirection: "row",

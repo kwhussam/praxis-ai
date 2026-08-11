@@ -6,10 +6,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 export type ReportListItem = {
   id: string;
   checkId: string | null;
+  assessmentManifestId: string | null;
   formatVersion: string | null;
   scoringVersion: string | null;
   summary: Record<string, unknown>;
   pdfPath: string | null;
+  manifestSha256: string | null;
   createdAt: string;
 };
 
@@ -18,6 +20,8 @@ export type LoadedReport = {
   report: Report;
   createdAt: string;
   pdfPath?: string;
+  assessmentManifestId?: string;
+  manifestSha256?: string;
 };
 
 export class ReportNotFoundError extends Error {
@@ -41,7 +45,14 @@ export async function loadReportById(practiceId: string, reportId: string): Prom
 
   try {
     const response = await apiRequest<{
-      report: { id: string; content: unknown; createdAt: string; pdfPath?: string };
+      report: {
+        id: string;
+        content: unknown;
+        createdAt: string;
+        pdfPath?: string;
+        assessmentManifestId?: string;
+        manifestSha256?: string;
+      };
     }>(`/api/reports/${encodeURIComponent(reportId)}?practiceId=${encodeURIComponent(practiceId)}`);
 
     if (response.report.id !== reportId) throw new Error("Die Report-ID der Antwort stimmt nicht überein.");
@@ -49,7 +60,9 @@ export async function loadReportById(practiceId: string, reportId: string): Prom
       id: response.report.id,
       report: validateReport(response.report.content),
       createdAt: response.report.createdAt,
-      pdfPath: response.report.pdfPath
+      pdfPath: response.report.pdfPath,
+      assessmentManifestId: response.report.assessmentManifestId,
+      manifestSha256: response.report.manifestSha256
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) throw new ReportNotFoundError();

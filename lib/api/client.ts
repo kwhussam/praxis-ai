@@ -29,6 +29,11 @@ export class ApiTimeoutError extends Error {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await apiResponse(path, options);
+  return response.json() as Promise<T>;
+}
+
+export async function apiResponse(path: string, options: RequestOptions = {}): Promise<Response> {
   const token = options.token ?? (await getSupabaseAccessToken());
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
@@ -60,7 +65,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new ApiError(message, response.status);
   }
 
-  return response.json() as Promise<T>;
+  return response;
 }
 
 async function errorMessageFromResponse(response: Response) {

@@ -187,7 +187,8 @@ describe("generateReport", () => {
     mockApiRequestResult = {
       ...validReport,
       reportId: "66666666-6666-4666-8666-666666666666",
-      checkId: "22222222-2222-4222-8222-222222222222"
+      checkId: "22222222-2222-4222-8222-222222222222",
+      assessmentManifestId: "77777777-7777-4777-8777-777777777777"
     };
 
     const result = await generateReportWithId({
@@ -199,6 +200,7 @@ describe("generateReport", () => {
 
     expect(result.reportId).toBe("66666666-6666-4666-8666-666666666666");
     expect(result.checkId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(result.assessmentManifestId).toBe("77777777-7777-4777-8777-777777777777");
     expect(result.report.executive_summary).toBe(validReport.executive_summary);
   });
 });

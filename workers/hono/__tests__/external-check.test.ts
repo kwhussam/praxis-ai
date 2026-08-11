@@ -634,6 +634,7 @@ describe("POST /api/check/external", () => {
   it("laedt ohne Client-checkId den letzten gespeicherten Check und ignoriert manipulierte Clientdaten", async () => {
     const originalFetch = globalThis.fetch;
     let anthropicPrompt = "";
+    let persistBody: Record<string, unknown> | null = null;
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -677,8 +678,13 @@ describe("POST /api/check/external", () => {
           content: [{ type: "text", text: JSON.stringify(validAiReport()) }]
         });
       }
-      if (url.startsWith("https://example.supabase.co/rest/v1/reports")) {
-        return new Response(null, { status: 201 });
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/persist_assessment_report")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+        persistBody = body;
+        return Response.json({
+          report_id: body.p_report_id,
+          assessment_manifest_id: body.p_manifest_id
+        });
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
@@ -713,6 +719,7 @@ describe("POST /api/check/external", () => {
         security_score?: number;
         ampel?: string;
         dsgvo_compliance?: { status?: string };
+        assessmentManifestId?: string;
       };
       expect(anthropicPrompt.includes('"security_score": 0')).toBe(true);
       expect(anthropicPrompt.includes("Vorberechneter Score: 100")).toBe(false);
@@ -721,6 +728,20 @@ describe("POST /api/check/external", () => {
       expect(report.security_score).toBe(0);
       expect(report.ampel).toBe("rot");
       expect(report.dsgvo_compliance?.status).not.toBe("konform");
+      expect(report.assessmentManifestId).toMatch(/^[0-9a-f-]{36}$/);
+      const recordedPersistBody: Record<string, unknown> = persistBody ?? {};
+      expect(recordedPersistBody).toMatchObject({
+        p_practice_id: "11111111-1111-4111-8111-111111111111",
+        p_source_check_id: "44444444-4444-4444-8444-444444444444",
+        p_manifest_version: "1.0.0",
+        p_facts_version: "1.0.0",
+        p_report_format_version: "1.0.0",
+        p_pdf_template_version: "1.0.0"
+      });
+      expect(recordedPersistBody.p_snapshot_sha256 as string).toMatch(/^[0-9a-f]{64}$/);
+      expect(recordedPersistBody.p_manifest_sha256 as string).toMatch(/^[0-9a-f]{64}$/);
+      expect(recordedPersistBody.p_encrypted_snapshot).toMatchObject({ alg: "AES-256-GCM" });
+      expect(JSON.stringify(recordedPersistBody.p_manifest)).not.toContain("questionnaire");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -2384,7 +2405,7 @@ describe("GET /api/reports/:id", () => {
   it("laedt und entschluesselt einen Bericht der autorisierten Praxis", async () => {
     const originalFetch = globalThis.fetch;
     const reportId = "66666666-6666-4666-8666-666666666666";
-    const report = validAiReport();
+    const report = { ...validAiReport(), scoring_version: "2026.1" };
     const encryptedContent = await encryptReportFixture(report);
     const mock = installReportReadFetch([
       {
@@ -2457,6 +2478,129 @@ describe("GET /api/reports/:id", () => {
 
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({ error: "not_found", message: "Bericht nicht gefunden." });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe("POST /api/report/pdf canonical artifact (SP2-04)", () => {
+  it("rendert denselben tenantgebundenen gespeicherten Bericht byte-identisch erneut", async () => {
+    const originalFetch = globalThis.fetch;
+    const reportId = "66666666-6666-4666-8666-666666666666";
+    const manifestId = "77777777-7777-4777-8777-777777777777";
+    const report = { ...validAiReport(), scoring_version: "2026.1" };
+    const reportHash = await sha256Fixture(report);
+    const manifest = {
+      manifest_version: "1.0.0",
+      assessment_snapshot: { id: manifestId, sha256: "a".repeat(64) },
+      source_check_id: "44444444-4444-4444-8444-444444444444",
+      generated_at: "2026-08-11T10:00:00.000Z",
+      facts_version: "1.0.0",
+      scoring_version: report.scoring_version,
+      report_format_version: "1.0.0",
+      report_payload_sha256: reportHash,
+      pdf_template_version: "1.0.0"
+    };
+    const manifestHash = await sha256Fixture(manifest);
+    const encryptedContent = await encryptReportFixture(report);
+    const mock = installReportReadFetch([{
+      id: reportId,
+      assessment_manifest_id: manifestId,
+      encrypted_content: encryptedContent,
+      payload_sha256: reportHash,
+      report_manifest: manifest,
+      report_manifest_sha256: manifestHash,
+      created_at: manifest.generated_at
+    }]);
+
+    try {
+      const request = () => worker.fetch(
+        new Request("http://localhost/api/report/pdf", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ practiceId: roleGatePracticeId, reportId })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      const first = await request();
+      const second = await request();
+      const firstBytes = new Uint8Array(await first.arrayBuffer());
+      const secondBytes = new Uint8Array(await second.arrayBuffer());
+
+      expect(first.status).toBe(200);
+      expect(first.headers.get("content-type")).toContain("application/pdf");
+      expect(first.headers.get("x-praxisshield-manifest-sha256")).toBe(manifestHash);
+      expect(first.headers.get("etag")).toBe(second.headers.get("etag"));
+      expect(Array.from(firstBytes)).toEqual(Array.from(secondBytes));
+      const pdfText = new TextDecoder().decode(firstBytes);
+      expect(pdfText).toContain("%PDF-1.4");
+      expect(pdfText.match(/\/Type \/Page\b/g)?.length ?? 0).toBeGreaterThan(1);
+      expect(mock.reportRequests.every((url) => url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
+      expect(mock.reportRequests.every((url) => url.includes(`id=eq.${reportId}`))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("lehnt Client-Reportdaten ohne gespeicherte Report-ID ab", async () => {
+    const originalFetch = globalThis.fetch;
+    installReportReadFetch([]);
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/pdf", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ practiceId: roleGatePracticeId, report: validAiReport() })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ error: "report_id_required" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("bricht bei einem manipulierten Manifest vor dem PDF-Export ab", async () => {
+    const originalFetch = globalThis.fetch;
+    const reportId = "66666666-6666-4666-8666-666666666666";
+    const report = { ...validAiReport(), scoring_version: "2026.1" };
+    const reportHash = await sha256Fixture(report);
+    const encryptedContent = await encryptReportFixture(report);
+    installReportReadFetch([{
+      id: reportId,
+      assessment_manifest_id: "77777777-7777-4777-8777-777777777777",
+      encrypted_content: encryptedContent,
+      payload_sha256: reportHash,
+      report_manifest: {
+        manifest_version: "1.0.0",
+        assessment_snapshot: { id: "77777777-7777-4777-8777-777777777777", sha256: "a".repeat(64) },
+        source_check_id: "44444444-4444-4444-8444-444444444444",
+        generated_at: "2026-08-11T10:00:00.000Z",
+        facts_version: "1.0.0",
+        scoring_version: report.scoring_version,
+        report_format_version: "1.0.0",
+        report_payload_sha256: reportHash,
+        pdf_template_version: "1.0.0"
+      },
+      report_manifest_sha256: "0".repeat(64)
+    }]);
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/pdf", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ practiceId: roleGatePracticeId, reportId })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: "report_integrity_failed" });
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3054,6 +3198,10 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
     if (url.startsWith("https://example.supabase.co/rest/v1/rpc/complete_privacy_deletion")) {
       return Response.json(deletionReportFixture());
     }
+    if (url.startsWith("https://example.supabase.co/rest/v1/rpc/persist_assessment_report")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      return Response.json({ report_id: body.p_report_id, assessment_manifest_id: body.p_manifest_id });
+    }
     if (url.startsWith("https://example.supabase.co/rest/v1/security_checks") && method === "GET") {
       return Response.json([
         {
@@ -3066,6 +3214,7 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
     if (
       url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||
       url.startsWith("https://example.supabase.co/rest/v1/reports") ||
+      url.startsWith("https://example.supabase.co/rest/v1/assessment_manifests") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") ||
       url.startsWith("https://example.supabase.co/rest/v1/consent_log")
@@ -3167,6 +3316,24 @@ async function encryptReportFixture(report: unknown) {
     data: testBytesToBase64(new Uint8Array(ciphertext)),
     created_at: "2026-07-17T10:00:00.000Z"
   };
+}
+
+async function sha256Fixture(value: unknown) {
+  const bytes = new TextEncoder().encode(JSON.stringify(canonicalizeFixture(value)));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  return Array.from(digest).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function canonicalizeFixture(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeFixture);
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(record)
+      .sort()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => [key, canonicalizeFixture(record[key])])
+  );
 }
 
 function testBytesToBase64(bytes: Uint8Array) {

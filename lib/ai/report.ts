@@ -81,6 +81,7 @@ export type Report = {
 export type GeneratedReport = {
   reportId: string;
   checkId: string;
+  assessmentManifestId: string;
   report: Report;
 };
 
@@ -100,12 +101,19 @@ export async function generateReportWithId(data: CheckData): Promise<GeneratedRe
   const response = await requestGeneratedReport(data);
   const reportId = isObject(response) && typeof response.reportId === "string" ? response.reportId : "";
   const checkId = isObject(response) && typeof response.checkId === "string" ? response.checkId : "";
+  const assessmentManifestId = isObject(response) && typeof response.assessmentManifestId === "string"
+    ? response.assessmentManifestId
+    : "";
   if (!UUID_RE.test(reportId)) throw new Error("Ungültiger KI-Bericht: reportId fehlt oder ist ungültig.");
   if (!UUID_RE.test(checkId)) throw new Error("Ungültiger KI-Bericht: checkId fehlt oder ist ungültig.");
+  if (!UUID_RE.test(assessmentManifestId)) {
+    throw new Error("Ungültiger KI-Bericht: Assessment-Manifest-ID fehlt oder ist ungültig.");
+  }
 
   return {
     reportId,
     checkId,
+    assessmentManifestId,
     report: validateReport(response)
   };
 }

@@ -8,7 +8,12 @@ import {
   type AssessmentProfile,
   type ScoreReport
 } from "@/lib/security/scoring";
-import { toDeterministicReportFacts, type DeterministicReportFacts } from "@/lib/security/assessment-contract";
+import {
+  ASSESSMENT_FACTS_VERSION,
+  toCanonicalAssessmentFacts,
+  toDeterministicReportFacts,
+  type DeterministicReportFacts
+} from "@/lib/security/assessment-contract";
 import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/assessment/coverage";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { addDays, type DeletionReport } from "./privacy";
@@ -95,13 +100,24 @@ type StoredSecurityCheck = {
   type: string;
   results: unknown;
   scoringVersion?: string;
+  completedAt?: string;
 };
 
 type PdfReportRequest = {
   practiceId?: string;
-  report?: Report;
-  practiceName?: string;
-  domain?: string;
+  reportId?: string;
+};
+
+type ReportManifest = {
+  manifest_version: string;
+  assessment_snapshot: { id: string; sha256: string };
+  source_check_id: string;
+  generated_at: string;
+  facts_version: string;
+  scoring_version: string;
+  report_format_version: string;
+  report_payload_sha256: string;
+  pdf_template_version: string;
 };
 
 type AlertAcknowledgeRequest = {
@@ -425,6 +441,8 @@ type PracticeAccess = {
 
 const REPORT_FORMAT_VERSION = "1.0.0";
 const SCORING_VERSION = SECURITY_SCORING_VERSION;
+const ASSESSMENT_MANIFEST_VERSION = "1.0.0";
+const PDF_TEMPLATE_VERSION = "1.0.0";
 const FREE_PLAN_DAILY_AI_REPORT_LIMIT = 3;
 
 // DB-06: paid plans previously skipped quota checks entirely. These are deliberately generous
@@ -1319,7 +1337,7 @@ async function handleReportsList(c: Context<{ Bindings: Env }>) {
   try {
     const rows = await supabaseRest<unknown[]>(
       c.env,
-      `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`,
+      `/rest/v1/reports?select=id,check_id,assessment_manifest_id,format_version,scoring_version,content,pdf_url,report_manifest_sha256,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&order=created_at.desc&limit=${limit}&offset=${offset}`,
       { method: "GET" }
     );
     const reports = rows.map(normalizeReportListItem).filter((item) => item !== null);
@@ -1346,7 +1364,7 @@ async function handleReportDetail(c: Context<{ Bindings: Env }>) {
   try {
     const rows = await supabaseRest<unknown[]>(
       c.env,
-      `/rest/v1/reports?select=id,encrypted_content,pdf_url,created_at&id=eq.${encodeURIComponent(reportId)}&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&limit=1`,
+      `/rest/v1/reports?select=id,assessment_manifest_id,encrypted_content,pdf_url,report_manifest_sha256,created_at&id=eq.${encodeURIComponent(reportId)}&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&limit=1`,
       { method: "GET" }
     );
     const row = asRecordOrNull(rows[0]);
@@ -1359,7 +1377,9 @@ async function handleReportDetail(c: Context<{ Bindings: Env }>) {
         id: reportId,
         content: report,
         createdAt: typeof row.created_at === "string" ? row.created_at : "",
-        pdfPath: typeof row.pdf_url === "string" ? row.pdf_url : undefined
+        pdfPath: typeof row.pdf_url === "string" ? row.pdf_url : undefined,
+        assessmentManifestId: typeof row.assessment_manifest_id === "string" ? row.assessment_manifest_id : undefined,
+        manifestSha256: typeof row.report_manifest_sha256 === "string" ? row.report_manifest_sha256 : undefined
       }
     });
   } catch (error) {
@@ -1381,12 +1401,56 @@ function normalizeReportListItem(value: unknown) {
   return {
     id,
     checkId: typeof row?.check_id === "string" ? row.check_id : null,
+    assessmentManifestId: typeof row?.assessment_manifest_id === "string" ? row.assessment_manifest_id : null,
     formatVersion: typeof row?.format_version === "string" ? row.format_version : null,
     scoringVersion: typeof row?.scoring_version === "string" ? row.scoring_version : null,
     summary: asRecordOrNull(row?.content) ?? {},
     pdfPath: typeof row?.pdf_url === "string" ? row.pdf_url : null,
+    manifestSha256: typeof row?.report_manifest_sha256 === "string" ? row.report_manifest_sha256 : null,
     createdAt: typeof row?.created_at === "string" ? row.created_at : ""
   };
+}
+
+function validateStoredReportManifest(value: unknown): ReportManifest | null {
+  const manifest = asRecordOrNull(value);
+  const snapshot = asRecordOrNull(manifest?.assessment_snapshot);
+  if (
+    !manifest ||
+    !snapshot ||
+    typeof manifest.manifest_version !== "string" ||
+    typeof snapshot.id !== "string" ||
+    !isUuid(snapshot.id) ||
+    typeof snapshot.sha256 !== "string" ||
+    !isSha256(snapshot.sha256) ||
+    typeof manifest.source_check_id !== "string" ||
+    !isUuid(manifest.source_check_id) ||
+    typeof manifest.generated_at !== "string" ||
+    !Number.isFinite(Date.parse(manifest.generated_at)) ||
+    typeof manifest.facts_version !== "string" ||
+    typeof manifest.scoring_version !== "string" ||
+    typeof manifest.report_format_version !== "string" ||
+    typeof manifest.report_payload_sha256 !== "string" ||
+    !isSha256(manifest.report_payload_sha256) ||
+    typeof manifest.pdf_template_version !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    manifest_version: manifest.manifest_version,
+    assessment_snapshot: { id: snapshot.id, sha256: snapshot.sha256 },
+    source_check_id: manifest.source_check_id,
+    generated_at: manifest.generated_at,
+    facts_version: manifest.facts_version,
+    scoring_version: manifest.scoring_version,
+    report_format_version: manifest.report_format_version,
+    report_payload_sha256: manifest.report_payload_sha256,
+    pdf_template_version: manifest.pdf_template_version
+  };
+}
+
+function isSha256(value: string) {
+  return /^[0-9a-f]{64}$/.test(value);
 }
 
 async function handleReportGenerate(
@@ -1465,16 +1529,32 @@ async function handleReportGenerate(
   if (reportResult instanceof Response) return reportResult;
 
   if (access && options.persist) {
+    if (!storedCheck || !effectiveCheckId || !storedAssessment) {
+      return c.json({ error: "check_data_unavailable" }, 409);
+    }
     const generatedReportId = crypto.randomUUID();
-    const reportId = await persistReport(c.env, {
+    const persisted = await persistReport(c.env, {
       id: generatedReportId,
       practiceId: access.practice.id,
-      checkId: effectiveCheckId,
+      practiceName: access.practice.name,
+      domain: access.practice.domain,
+      check: storedCheck,
+      assessmentProfile: storedAssessment.assessmentProfile,
+      questionnaire: storedAssessment.questionnaire,
+      scoreReport,
       report: reportResult,
       clientSyncId: payload.clientSyncId
     });
-    await auditPracticeAccess(c, access, "create", "reports", { report_id: reportId });
-    return c.json({ ...reportResult, reportId, checkId: effectiveCheckId });
+    await auditPracticeAccess(c, access, "create", "reports", {
+      report_id: persisted.reportId,
+      assessment_manifest_id: persisted.manifestId
+    });
+    return c.json({
+      ...reportResult,
+      reportId: persisted.reportId,
+      checkId: effectiveCheckId,
+      assessmentManifestId: persisted.manifestId
+    });
   }
 
   return c.json(reportResult);
@@ -1489,43 +1569,87 @@ async function handleReportPdf(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = await requirePracticeAccess(c, payload.practiceId, "report_pdf");
+  const access = await requirePracticeAccess(c, payload.practiceId, "report_pdf", "viewer");
   if (access instanceof Response) return access;
 
-  if (!payload.report) {
-    return c.json({ error: "report is required" }, 400);
+  if (!payload.reportId || !isUuid(payload.reportId)) {
+    return c.json({ error: "report_id_required", message: "Eine gültige Report-ID ist erforderlich." }, 400);
   }
 
-  const report = validateReport(payload.report);
-  const reportId = crypto.randomUUID();
-  const pdf = buildSimplePdf(buildPdfSections({
-    reportId,
-    practiceName: payload.practiceName ?? access.practice.name,
-    domain: payload.domain ?? access.practice.domain,
-    report
-  }));
+  const rows = await supabaseRest<unknown[]>(
+    c.env,
+    `/rest/v1/reports?select=id,assessment_manifest_id,encrypted_content,payload_sha256,report_manifest,report_manifest_sha256,created_at&id=eq.${encodeURIComponent(payload.reportId)}&practice_id=eq.${encodeURIComponent(access.practice.id)}&anonymized_at=is.null&limit=1`,
+    { method: "GET" }
+  );
+  const row = asRecordOrNull(rows[0]);
+  if (!row) return c.json({ error: "not_found", message: "Bericht nicht gefunden." }, 404);
 
-  await auditPracticeAccess(c, access, "export", "reports_pdf", { format: "pdf" });
+  const manifest = validateStoredReportManifest(row.report_manifest);
+  const storedManifestHash = typeof row.report_manifest_sha256 === "string" ? row.report_manifest_sha256 : "";
+  const manifestId = typeof row.assessment_manifest_id === "string" ? row.assessment_manifest_id : "";
+  if (!manifest || !isUuid(manifestId) || manifest.assessment_snapshot.id !== manifestId) {
+    return c.json({ error: "canonical_report_unavailable", message: "Für diesen Altbericht ist kein kanonisches Assessment-Manifest verfügbar." }, 409);
+  }
+
+  const calculatedManifestHash = await sha256Json(manifest);
+  if (calculatedManifestHash !== storedManifestHash) {
+    return c.json({ error: "report_integrity_failed", message: "Die Integritätsprüfung des Reportmanifests ist fehlgeschlagen." }, 409);
+  }
+
+  const report = validateReport(await decryptJson(c.env, row.encrypted_content));
+  const reportHash = await sha256Json(report);
+  if (reportHash !== manifest.report_payload_sha256 || reportHash !== row.payload_sha256) {
+    return c.json({ error: "report_integrity_failed", message: "Die Integritätsprüfung des Berichts ist fehlgeschlagen." }, 409);
+  }
+
+  const pdf = buildSimplePdf(buildPdfSections({
+    reportId: payload.reportId,
+    practiceName: access.practice.name,
+    domain: access.practice.domain,
+    report,
+    manifest,
+    manifestSha256: storedManifestHash
+  }));
+  const pdfHash = await sha256Text(pdf);
+
+  await auditPracticeAccess(c, access, "export", "reports_pdf", {
+    format: "pdf",
+    report_id: payload.reportId,
+    assessment_manifest_id: manifestId,
+    pdf_sha256: pdfHash
+  });
 
   return new Response(pdf, {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="praxisshield-${reportId}.pdf"`,
-      "cache-control": "no-store"
+      "content-disposition": `attachment; filename="praxisshield-${payload.reportId}.pdf"`,
+      "cache-control": "private, no-store",
+      "etag": `"sha256-${pdfHash}"`,
+      "x-praxisshield-manifest-sha256": storedManifestHash,
+      "x-praxisshield-pdf-template-version": manifest.pdf_template_version
     }
   });
 }
 
-function buildPdfSections(input: { reportId: string; practiceName: string; domain?: string; report: Report }) {
-  const generatedAt = new Date().toISOString();
+function buildPdfSections(input: {
+  reportId: string;
+  practiceName: string;
+  domain?: string;
+  report: Report;
+  manifest: ReportManifest;
+  manifestSha256: string;
+}) {
   return [
     "Deckblatt",
     `PraxisShield AI Sicherheitsbericht für ${input.practiceName}`,
     `Report-ID: ${input.reportId}`,
-    `Format-Version: ${REPORT_FORMAT_VERSION}`,
-    `Scoring-Version: ${SCORING_VERSION}`,
+    `Assessment-Manifest-ID: ${input.manifest.assessment_snapshot.id}`,
+    `Manifest-SHA-256: ${input.manifestSha256}`,
+    `Format-Version: ${input.manifest.report_format_version}`,
+    `Scoring-Version: ${input.manifest.scoring_version}`,
+    `PDF-Template-Version: ${input.manifest.pdf_template_version}`,
     `Domain: ${input.domain ?? "nicht angegeben"}`,
-    `Erstellt: ${generatedAt}`,
+    `Erstellt: ${input.manifest.generated_at}`,
     "",
     "Rechtlicher Hinweis",
     "Dieser Bericht ist eine technische Momentaufnahme und ersetzt keine Rechtsberatung oder vollständigen Penetrationstest.",
@@ -1981,7 +2105,7 @@ async function requireSecurityCheckForPractice(
 
   const checks = await supabaseRest<unknown[]>(
     env,
-    `/rest/v1/security_checks?select=id,type,results,scoring_version&id=eq.${encodeURIComponent(checkId)}&practice_id=eq.${encodeURIComponent(practiceId)}&limit=1`,
+    `/rest/v1/security_checks?select=id,type,results,scoring_version,completed_at&id=eq.${encodeURIComponent(checkId)}&practice_id=eq.${encodeURIComponent(practiceId)}&anonymized_at=is.null&limit=1`,
     { method: "GET" }
   );
 
@@ -1999,7 +2123,7 @@ async function loadLatestQuestionnaireCheckForPractice(
 ): Promise<StoredSecurityCheck | Response> {
   const checks = await supabaseRest<unknown[]>(
     env,
-    `/rest/v1/security_checks?select=id,type,results,scoring_version&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.questionnaire&order=completed_at.desc&limit=1`,
+    `/rest/v1/security_checks?select=id,type,results,scoring_version,completed_at&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.questionnaire&anonymized_at=is.null&order=completed_at.desc&limit=1`,
     { method: "GET" }
   );
   const check = normalizeStoredSecurityCheck(checks[0]);
@@ -2021,7 +2145,8 @@ function normalizeStoredSecurityCheck(value: unknown, fallbackId?: string): Stor
     id,
     type: typeof row.type === "string" ? row.type : "",
     results: row.results,
-    scoringVersion: typeof row.scoring_version === "string" ? row.scoring_version : undefined
+    scoringVersion: typeof row.scoring_version === "string" ? row.scoring_version : undefined,
+    completedAt: typeof row.completed_at === "string" ? row.completed_at : undefined
   };
 }
 
@@ -2100,39 +2225,87 @@ async function persistSecurityCheck(
 
 async function persistReport(
   env: Env,
-  input: { id: string; practiceId: string; checkId?: string; report: Report; clientSyncId?: string }
-): Promise<string> {
-  const encrypted = await encryptJson(env, input.report);
-  const payloadHash = await sha256Json(input.report);
-
-  try {
-    await supabaseRest(env, "/rest/v1/reports", {
-      method: "POST",
-      body: {
-        id: input.id,
-        practice_id: input.practiceId,
-        check_id: input.checkId && isUuid(input.checkId) ? input.checkId : null,
-        format_version: REPORT_FORMAT_VERSION,
-        scoring_version: input.report.scoring_version ?? SCORING_VERSION,
-        content: redactedReportSummary(input.report),
-        encrypted_content: encrypted,
-        payload_sha256: payloadHash,
-        input_hash: payloadHash,
-        client_sync_id: input.clientSyncId ?? null
-      }
-    });
-  } catch (error) {
-    // DB-05: a retried request carrying the same clientSyncId hits the partial unique index
-    // instead of creating a duplicate row - return the id of the row that already exists
-    // rather than the never-inserted freshly generated one.
-    if (input.clientSyncId && error instanceof Error && error.message.includes("409")) {
-      const existingId = await findByClientSyncId(env, "reports", input.practiceId, input.clientSyncId);
-      if (existingId) return existingId;
-    }
-    throw error;
+  input: {
+    id: string;
+    practiceId: string;
+    practiceName: string;
+    domain?: string;
+    check: StoredSecurityCheck;
+    assessmentProfile: AssessmentProfile;
+    questionnaire: Record<string, QuestionnaireAnswerValue>;
+    scoreReport: ScoreReport;
+    report: Report;
+    clientSyncId?: string;
   }
+): Promise<{ reportId: string; manifestId: string }> {
+  const generatedAt = new Date().toISOString();
+  const manifestId = crypto.randomUUID();
+  const snapshot = {
+    snapshot_version: ASSESSMENT_MANIFEST_VERSION,
+    created_at: generatedAt,
+    practice: {
+      id: input.practiceId,
+      name: input.practiceName,
+      domain: input.domain ?? null
+    },
+    source_check: {
+      id: input.check.id,
+      type: input.check.type,
+      completed_at: input.check.completedAt ?? null,
+      stored_scoring_version: input.check.scoringVersion ?? null
+    },
+    questionnaire: input.questionnaire,
+    canonical_facts: toCanonicalAssessmentFacts(input.scoreReport)
+  };
+  const snapshotHash = await sha256Json(snapshot);
+  const encryptedSnapshot = await encryptJson(env, snapshot);
+  const encryptedReport = await encryptJson(env, input.report);
+  const reportHash = await sha256Json(input.report);
+  const manifest: ReportManifest = {
+    manifest_version: ASSESSMENT_MANIFEST_VERSION,
+    assessment_snapshot: { id: manifestId, sha256: snapshotHash },
+    source_check_id: input.check.id,
+    generated_at: generatedAt,
+    facts_version: ASSESSMENT_FACTS_VERSION,
+    scoring_version: input.report.scoring_version ?? SCORING_VERSION,
+    report_format_version: REPORT_FORMAT_VERSION,
+    report_payload_sha256: reportHash,
+    pdf_template_version: PDF_TEMPLATE_VERSION
+  };
+  const manifestHash = await sha256Json(manifest);
 
-  return input.id;
+  const persisted = await supabaseRest<unknown>(env, "/rest/v1/rpc/persist_assessment_report", {
+    method: "POST",
+    prefer: "return=representation",
+    body: {
+      p_report_id: input.id,
+      p_manifest_id: manifestId,
+      p_practice_id: input.practiceId,
+      p_source_check_id: input.check.id,
+      p_created_at: generatedAt,
+      p_manifest_version: ASSESSMENT_MANIFEST_VERSION,
+      p_assessment_profile: input.assessmentProfile,
+      p_facts_version: ASSESSMENT_FACTS_VERSION,
+      p_scoring_version: input.report.scoring_version ?? SCORING_VERSION,
+      p_report_format_version: REPORT_FORMAT_VERSION,
+      p_pdf_template_version: PDF_TEMPLATE_VERSION,
+      p_snapshot_sha256: snapshotHash,
+      p_manifest: manifest,
+      p_manifest_sha256: manifestHash,
+      p_encrypted_snapshot: encryptedSnapshot,
+      p_report_summary: redactedReportSummary(input.report),
+      p_encrypted_report: encryptedReport,
+      p_report_sha256: reportHash,
+      p_client_sync_id: input.clientSyncId ?? null
+    }
+  });
+  const row = asRecordOrNull(persisted);
+  const reportId = typeof row?.report_id === "string" ? row.report_id : "";
+  const persistedManifestId = typeof row?.assessment_manifest_id === "string" ? row.assessment_manifest_id : "";
+  if (!isUuid(reportId) || !isUuid(persistedManifestId)) {
+    throw new Error("persist_assessment_report returned invalid artifact identifiers");
+  }
+  return { reportId, manifestId: persistedManifestId };
 }
 
 async function auditPracticeAccess(
@@ -2287,7 +2460,19 @@ function decodeEncryptionKey(value?: string) {
 }
 
 async function sha256Json(value: unknown) {
-  return sha256Text(JSON.stringify(value));
+  return sha256Text(JSON.stringify(canonicalizeJson(value)));
+}
+
+function canonicalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  if (!value || typeof value !== "object") return value;
+
+  const record = value as Record<string, unknown>;
+  const canonical: Record<string, unknown> = {};
+  for (const key of Object.keys(record).sort()) {
+    if (record[key] !== undefined) canonical[key] = canonicalizeJson(record[key]);
+  }
+  return canonical;
 }
 
 async function sha256Text(value: string) {
@@ -2311,15 +2496,31 @@ function bytesToHex(bytes: Uint8Array) {
 }
 
 function buildSimplePdf(lines: string[]) {
-  const cleanLines = lines.flatMap((line) => wrapPdfLine(line, 86)).slice(0, 46);
-  const stream = ["BT", "/F1 12 Tf", "50 790 Td", "16 TL", ...cleanLines.map((line) => `<${pdfUtf16Hex(line)}> Tj T*`), "ET"].join("\n");
+  const cleanLines = lines.flatMap((line) => wrapPdfLine(line, 86));
+  const pages = chunkArray(cleanLines.length > 0 ? cleanLines : [""], 46);
+  const fontObjectId = 3 + pages.length * 2;
+  const pageObjectIds = pages.map((_page, index) => 3 + index * 2);
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
-    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
-    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
+    `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`
   ];
+
+  pages.forEach((pageLines, index) => {
+    const contentObjectId = 4 + index * 2;
+    const stream = [
+      "BT",
+      "/F1 12 Tf",
+      "50 790 Td",
+      "16 TL",
+      ...pageLines.map((line) => `<${pdfWinAnsiHex(line)}> Tj T*`),
+      "ET"
+    ].join("\n");
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`,
+      `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
+    );
+  });
+  objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
   let body = "%PDF-1.4\n";
   const offsets = [0];
 
@@ -2334,6 +2535,12 @@ function buildSimplePdf(lines: string[]) {
   body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
 
   return body;
+}
+
+function chunkArray<T>(values: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) chunks.push(values.slice(index, index + size));
+  return chunks;
 }
 
 function wrapPdfLine(value: string, maxLength: number) {
@@ -2354,12 +2561,41 @@ function wrapPdfLine(value: string, maxLength: number) {
   return lines.length > 0 ? lines : [""];
 }
 
-function pdfUtf16Hex(value: string) {
-  const bytes = [0xfe, 0xff];
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index);
-    bytes.push((code >> 8) & 0xff, code & 0xff);
-  }
+function pdfWinAnsiHex(value: string) {
+  const extension: Record<string, number> = {
+    "€": 0x80,
+    "‚": 0x82,
+    "ƒ": 0x83,
+    "„": 0x84,
+    "…": 0x85,
+    "†": 0x86,
+    "‡": 0x87,
+    "ˆ": 0x88,
+    "‰": 0x89,
+    "Š": 0x8a,
+    "‹": 0x8b,
+    "Œ": 0x8c,
+    "Ž": 0x8e,
+    "‘": 0x91,
+    "’": 0x92,
+    "“": 0x93,
+    "”": 0x94,
+    "•": 0x95,
+    "–": 0x96,
+    "—": 0x97,
+    "˜": 0x98,
+    "™": 0x99,
+    "š": 0x9a,
+    "›": 0x9b,
+    "œ": 0x9c,
+    "ž": 0x9e,
+    "Ÿ": 0x9f
+  };
+  const bytes = Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    if (code <= 0xff) return code;
+    return extension[character] ?? 0x3f;
+  });
   return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
@@ -2575,7 +2811,7 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, practiceId, "privacy_export", "manager");
   if (access instanceof Response) return access;
 
-  const [securityChecks, reports, monitoringEvents, consentLog, wlanScans, monitoringSnapshots, dataProcessingAgreements] =
+  const [securityChecks, reports, assessmentManifests, monitoringEvents, consentLog, wlanScans, monitoringSnapshots, dataProcessingAgreements] =
     await Promise.all([
       supabaseRest<unknown[]>(
         c.env,
@@ -2584,7 +2820,12 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
       ),
       supabaseRest<unknown[]>(
         c.env,
-        `/rest/v1/reports?select=id,check_id,format_version,scoring_version,content,pdf_url,created_at,input_hash&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        `/rest/v1/reports?select=id,check_id,assessment_manifest_id,format_version,scoring_version,content,pdf_url,created_at,input_hash,report_manifest,report_manifest_sha256&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/assessment_manifests?select=id,source_check_id,manifest_version,assessment_profile,facts_version,scoring_version,report_format_version,pdf_template_version,snapshot_sha256,manifest,manifest_sha256,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
         { method: "GET" }
       ),
       supabaseRest<unknown[]>(
@@ -2629,6 +2870,7 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     practice: access.practice,
     security_checks: securityChecks,
     reports,
+    assessment_manifests: assessmentManifests,
     monitoring_events: monitoringEvents,
     consent_log: consentLog,
     wlan_scans: wlanScans,

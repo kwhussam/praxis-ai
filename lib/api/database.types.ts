@@ -72,6 +72,75 @@ export type Database = {
           },
         ]
       }
+      assessment_manifests: {
+        Row: {
+          anonymized_at: string | null
+          assessment_profile: string
+          created_at: string
+          encrypted_snapshot: Json
+          facts_version: string
+          id: string
+          manifest: Json
+          manifest_sha256: string
+          manifest_version: string
+          pdf_template_version: string
+          practice_id: string
+          report_format_version: string
+          scoring_version: string
+          snapshot_sha256: string
+          source_check_id: string
+        }
+        Insert: {
+          anonymized_at?: string | null
+          assessment_profile: string
+          created_at: string
+          encrypted_snapshot: Json
+          facts_version: string
+          id?: string
+          manifest: Json
+          manifest_sha256: string
+          manifest_version: string
+          pdf_template_version: string
+          practice_id: string
+          report_format_version: string
+          scoring_version: string
+          snapshot_sha256: string
+          source_check_id: string
+        }
+        Update: {
+          anonymized_at?: string | null
+          assessment_profile?: string
+          created_at?: string
+          encrypted_snapshot?: Json
+          facts_version?: string
+          id?: string
+          manifest?: Json
+          manifest_sha256?: string
+          manifest_version?: string
+          pdf_template_version?: string
+          practice_id?: string
+          report_format_version?: string
+          scoring_version?: string
+          snapshot_sha256?: string
+          source_check_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_manifests_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_manifests_source_check_id_fkey"
+            columns: ["source_check_id"]
+            isOneToOne: false
+            referencedRelation: "security_checks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       backoffice_audit_events: {
         Row: {
           action: string
@@ -1246,6 +1315,7 @@ export type Database = {
       reports: {
         Row: {
           anonymized_at: string | null
+          assessment_manifest_id: string | null
           check_id: string | null
           client_sync_id: string | null
           content: Json | null
@@ -1257,10 +1327,13 @@ export type Database = {
           payload_sha256: string | null
           pdf_url: string | null
           practice_id: string | null
+          report_manifest: Json | null
+          report_manifest_sha256: string | null
           scoring_version: string | null
         }
         Insert: {
           anonymized_at?: string | null
+          assessment_manifest_id?: string | null
           check_id?: string | null
           client_sync_id?: string | null
           content?: Json | null
@@ -1272,10 +1345,13 @@ export type Database = {
           payload_sha256?: string | null
           pdf_url?: string | null
           practice_id?: string | null
+          report_manifest?: Json | null
+          report_manifest_sha256?: string | null
           scoring_version?: string | null
         }
         Update: {
           anonymized_at?: string | null
+          assessment_manifest_id?: string | null
           check_id?: string | null
           client_sync_id?: string | null
           content?: Json | null
@@ -1287,9 +1363,18 @@ export type Database = {
           payload_sha256?: string | null
           pdf_url?: string | null
           practice_id?: string | null
+          report_manifest?: Json | null
+          report_manifest_sha256?: string | null
           scoring_version?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "reports_assessment_manifest_practice_fkey"
+            columns: ["assessment_manifest_id", "practice_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_manifests"
+            referencedColumns: ["id", "practice_id"]
+          },
           {
             foreignKeyName: "reports_check_id_fkey"
             columns: ["check_id"]
@@ -1931,6 +2016,30 @@ export type Database = {
         }
         Returns: undefined
       }
+      persist_assessment_report: {
+        Args: {
+          p_assessment_profile: string
+          p_client_sync_id?: string
+          p_created_at: string
+          p_encrypted_report: Json
+          p_encrypted_snapshot: Json
+          p_facts_version: string
+          p_manifest: Json
+          p_manifest_id: string
+          p_manifest_sha256: string
+          p_manifest_version: string
+          p_pdf_template_version: string
+          p_practice_id: string
+          p_report_format_version: string
+          p_report_id: string
+          p_report_sha256: string
+          p_report_summary: Json
+          p_scoring_version: string
+          p_snapshot_sha256: string
+          p_source_check_id: string
+        }
+        Returns: Json
+      }
       practice_member_role_rank: { Args: { p_role: string }; Returns: number }
       redeem_practice_invitation: {
         Args: {
@@ -1943,6 +2052,10 @@ export type Database = {
       }
       report_check_belongs_to_practice: {
         Args: { p_check_id: string; p_practice_id: string }
+        Returns: boolean
+      }
+      report_manifest_belongs_to_practice: {
+        Args: { p_manifest_id: string; p_practice_id: string }
         Returns: boolean
       }
       request_practice_activation: {

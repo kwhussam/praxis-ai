@@ -2,6 +2,7 @@ import React from "react";
 import renderer, { act, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 
 var mockDashboardQuestionnaireId: string | null = null;
+var mockReportHistory: Array<Record<string, unknown>> = [];
 
 declare const jest: {
   mock(moduleName: string, factory: () => unknown): void;
@@ -64,6 +65,10 @@ jest.mock("@/lib/ai/report", () => ({
 
 jest.mock("@/lib/ai/report-pdf", () => ({
   exportReportPdf: () => Promise.reject(new Error("not used"))
+}));
+
+jest.mock("@/lib/ai/report-service", () => ({
+  loadReports: async () => mockReportHistory
 }));
 
 jest.mock("@/lib/config/environment", () => ({
@@ -139,6 +144,7 @@ import ReportsScreen from "../index";
 describe("ReportsScreen", () => {
   beforeEach(() => {
     mockDashboardQuestionnaireId = null;
+    mockReportHistory = [];
   });
 
   it("zeigt fuer eine echte Praxis ohne Bericht den Empty-State statt des Sample-Berichts", () => {
@@ -163,6 +169,31 @@ describe("ReportsScreen", () => {
     expect(text).toContain("Gespeicherter Check vorhanden");
     expect(text).toContain("KI-Bericht erzeugen");
     expect(text).not.toContain("Praxis-Check starten");
+  });
+
+  it("laedt die serverseitige Berichtshistorie nach einem App-Neustart", async () => {
+    mockReportHistory = [{
+      id: "66666666-6666-4666-8666-666666666666",
+      checkId: "22222222-2222-4222-8222-222222222222",
+      assessmentManifestId: "77777777-7777-4777-8777-777777777777",
+      formatVersion: "1.0.0",
+      scoringVersion: "2026.1",
+      summary: { security_score: 64 },
+      pdfPath: null,
+      manifestSha256: "a".repeat(64),
+      createdAt: "2026-08-11T10:00:00.000Z"
+    }];
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderer.create(<ReportsScreen />);
+      await Promise.resolve();
+    });
+
+    const text = allText(tree!.root);
+    expect(text).toContain("Gespeicherte Berichte");
+    expect(text).toContain("64/100");
+    expect(text).toContain("App-Neustart");
   });
 });
 

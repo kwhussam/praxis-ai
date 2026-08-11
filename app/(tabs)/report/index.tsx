@@ -9,6 +9,7 @@ import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
 import { exportReportPdf } from "@/lib/ai/report-pdf";
 import { generateReportWithId } from "@/lib/ai/report";
+import { loadReports, type ReportListItem } from "@/lib/ai/report-service";
 import { AppConfig } from "@/lib/config/environment";
 import { loadDashboardData } from "@/lib/dashboard/service";
 import { getLatestWlanScanResult } from "@/lib/security/wlan";
@@ -33,6 +34,7 @@ export default function ReportsScreen() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serverQuestionnaireCheckId, setServerQuestionnaireCheckId] = useState<string | null>(null);
+  const [reportHistory, setReportHistory] = useState<ReportListItem[]>([]);
   const sourceCheckId = latestReport?.source?.checkId ?? latestQuestionnaireCheckId ?? serverQuestionnaireCheckId;
   const canGenerate = Boolean(
     practice?.id && UUID_RE.test(practice.id) && sourceCheckId && UUID_RE.test(sourceCheckId)
@@ -53,6 +55,21 @@ export default function ReportsScreen() {
       active = false;
     };
   }, [practice?.id, sourceCheckId]);
+
+  useEffect(() => {
+    if (!practice?.id || !UUID_RE.test(practice.id)) return;
+    let active = true;
+    void loadReports(practice.id)
+      .then((reports) => {
+        if (active) setReportHistory(reports);
+      })
+      .catch(() => {
+        if (active) setReportHistory([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [practice?.id]);
 
   async function handleGenerate() {
     if (!practice?.id || !UUID_RE.test(practice.id)) {
@@ -98,9 +115,8 @@ export default function ReportsScreen() {
 
     try {
       const pdfPath = await exportReportPdf({
-        practiceName: latestReport.source?.practiceName ?? practice?.name ?? "Arztpraxis",
-        domain: latestReport.source?.domain ?? practice?.domain,
-        report: latestReport.report
+        practiceId: practice?.id ?? "",
+        reportId: latestReport.id
       });
       setPdfPath(latestReport.id, pdfPath);
       Alert.alert("PDF erstellt", `Der Bericht wurde gespeichert:\n${pdfPath}`);
@@ -202,8 +218,32 @@ export default function ReportsScreen() {
           />
         </View>
       ) : null}
+
+      {reportHistory.length > 0 ? (
+        <GlassCard style={styles.historyCard}>
+          <Text style={styles.historyTitle}>Gespeicherte Berichte</Text>
+          <Text style={styles.historyCopy}>Diese Berichte bleiben auch nach einem App-Neustart verfügbar.</Text>
+          {reportHistory.slice(0, 5).map((item) => {
+            const score = typeof item.summary.security_score === "number" ? ` · ${item.summary.security_score}/100` : "";
+            return (
+              <AnimatedButton
+                key={item.id}
+                label={`${formatReportDate(item.createdAt)}${score}`}
+                onPress={() => router.push({ pathname: "/(tabs)/report/[id]", params: { id: item.id } })}
+                variant="ghost"
+                style={styles.historyButton}
+              />
+            );
+          })}
+        </GlassCard>
+      ) : null}
     </Screen>
   );
+}
+
+function formatReportDate(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? `Bericht vom ${date.toLocaleDateString("de-DE")}` : "Gespeicherter Bericht";
 }
 
 const styles = StyleSheet.create({
@@ -232,6 +272,23 @@ const styles = StyleSheet.create({
   },
   emptyAction: {
     marginTop: 16
+  },
+  historyCard: {
+    marginTop: 18
+  },
+  historyTitle: {
+    color: colors.ink,
+    fontSize: 20,
+    fontWeight: "900"
+  },
+  historyCopy: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 6
+  },
+  historyButton: {
+    marginTop: 10
   },
   generatingRow: {
     alignItems: "center",
