@@ -17,3 +17,4 @@ executionOrder:
     - 10-privacy-owner-allowed
     - 11-password-reset
     - 12-invitation-auth-handoff
+    - 13-inventory-persistence

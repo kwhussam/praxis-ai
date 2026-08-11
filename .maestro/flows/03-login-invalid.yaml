@@ -11,8 +11,6 @@ tags:
     id: auth-password
 - inputText: Definitely-Wrong-Password
 - pressKey: Enter
-- tapOn:
-    id: auth-submit
 - extendedWaitUntil:
     visible:
       id: auth-error

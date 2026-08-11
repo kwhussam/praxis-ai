@@ -56,6 +56,7 @@ export default function SettingsScreen() {
         <Text style={styles.cardText}>Melden Sie sich ab, wenn Sie dieses Gerät nicht weiter für PraxisShield verwenden möchten.</Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <AnimatedButton
+          testID="settings-sign-out"
           disabled={signingOut}
           icon={signingOut ? <ActivityIndicator color={colors.ink} /> : <LogOut color={colors.ink} size={20} />}
           label={signingOut ? "Abmelden..." : "Abmelden"}

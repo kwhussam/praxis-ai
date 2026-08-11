@@ -57,7 +57,7 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
           <Text style={styles.kicker}>Praxis-Sicherheitsüberblick</Text>
           <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
         </View>
-        <Pressable accessibilityLabel="Profil und Einstellungen öffnen" style={styles.settingsButton} onPress={() => router.push("/(tabs)/settings")}>
+        <Pressable testID="dashboard-settings" accessibilityLabel="Profil und Einstellungen öffnen" style={styles.settingsButton} onPress={() => router.push("/(tabs)/settings")}>
           <Settings color={colors.electricMuted} size={22} />
         </Pressable>
       </View>

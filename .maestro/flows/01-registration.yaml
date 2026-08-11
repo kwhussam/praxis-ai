@@ -14,12 +14,10 @@ tags:
     id: auth-password
 - inputText: "${TEST_PASSWORD}"
 - pressKey: Enter
-- tapOn:
-    id: auth-submit
 - extendedWaitUntil:
     visible:
       id: onboarding-screen
     timeout: 30000
-- assertVisible: "Ihre Praxis. Geschützt."
+- assertVisible: "Zugang wird freigeschaltet"
 - assertNotVisible:
     id: auth-error

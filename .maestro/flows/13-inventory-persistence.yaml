@@ -1,0 +1,131 @@
+appId: ai.praxisshield.app
+name: 13-inventory-persistence
+tags:
+  - ui-e2e
+  - native-storage
+---
+- runFlow: ../subflows/bootstrap.yaml
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- tapOn:
+    id: tab-inventory
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- tapOn:
+    id: inventory-name-input
+- inputText: E2E-Persistenz-A
+- pressKey: Enter
+- tapOn:
+    id: inventory-add-item
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 1"
+
+# Ein Prozessneustart darf weder den verschluesselten SQLite-Snapshot noch
+# den Keychain-/Keystore-Schluessel verlieren.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: tab-inventory
+    timeout: 120000
+- tapOn:
+    id: tab-inventory
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 1"
+
+# Logout leert nur den Arbeitsspeicher. Nach erneuter Anmeldung muss dieselbe
+# Praxis ihren lokalen Snapshot wieder entschluesseln koennen.
+- tapOn:
+    id: tab-dashboard
+- tapOn:
+    id: dashboard-settings
+- tapOn:
+    id: settings-sign-out
+- extendedWaitUntil:
+    visible:
+      id: auth-email
+    timeout: 30000
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- tapOn:
+    id: tab-inventory
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 1"
+
+# Praxis B darf den Snapshot von Praxis A nicht sehen und erhaelt einen
+# separaten praxisgebundenen Schluessel/Snapshot.
+- tapOn:
+    id: tab-dashboard
+- tapOn:
+    id: dashboard-settings
+- tapOn:
+    id: settings-sign-out
+- extendedWaitUntil:
+    visible:
+      id: auth-email
+    timeout: 30000
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-b@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- tapOn:
+    id: tab-inventory
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 0"
+- tapOn:
+    id: inventory-name-input
+- inputText: E2E-Persistenz-B
+- pressKey: Enter
+- tapOn:
+    id: inventory-add-item
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 1"
+
+# Rueckkehr zu Praxis A beweist Isolation und Wiederverwendbarkeit beider
+# SecureStore-Schluessel ueber mehrere Sessionwechsel hinweg.
+- tapOn:
+    id: tab-dashboard
+- tapOn:
+    id: dashboard-settings
+- tapOn:
+    id: settings-sign-out
+- extendedWaitUntil:
+    visible:
+      id: auth-email
+    timeout: 30000
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- tapOn:
+    id: tab-inventory
+- extendedWaitUntil:
+    visible:
+      id: inventory-persistence-ready
+    timeout: 30000
+- assertVisible: "Geräte 1"

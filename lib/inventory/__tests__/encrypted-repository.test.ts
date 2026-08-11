@@ -34,6 +34,23 @@ describe("EncryptedInventoryRepository", () => {
     expect(await repository.load("practice-a")).toEqual({ status: "ready", snapshot });
   });
 
+  it("entschlüsselt unter Hermes ohne globalen TextDecoder auch Unicode-Inhalte", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "TextDecoder");
+    Object.defineProperty(globalThis, "TextDecoder", { configurable: true, value: undefined });
+    try {
+      const keys = new MemoryKeyStore();
+      const blobs = new MemoryBlobStore();
+      const repository = new EncryptedInventoryRepository(keys, blobs, localInventoryCipher);
+      const snapshot = inventorySnapshot("practice-a", 1, "Ärzte-PVS 🔐");
+
+      expect(await repository.save(snapshot, 0)).toEqual({ status: "saved", revision: 1 });
+      expect(await repository.load("practice-a")).toEqual({ status: "ready", snapshot });
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "TextDecoder", descriptor);
+      else delete (globalThis as { TextDecoder?: unknown }).TextDecoder;
+    }
+  });
+
   it("verhindert das Verschieben eines Ciphertexts zwischen Praxen über AAD", async () => {
     const sharedKey = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
     const keys = new MemoryKeyStore(sharedKey);

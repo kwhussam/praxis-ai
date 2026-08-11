@@ -177,10 +177,15 @@ export default function LoginScreen() {
         <TextInput
           accessibilityHint="Geben Sie Ihr Passwort mit mindestens acht Zeichen ein."
           accessibilityLabel="Passwort"
+          blurOnSubmit
           onBlur={() => setPasswordTouched(true)}
           onChangeText={setPassword}
+          onSubmitEditing={() => {
+            if (canSubmit) void handleSubmit();
+          }}
           placeholder="Mindestens 8 Zeichen"
           placeholderTextColor={colors.muted}
+          returnKeyType="go"
           secureTextEntry
           style={styles.input}
           testID="auth-password"

@@ -8,6 +8,8 @@ SP2-01A speichert pro Praxis genau einen versionierten Snapshot als AES-256-GCM-
 
 Schreibvorgänge verwenden eine monotone Revision und Compare-and-Swap. Schnelle Folgeänderungen werden praxisweise serialisiert; ein Konflikt überschreibt niemals still einen neueren Snapshot. Mutationen während der initialen Hydrierung werden gepuffert. Verspätete Ergebnisse nach Logout oder Praxiswechsel werden verworfen.
 
+Die UI meldet „Lokaler Schutz aktiv“ erst, nachdem SQLite den aktuellen Revisionsstand bestätigt hat. Während eines ausstehenden Writes bleibt der Zustand sichtbar auf „Verschlüsselte Speicherung läuft“. Ein Prozessende darf daher nicht auf einer nur im Arbeitsspeicher vorhandenen Revision als erfolgreich dargestellt werden.
+
 Kann SecureStore nicht verwendet werden, schreibt PraxisShield weder Schlüssel noch Inventar in SQLite. Die Oberfläche zeigt dann ausdrücklich „Nur flüchtiger Speicher“; die Daten bleiben nur im Arbeitsspeicher. Ein ungültiges Envelope, Schlüsselverlust oder eine unbekannte Schemaversion blockiert Änderungen, damit vorhandene Ciphertexte nicht unbemerkt überschrieben werden. Praxislöschung vernichtet zuerst den Schlüssel und anschließend den Ciphertext; Logout und Praxiswechsel leeren nur den Arbeitsspeicher.
 
 ## Herkunft und Synchronisationssperre
@@ -17,6 +19,20 @@ Jeder Datensatz besitzt `source`, `synthetic`, `confidence`, `syncPolicy` sowie 
 Aus dem Praxisprofil abgeleitete Domain-/E-Mail-Seeds werden immer als `source=practice_profile`, `synthetic=true`, `confidence=30` und `syncPolicy=local_only` erzeugt. Auch widersprüchliche Aufruferwerte können diese Sperre nicht aufheben. Die UI bezeichnet solche Einträge als „Vorschlag, nicht gemessen“. Das verbindliche Synchronisations-Gate verweigert jeden synthetischen oder `local_only`-Datensatz mit `inventory_record_local_only`; ein Cloudtransport ist in SP2-01A noch nicht aktiv.
 
 Die lokale Snapshotversion ist derzeit `1`. Da es vor SP2-01A keine persistierten Inventarsnapshots gab, besteht kein Klartext-Backfill. Unbekannte zukünftige oder fehlerhafte Versionen werden nicht automatisch interpretiert; eine spätere Migration benötigt einen expliziten, getesteten Versionspfad.
+
+## Native Verifikation
+
+Der Maestro-Flow `13-inventory-persistence` prüft in einem nativen Development-Build:
+
+- bestätigtes Schreiben vor einem Prozessende;
+- Entschlüsselung nach vollständigem App-Neustart;
+- Speicherbereinigung bei Logout und erneutes Laden nach Login;
+- getrennte Snapshots und SecureStore-Schlüssel für Praxis A und Praxis B;
+- Rückkehr zu Praxis A ohne Datenvermischung.
+
+Am 10. August 2026 bestand der Flow auf einem iOS-18.6-Simulator. Die externe SQLite-Prüfung wies zwei getrennte Zeilen mit Revision `2` nach; beide AES-GCM-Envelopes enthielten weder `E2E-Persistenz-A` noch `E2E-Persistenz-B` im Klartext. Die Keychain-Metadaten wiesen zwei `WHEN_UNLOCKED_THIS_DEVICE_ONLY`-Einträge für die Inventarschlüssel aus. Dabei wurde außerdem eine Hermes-Inkompatibilität des Bibliotheks-Decoders gefunden und behoben: Entschlüsselter UTF-8-Inhalt wird ohne vorausgesetzten globalen `TextDecoder` strikt validiert dekodiert.
+
+Die Hardware-Gates bleiben offen: In der aktuellen Umgebung waren weder Android-AVD noch Android-Gerät vorhanden; Tests auf physischen iOS- und Android-Geräten sind weiterhin Voraussetzung für `released`.
 
 ## Known Devices
 

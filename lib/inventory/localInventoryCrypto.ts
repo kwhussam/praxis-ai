@@ -1,5 +1,5 @@
 import { gcm } from "@noble/ciphers/aes";
-import { bytesToUtf8, utf8ToBytes } from "@noble/ciphers/utils";
+import { utf8ToBytes } from "@noble/ciphers/utils";
 import { getRandomBytesAsync } from "expo-crypto";
 
 export const LOCAL_INVENTORY_KEY_BYTES = 32;
@@ -55,7 +55,7 @@ export const localInventoryCipher: LocalInventoryCipher = {
     const aad = inventoryEnvelopeAad(context.practiceId, envelope);
     const plaintext = gcm(key, base64UrlToBytes(envelope.ivB64u), aad)
       .decrypt(base64UrlToBytes(envelope.ciphertextB64u));
-    return bytesToUtf8(plaintext);
+    return strictUtf8Decode(plaintext);
   }
 };
 
@@ -148,6 +148,59 @@ function assertEnvelope(envelope: LocalInventoryEnvelope, expectedRevision: numb
 
 function canonicalFields(fields: string[]) {
   return fields.map((field) => `${utf8ToBytes(field).length}:${field}`).join("|");
+}
+
+/** Hermes does not guarantee a global TextDecoder in native Expo runtimes. */
+export function strictUtf8Decode(bytes: Uint8Array) {
+  const chunks: string[] = [];
+  const codePoints: number[] = [];
+  const flush = () => {
+    if (codePoints.length === 0) return;
+    chunks.push(String.fromCodePoint(...codePoints));
+    codePoints.length = 0;
+  };
+
+  for (let index = 0; index < bytes.length;) {
+    const first = bytes[index] as number;
+    let codePoint: number;
+    let continuationCount: number;
+
+    if (first <= 0x7f) {
+      codePoint = first;
+      continuationCount = 0;
+    } else if (first >= 0xc2 && first <= 0xdf) {
+      codePoint = first & 0x1f;
+      continuationCount = 1;
+    } else if (first >= 0xe0 && first <= 0xef) {
+      codePoint = first & 0x0f;
+      continuationCount = 2;
+    } else if (first >= 0xf0 && first <= 0xf4) {
+      codePoint = first & 0x07;
+      continuationCount = 3;
+    } else {
+      throw new Error("invalid_utf8");
+    }
+
+    if (index + continuationCount >= bytes.length) throw new Error("invalid_utf8");
+    for (let offset = 1; offset <= continuationCount; offset += 1) {
+      const continuation = bytes[index + offset] as number;
+      if ((continuation & 0xc0) !== 0x80) throw new Error("invalid_utf8");
+      if (offset === 1) {
+        if (first === 0xe0 && continuation < 0xa0) throw new Error("invalid_utf8");
+        if (first === 0xed && continuation > 0x9f) throw new Error("invalid_utf8");
+        if (first === 0xf0 && continuation < 0x90) throw new Error("invalid_utf8");
+        if (first === 0xf4 && continuation > 0x8f) throw new Error("invalid_utf8");
+      }
+      codePoint = (codePoint << 6) | (continuation & 0x3f);
+    }
+
+    codePoints.push(codePoint);
+    if (codePoints.length >= 4096) flush();
+    index += continuationCount + 1;
+  }
+
+  flush();
+  return chunks.join("");
 }
 
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";

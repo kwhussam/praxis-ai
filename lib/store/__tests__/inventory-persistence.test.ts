@@ -83,6 +83,23 @@ describe("inventory store persistence", () => {
     expect(repository.saves[0]?.snapshot.items.map((item) => item.name)).toContain("Während Laden erfasst");
   });
 
+  it("meldet einen Snapshot erst nach bestätigtem Write als bereit", async () => {
+    repository.loadResult = { status: "ready", snapshot: snapshot(3, "Version 3") };
+    const deferred = repository.deferSave();
+    await useInventoryStore.getState().ensurePracticeInventory(practice);
+
+    useInventoryStore.getState().addItem(practice.id, {
+      type: "device",
+      name: "Noch nicht dauerhaft",
+      criticality: "medium"
+    });
+
+    expect(useInventoryStore.getState().getPersistenceState(practice.id)).toEqual({ status: "saving", revision: 4 });
+    deferred.resolve({ status: "saved", revision: 4 });
+    await flushPromises();
+    expect(useInventoryStore.getState().getPersistenceState(practice.id)).toEqual({ status: "ready", revision: 4 });
+  });
+
   it("kennzeichnet fehlenden SecureStore sichtbar als flüchtig und synchronisiert nicht", async () => {
     repository.loadResult = { status: "volatile", reason: "secure_store_unavailable" };
     await useInventoryStore.getState().ensurePracticeInventory(practice);
@@ -164,6 +181,7 @@ class FakeInventoryRepository implements InventoryRepository {
   deletedPracticeIds: string[] = [];
   throwOnLoad = false;
   private loadPromise: Promise<Awaited<ReturnType<InventoryRepository["load"]>>> | null = null;
+  private savePromise: Promise<Awaited<ReturnType<InventoryRepository["save"]>>> | null = null;
 
   async load() {
     if (this.throwOnLoad) throw new Error("storage_failed");
@@ -172,7 +190,7 @@ class FakeInventoryRepository implements InventoryRepository {
 
   async save(snapshotValue: InventoryPracticeSnapshot, expectedRevision: number) {
     this.saves.push({ snapshot: snapshotValue, expectedRevision });
-    return this.nextSaveResult ?? { status: "saved" as const, revision: snapshotValue.revision };
+    return this.savePromise ?? this.nextSaveResult ?? { status: "saved" as const, revision: snapshotValue.revision };
   }
 
   async delete(practiceId: string) {
@@ -183,6 +201,14 @@ class FakeInventoryRepository implements InventoryRepository {
   deferLoad() {
     let resolve!: (value: Awaited<ReturnType<InventoryRepository["load"]>>) => void;
     this.loadPromise = new Promise((next) => {
+      resolve = next;
+    });
+    return { resolve };
+  }
+
+  deferSave() {
+    let resolve!: (value: Awaited<ReturnType<InventoryRepository["save"]>>) => void;
+    this.savePromise = new Promise((next) => {
       resolve = next;
     });
     return { resolve };

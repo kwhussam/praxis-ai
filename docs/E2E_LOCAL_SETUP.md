@@ -63,6 +63,11 @@ JWT against the real Worker and database role checks; they do not exercise a
 privacy UI. The owner test creates a unique disposable user and practice and
 never deletes seeded Practice B.
 
+Flow `13-inventory-persistence` is the native SP2-01A lifecycle gate. It verifies
+encrypted local writes, process restart, logout/login rehydration and isolation
+between seeded practices A and B. The app exposes `inventory-persistence-ready`
+only after the current SQLite revision has been confirmed.
+
 ## Start the backend
 
 ```bash
@@ -116,7 +121,9 @@ After the native app is installed, Metro can be restarted without rebuilding via
 
 ## Seed accounts
 
-Praxis-Testkonten verwenden das lokale Passwort `Local-E2E-2026!`. Der
+Praxis-Testkonten verwenden das lokale Passwort `LocalE2E2026Secure`. Es ist
+absichtlich alphanumerisch, weil native Maestro-Tastaturtreiber Satzzeichen auf
+iOS und Android nicht identisch eingeben. Der
 separate Backoffice-Bootstrap-Admin verwendet das unten angegebene Passwort.
 
 | Role | Email | Practice |

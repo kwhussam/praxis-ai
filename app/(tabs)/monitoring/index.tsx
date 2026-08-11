@@ -202,7 +202,7 @@ export default function MonitoringScreen() {
 
   function handleAddTarget(type: InventoryItemType, rawValue: string, clear: (value: string) => void) {
     if (!practice) return;
-    if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "volatile") {
+    if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "saving" && inventoryPersistence.status !== "volatile") {
       Alert.alert(
         "Monitoring-Ziel",
         inventoryPersistence.status === "error"
@@ -298,7 +298,7 @@ export default function MonitoringScreen() {
         onToggleLeakConsent={() => setLeakConsentAccepted((current) => !current)}
         onRemoveTarget={(value) => {
           if (!practice) return;
-          if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "volatile") {
+          if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "saving" && inventoryPersistence.status !== "volatile") {
             Alert.alert("Monitoring-Ziel", "Das geschützte Inventar ist derzeit nicht beschreibbar.");
             return;
           }

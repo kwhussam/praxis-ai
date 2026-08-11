@@ -7,8 +7,6 @@ appId: ai.praxisshield.app
     id: auth-password
 - inputText: "${PASSWORD}"
 - pressKey: Enter
-- tapOn:
-    id: auth-submit
 - extendedWaitUntil:
     visible:
       id: tab-dashboard

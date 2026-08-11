@@ -90,7 +90,7 @@ export default function InventoryScreen() {
     openWifi: routerWifiConfig?.openWifi ?? false,
     wps: routerWifiConfig?.wps ?? false
   });
-  const inventoryWritable = persistence.status === "ready" || persistence.status === "volatile";
+  const inventoryWritable = persistence.status === "ready" || persistence.status === "saving" || persistence.status === "volatile";
 
   useEffect(() => {
     ensurePracticeInventory(practice);
@@ -253,10 +253,22 @@ export default function InventoryScreen() {
             </GlassCard>
           ) : null}
           {persistence.status === "error" ? (
-            <GlassCard style={styles.persistenceCard} tone="critical">
-              <Text style={styles.persistenceTitle}>Verschlüsseltes Inventar nicht verfügbar</Text>
-              <Text style={styles.persistenceCopy}>Die vorhandenen lokalen Daten werden nicht überschrieben. Starten Sie die App erneut oder wenden Sie sich an den Support.</Text>
-            </GlassCard>
+            <View testID={`inventory-persistence-error-${persistence.reason ?? "unknown"}`}>
+              <GlassCard style={styles.persistenceCard} tone="critical">
+                <Text style={styles.persistenceTitle}>Verschlüsseltes Inventar nicht verfügbar</Text>
+                <Text style={styles.persistenceCopy}>Die vorhandenen lokalen Daten werden nicht überschrieben. Starten Sie die App erneut oder wenden Sie sich an den Support.</Text>
+              </GlassCard>
+            </View>
+          ) : null}
+          {persistence.status === "ready" ? (
+            <Text testID="inventory-persistence-ready" style={styles.persistenceReady} accessibilityLabel="Lokales Inventar verschlüsselt verfügbar">
+              Lokaler Schutz aktiv · verschlüsselt auf diesem Gerät
+            </Text>
+          ) : null}
+          {persistence.status === "saving" ? (
+            <Text testID="inventory-persistence-saving" style={styles.persistenceSaving} accessibilityLabel="Lokales Inventar wird verschlüsselt gespeichert">
+              Verschlüsselte Speicherung läuft …
+            </Text>
           ) : null}
 
           <View style={styles.filters}>
@@ -291,6 +303,7 @@ export default function InventoryScreen() {
             </View>
 
             <TextInput
+              testID="inventory-name-input"
               value={name}
               onChangeText={setName}
               placeholder={`${inventoryCategoryLabel(draftType)} erfassen`}
@@ -332,7 +345,7 @@ export default function InventoryScreen() {
               ))}
             </View>
 
-            <AnimatedButton label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} disabled={!inventoryWritable} />
+            <AnimatedButton testID="inventory-add-item" label="Eintrag hinzufügen" onPress={handleAdd} icon={<Plus color={colors.ink} size={18} />} disabled={!inventoryWritable} />
           </GlassCard>
 
           <GlassCard style={styles.card}>
@@ -906,6 +919,18 @@ const styles = StyleSheet.create({
     marginBottom: 16
   },
   persistenceCard: {
+    marginBottom: 16
+  },
+  persistenceReady: {
+    color: colors.safe,
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 16
+  },
+  persistenceSaving: {
+    color: colors.electricMuted,
+    fontSize: 12,
+    fontWeight: "800",
     marginBottom: 16
   },
   persistenceTitle: {

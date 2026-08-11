@@ -27,7 +27,7 @@ import type {
 } from "@/lib/inventory/types";
 import type { Practice } from "@/lib/store/session";
 
-export type InventoryPersistenceStatus = "idle" | "loading" | "ready" | "volatile" | "error";
+export type InventoryPersistenceStatus = "idle" | "loading" | "saving" | "ready" | "volatile" | "error";
 
 export type InventoryPersistenceState = {
   status: InventoryPersistenceStatus;
@@ -149,7 +149,7 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
       ...writePracticeData(state, practice.id, hydratedData),
       persistenceByPractice: {
         ...state.persistenceByPractice,
-        [practice.id]: { status: "ready", revision: nextRevision }
+        [practice.id]: { status: needsSave ? "saving" : "ready", revision: nextRevision }
       }
     }));
 
@@ -285,7 +285,7 @@ function mutatePractice(
 
   const currentData = readPracticeData(get(), practiceId);
   const nextData = mutation(currentData);
-  const shouldPersist = persistence.status === "ready";
+  const shouldPersist = persistence.status === "ready" || persistence.status === "saving";
   const nextRevision = shouldPersist ? persistence.revision + 1 : persistence.revision;
   const generation = lifecycleGeneration;
 
@@ -295,7 +295,9 @@ function mutatePractice(
       ...state.persistenceByPractice,
       [practiceId]: persistence.status === "idle"
         ? { status: "volatile", revision: 0, reason: "not_hydrated" }
-        : { ...persistence, revision: nextRevision }
+        : shouldPersist
+          ? { status: "saving", revision: nextRevision }
+          : { ...persistence, revision: nextRevision }
     }
   }));
 
@@ -318,7 +320,16 @@ function schedulePersist(
     if (generation !== lifecycleGeneration) return;
     const current = get().persistenceByPractice[practiceId];
     if (!current || current.revision < revision) return;
-    if (result.status === "saved") return;
+    if (result.status === "saved") {
+      if (current.status !== "saving" || current.revision !== revision) return;
+      set((state) => ({
+        persistenceByPractice: {
+          ...state.persistenceByPractice,
+          [practiceId]: { status: "ready", revision }
+        }
+      }));
+      return;
+    }
 
     set((state) => ({
       persistenceByPractice: {

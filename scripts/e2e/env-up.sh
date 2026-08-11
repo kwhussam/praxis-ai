@@ -136,7 +136,9 @@ fi
   printf 'export SUPABASE_ANON_KEY=%q\n' "$LOCAL_SUPABASE_ANON_KEY"
   printf 'export SUPABASE_SERVICE_ROLE_KEY=%q\n' "$LOCAL_SUPABASE_SERVICE_ROLE_KEY"
   printf 'export TEST_PRACTICE_A_EMAIL=%q\n' "owner-a@example.test"
-  printf 'export TEST_PRACTICE_A_PASSWORD=%q\n' "Local-E2E-2026!"
+  # Keep the local-only credential Maestro-safe on both iOS and Android.
+  # Native keyboard drivers do not encode punctuation consistently.
+  printf 'export TEST_PRACTICE_A_PASSWORD=%q\n' "LocalE2E2026Secure"
   printf 'export TEST_PRACTICE_B_ID=%q\n' "20000000-0000-4000-8000-0000000000b1"
   printf 'export BACKOFFICE_INVITE_HMAC_SECRET=%q\n' "$LOCAL_BACKOFFICE_INVITE_HMAC_SECRET"
 } > "$RUNTIME_ENV"
