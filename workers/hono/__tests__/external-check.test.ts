@@ -2042,10 +2042,51 @@ describe("GET /api/dashboard", () => {
           }
         ]);
       }
-      if (
-        url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") ||
-        url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")
-      ) {
+      if (url.startsWith("https://example.supabase.co/rest/v1/wlan_scans")) {
+        return Response.json([
+          {
+            id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            created_at: "2026-07-15T08:15:00.000Z",
+            devices_found: 4,
+            risk_level: "warning",
+            network_info: {
+              networkName: "Praxis",
+              securityProtocol: "WPA2",
+              riskScore: 72,
+              coverage: {
+                score: 67,
+                status: "insufficient",
+                active: 2,
+                total: 3,
+                missing: ["visibleWifiNetworks"],
+                unsupported: ["iosPassiveDiscovery"]
+              }
+            }
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") && url.includes("category_scores")) {
+        return Response.json([
+          {
+            id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            score: 88,
+            category_scores: {},
+            source: "manual",
+            checked_at: "2026-07-16T08:15:00.000Z",
+            checks: {
+              monitoring_coverage: {
+                score: 80,
+                status: "sufficient",
+                active: 4,
+                total: 5,
+                missing: ["leaks"],
+                unsupported: []
+              }
+            }
+          }
+        ]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots")) {
         return Response.json([]);
       }
       return Response.json({}, { status: 404 });
@@ -2063,12 +2104,32 @@ describe("GET /api/dashboard", () => {
       expect(res.status).toBe(200);
       const result = (await res.json()) as {
         hasData: boolean;
-        latest: { questionnaire: { score: number; scoreReport: { score: number } } | null };
+        latest: {
+          questionnaire: { score: number; scoreReport: { score: number } } | null;
+          wlanScan: { coverage: { score: number; unsupported: string[] } } | null;
+          monitoringSnapshot: { coverage: { score: number; missing: string[] } } | null;
+        };
         history: Array<{ type: string; score: number; checkedAt: string }>;
       };
       expect(result.hasData).toBe(true);
       expect(result.latest.questionnaire?.score).toBe(scoreReport.score);
       expect(result.latest.questionnaire?.scoreReport.score).toBe(scoreReport.score);
+      expect(result.latest.wlanScan?.coverage).toEqual({
+        score: 67,
+        status: "insufficient",
+        active: 2,
+        total: 3,
+        missing: ["visibleWifiNetworks"],
+        unsupported: ["iosPassiveDiscovery"]
+      });
+      expect(result.latest.monitoringSnapshot?.coverage).toEqual({
+        score: 80,
+        status: "sufficient",
+        active: 4,
+        total: 5,
+        missing: ["leaks"],
+        unsupported: []
+      });
       expect(result.history.map((item) => item.type)).toEqual(["external", "questionnaire"]);
       expect(result.history.map((item) => item.score)).toEqual([71, scoreReport.score]);
     } finally {

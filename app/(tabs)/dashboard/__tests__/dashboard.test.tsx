@@ -98,10 +98,10 @@ jest.mock("@/components/modules/EvidenceCoveragePanel", () => ({
 }));
 
 jest.mock("@/components/modules/PracticeGuidanceCard", () => ({
-  PracticeGuidanceCard: () => {
+  PracticeGuidanceCard: ({ guidance }: { guidance: { actions: string[] } }) => {
     const React = require("react");
     const { Text } = require("react-native");
-    return React.createElement(Text, null, "PracticeGuidanceCard");
+    return React.createElement(Text, null, `PracticeGuidanceCard ${guidance.actions.join(" | ")}`);
   }
 }));
 
@@ -110,7 +110,12 @@ jest.mock("@/lib/dashboard/service", () => ({
 }));
 
 jest.mock("@/lib/security/practiceGuidance", () => ({
-  guidanceFromScoreReport: () => ({ tone: "info", title: "Guidance", summary: "Guidance", actions: [] })
+  guidanceFromScoreReport: () => ({
+    tone: "warning",
+    headline: "Handlungsbedarf",
+    summary: "Keine vollständige Entwarnung",
+    actions: ["Maßnahme eins", "Maßnahme zwei", "Maßnahme drei"]
+  })
 }));
 
 jest.mock("@/lib/store/session", () => ({
@@ -139,7 +144,7 @@ describe("DashboardScreen", () => {
     });
 
     const text = allText(tree!.root);
-    expect(text.includes("Noch keine echten Prüfdaten vorhanden.")).toBe(true);
+    expect(text.includes("Noch keine Prüfdaten vorhanden.")).toBe(true);
     expect(text.includes("Starten Sie den Fragebogen oder WLAN-Scan.")).toBe(true);
     expect(text.includes("Mo")).toBe(false);
     expect(text.includes("62")).toBe(false);
@@ -151,7 +156,7 @@ describe("DashboardScreen", () => {
     });
   });
 
-  it("zeigt nach einem Fragebogen-Abschluss den autoritativen Fragebogenstand und keine Demo-History", async () => {
+  it("zeigt standardmäßig die Praxisansicht ohne missverständlichen Gesamtscore", async () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
@@ -163,11 +168,13 @@ describe("DashboardScreen", () => {
     });
 
     const text = allText(tree!.root);
-    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 83")).toBe(true);
-    expect(text.includes("Messabdeckung: 50 Prozent")).toBe(true);
+    expect(text.includes("PracticeGuidanceCard Maßnahme eins | Maßnahme zwei | Maßnahme drei")).toBe(true);
+    expect(text.includes("50 % Evidenzabdeckung")).toBe(true);
+    expect(text.includes("keine vollständige Entwarnung")).toBe(true);
     expect(text.includes("Fragebogen")).toBe(true);
-    expect(text.includes("83/100")).toBe(true);
-    expect(text.includes("History:")).toBe(true);
+    expect(text.includes("Ergebnis vorhanden")).toBe(true);
+    expect(text.includes("Fragebogen-Teilwert: 83")).toBe(false);
+    expect(text.includes("History:")).toBe(false);
     expect(text.includes("Mo:62")).toBe(false);
     expect(text.includes("Di:66")).toBe(false);
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
@@ -188,7 +195,15 @@ describe("DashboardScreen", () => {
       riskLevel: "critical",
       devicesFound: 3,
       networkName: "Praxis",
-      securityProtocol: "WPA2"
+      securityProtocol: "WPA2",
+      coverage: {
+        score: 67,
+        status: "insufficient",
+        active: 2,
+        total: 3,
+        missing: ["localDevices"],
+        unsupported: ["visibleWifiNetworks"]
+      }
     };
     data.latest.monitoringSnapshot = {
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -222,14 +237,81 @@ describe("DashboardScreen", () => {
       await flushQuery();
     });
 
+    await act(async () => {
+      press(technicalTab(tree!.root));
+    });
+
     const text = allText(tree!.root);
-    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 83")).toBe(true);
-    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 99")).toBe(false);
-    expect(text.includes("Sicherheitsstand aus dem Fragebogen: 12")).toBe(false);
+    expect(text.includes("Fragebogen-Teilwert: 83")).toBe(true);
+    expect(text.includes("Fragebogen-Teilwert: 99")).toBe(false);
+    expect(text.includes("Fragebogen-Teilwert: 12")).toBe(false);
     expect(text.includes("WLAN-Scan")).toBe(true);
     expect(text.includes("Monitoring")).toBe(true);
+    expect(text.includes("1 plattformbedingt nicht unterstützt")).toBe(true);
     expect(text.includes(" W:12")).toBe(false);
     expect(text.includes(" M:99")).toBe(false);
+
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
+  });
+
+  it("macht Praxis- und Techniksicht barrierefrei unterscheidbar und zeigt Technikmetriken erst nach Auswahl", async () => {
+    mockLoadDashboardData.mockClear();
+    mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
+    const client = newQueryClient();
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderDashboard(client);
+      await flushQuery();
+    });
+
+    const practice = tree!.root.findByProps({ testID: "dashboard-view-practice" });
+    const technical = technicalTab(tree!.root);
+    expect(testProps(practice).accessibilityRole).toBe("tab");
+    expect(testProps(practice).accessibilityState).toEqual({ selected: true });
+    expect(testProps(technical).accessibilityState).toEqual({ selected: false });
+    expect(findAllByTestId(tree!.root, "dashboard-technical-metrics").length).toBe(0);
+
+    await act(async () => {
+      press(technical);
+    });
+
+    expect(testProps(tree!.root.findByProps({ testID: "dashboard-view-practice" })).accessibilityState).toEqual({ selected: false });
+    expect(testProps(technicalTab(tree!.root)).accessibilityState).toEqual({ selected: true });
+    const text = allText(tree!.root);
+    expect(text.includes("Fragebogen-Teilwert: 83")).toBe(true);
+    expect(text.includes("Evidenzabdeckung")).toBe(true);
+    expect(text.includes("Evidenzvertrauen")).toBe(true);
+    expect(text.includes("Evidenzfrische")).toBe(true);
+    expect(text.includes("EvidenceCoveragePanel")).toBe(true);
+    expect(text.includes("History:")).toBe(true);
+
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
+  });
+
+  it("hält die Praxisansicht als semantischen Snapshot stabil", async () => {
+    mockLoadDashboardData.mockClear();
+    mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
+    const client = newQueryClient();
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderDashboard(client);
+      await flushQuery();
+    });
+
+    expect(dashboardSemanticSnapshot(tree!.root)).toMatchSnapshot();
+
+    await act(async () => {
+      press(technicalTab(tree!.root));
+    });
+    expect(dashboardSemanticSnapshot(tree!.root)).toMatchSnapshot();
 
     await act(async () => {
       unmountRenderer(tree!);
@@ -331,4 +413,35 @@ function scoreReportFixture(score: number): ScoreReport {
 
 function allText(root: ReactTestInstance): string {
   return root.findAll((node) => node.type === "Text").map((node) => node.children.join("")).join(" ");
+}
+
+function technicalTab(root: ReactTestInstance): ReactTestInstance {
+  return root.findByProps({ testID: "dashboard-view-technical" });
+}
+
+function dashboardSemanticSnapshot(root: ReactTestInstance) {
+  return {
+    text: root.findAll((node) => node.type === "Text").map((node) => node.children.join("")),
+    tabs: ["practice", "technical"].map((mode) => {
+      const tab = root.findByProps({ testID: `dashboard-view-${mode}` });
+      const props = testProps(tab);
+      return { mode, role: props.accessibilityRole, state: props.accessibilityState };
+    }),
+    coverageSummaryVisible: findAllByTestId(root, "dashboard-coverage-summary").length > 0,
+    technicalMetricsVisible: findAllByTestId(root, "dashboard-technical-metrics").length > 0
+  };
+}
+
+function testProps(node: ReactTestInstance): Record<string, unknown> {
+  return node.props as Record<string, unknown>;
+}
+
+function press(node: ReactTestInstance) {
+  const onPress = testProps(node).onPress;
+  if (typeof onPress !== "function") throw new Error("Pressable has no onPress handler");
+  onPress();
+}
+
+function findAllByTestId(root: ReactTestInstance, testID: string) {
+  return root.findAll((node) => testProps(node).testID === testID);
 }

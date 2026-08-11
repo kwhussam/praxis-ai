@@ -1,0 +1,84 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`DashboardScreen hält die Praxisansicht als semantischen Snapshot stabil 1`] = `
+{
+  "coverageSummaryVisible": true,
+  "tabs": [
+    {
+      "mode": "practice",
+      "role": "tab",
+      "state": {
+        "selected": true,
+      },
+    },
+    {
+      "mode": "technical",
+      "role": "tab",
+      "state": {
+        "selected": false,
+      },
+    },
+  ],
+  "technicalMetricsVisible": false,
+  "text": [
+    "Praxis-Sicherheitsüberblick",
+    "Praxis Test",
+    "Für die Praxis",
+    "Technikdetails",
+    "PracticeGuidanceCard Maßnahme eins | Maßnahme zwei | Maßnahme drei",
+    "Aussagekraft",
+    "50 % Evidenzabdeckung",
+    "Nur 50 % der vorgesehenen Evidenz sind abgedeckt. Das Ergebnis ist keine vollständige Entwarnung.",
+    "Fragebogenstand: 14.07.2026, 10:15 · Evidenzfrische: Nicht vollständig belegt",
+    "Letzte Prüfungen",
+    "Fragebogen",
+    "14.07.2026, 10:15 · Abdeckung 50 %",
+    "Ergebnis vorhanden",
+  ],
+}
+`;
+
+exports[`DashboardScreen hält die Praxisansicht als semantischen Snapshot stabil 2`] = `
+{
+  "coverageSummaryVisible": false,
+  "tabs": [
+    {
+      "mode": "practice",
+      "role": "tab",
+      "state": {
+        "selected": false,
+      },
+    },
+    {
+      "mode": "technical",
+      "role": "tab",
+      "state": {
+        "selected": true,
+      },
+    },
+  ],
+  "technicalMetricsVisible": true,
+  "text": [
+    "Praxis-Sicherheitsüberblick",
+    "Praxis Test",
+    "Für die Praxis",
+    "Technikdetails",
+    "Fragebogen-Teilwert",
+    "83/100",
+    "Evidenzabdeckung",
+    "50 %",
+    "Evidenzvertrauen",
+    "50 %",
+    "Evidenzfrische",
+    "Nicht vollständig belegt",
+    "Fragebogen-Teilwert: 83",
+    "Fragebogenstand vom 14.07.2026, 10:15. Andere Prüfbereiche werden nicht in diesen Teilwert eingerechnet.",
+    "EvidenceCoveragePanel",
+    "Teilwerte nach Prüfbereich",
+    "Fragebogen",
+    "14.07.2026, 10:15 · Abdeckung 50 %",
+    "83/100 Teilwert",
+    "History: 14.07. F:83",
+  ],
+}
+`;

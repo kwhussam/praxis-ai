@@ -2,12 +2,13 @@
 
 ## Product Surface
 
-PraxisShield AI is split into four mobile areas:
+PraxisShield AI is split into five mobile areas:
 
-- Dashboard: current Shield Score, urgent findings, score history
+- Dashboard: practice-facing posture, next actions and an explicitly separated technical evidence view
 - Check: questionnaire, WLAN scan, external domain check
+- Inventory: locally encrypted practice assets and provenance
 - Reports: AI-generated audit reports and PDF-ready structure
-- Monitoring: realtime events for SSL, DMARC, leaks and exposed ports
+- Monitoring: current and historical events for SSL, DMARC, leaks and exposed ports
 
 The app supports two commercial audiences from the same codebase: direct medical practices and white-label IT partners. Partner ownership is represented by `white_label_partner_id` in `practices` and can be expanded into a partner table when tenant management is implemented.
 
@@ -71,6 +72,28 @@ consolidated — because collapsing onto the Worker endpoint would either lose t
 property or require re-implementing the Realtime overlay on top of a server-aggregated payload. If
 a shared cache/consolidation is pursued later, the Realtime overlay must remain the source of truth
 for post-load mutations.
+
+## Dashboard truth and presentation contract (SP2-03)
+
+The dashboard intentionally has two audience levels:
+
+- **Für die Praxis** is the default. It presents the authoritative traffic-light decision, a bounded
+  plain-language statement, exactly three prioritized actions and an explicit evidence-coverage
+  limitation. It does not present a questionnaire score as an overall practice score.
+- **Technikdetails** contains the questionnaire partial score, evidence coverage, evidence confidence,
+  aggregate evidence freshness, rule-level evidence and a questionnaire-only trend. WLAN, external
+  and monitoring values remain separately labelled partial values and cannot replace that trend.
+
+The persisted `scoreReport.ampel` is authoritative for the status. UI code must not derive a more
+positive posture from the numeric score. A legacy green status is downgraded in presentation when
+evidence confidence/coverage is below the scoring gate, review is required, or evidence is stale.
+Unknown freshness is shown as unknown and never silently relabelled as current. The dashboard Worker
+also projects persisted WLAN and monitoring coverage, including platform capabilities marked
+`unsupported`; unsupported sensors remain visible but are not counted as failed supported sensors.
+
+Customer-facing labels avoid unbounded claims such as “sicher”, “echte Prüfdaten” or “live”. The
+monitoring tab is therefore labelled “Ereignisse”. Commercial tariff/upgrade prompts do not appear
+inside the security posture or evidence hierarchy.
 
 ## Security Model
 

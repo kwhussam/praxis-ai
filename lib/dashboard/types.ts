@@ -1,4 +1,5 @@
 import type { ScoreReport } from "@/lib/security/scoring";
+import type { CollectionCoverage } from "@/lib/assessment/coverage";
 
 export type DashboardSecurityCheck = {
   id: string;
@@ -17,6 +18,7 @@ export type DashboardWlanScan = {
   devicesFound: number;
   networkName: string | null;
   securityProtocol: string | null;
+  coverage?: CollectionCoverage | null;
 };
 
 export type DashboardMonitoringSnapshot = {
@@ -25,6 +27,7 @@ export type DashboardMonitoringSnapshot = {
   checkedAt: string;
   source: string;
   categoryScores: Record<string, unknown>;
+  coverage?: CollectionCoverage | null;
 };
 
 export type DashboardHistoryPoint = {

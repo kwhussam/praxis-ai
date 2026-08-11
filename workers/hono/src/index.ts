@@ -1131,7 +1131,7 @@ async function handleDashboard(c: Context<{ Bindings: Env }>) {
         ),
         supabaseRest<unknown[]>(
           c.env,
-          `/rest/v1/monitoring_snapshots?select=id,score,category_scores,source,checked_at&practice_id=eq.${encodedPracticeId}&order=checked_at.desc&limit=1`,
+          `/rest/v1/monitoring_snapshots?select=id,score,category_scores,checks,source,checked_at&practice_id=eq.${encodedPracticeId}&order=checked_at.desc&limit=1`,
           { method: "GET" }
         ),
         supabaseRest<unknown[]>(
@@ -1214,7 +1214,8 @@ function normalizeDashboardWlanScan(value: unknown) {
     riskLevel: typeof row.risk_level === "string" ? row.risk_level : null,
     devicesFound: typeof row.devices_found === "number" && Number.isFinite(row.devices_found) ? row.devices_found : 0,
     networkName: typeof networkInfo?.networkName === "string" ? networkInfo.networkName : null,
-    securityProtocol: typeof networkInfo?.securityProtocol === "string" ? networkInfo.securityProtocol : null
+    securityProtocol: typeof networkInfo?.securityProtocol === "string" ? networkInfo.securityProtocol : null,
+    coverage: normalizeDashboardCoverage(networkInfo?.coverage)
   };
 }
 
@@ -1232,7 +1233,27 @@ function normalizeDashboardMonitoringSnapshot(value: unknown) {
     score,
     checkedAt,
     source: typeof row.source === "string" ? row.source : "unknown",
-    categoryScores: asRecordOrNull(row.category_scores) ?? {}
+    categoryScores: asRecordOrNull(row.category_scores) ?? {},
+    coverage: normalizeDashboardCoverage(asRecordOrNull(row.checks)?.monitoring_coverage)
+  };
+}
+
+function normalizeDashboardCoverage(value: unknown) {
+  const coverage = asRecordOrNull(value);
+  if (!coverage) return null;
+  const score = readOptionalScore(coverage.score);
+  const active = typeof coverage.active === "number" && Number.isInteger(coverage.active) && coverage.active >= 0 ? coverage.active : null;
+  const total = typeof coverage.total === "number" && Number.isInteger(coverage.total) && coverage.total >= 0 ? coverage.total : null;
+  const status = coverage.status === "sufficient" || coverage.status === "insufficient" ? coverage.status : null;
+  if (score === null || active === null || total === null || status === null || active > total) return null;
+
+  return {
+    score,
+    status,
+    active,
+    total,
+    missing: Array.isArray(coverage.missing) ? coverage.missing.filter((item): item is string => typeof item === "string") : [],
+    unsupported: Array.isArray(coverage.unsupported) ? coverage.unsupported.filter((item): item is string => typeof item === "string") : []
   };
 }
 

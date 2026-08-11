@@ -20,7 +20,7 @@ const lightMap = {
 const statusLabels = {
   red: "Kritisch (rot)",
   yellow: "Warnung (gelb)",
-  green: "Sicher (grün)"
+  green: "Kein dringender Befund (grün)"
 } as const;
 
 export function AmpelKomponente({ status, size = 16, style }: AmpelKomponenteProps) {

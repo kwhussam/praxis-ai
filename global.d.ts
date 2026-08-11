@@ -88,6 +88,7 @@ type JestMatchers = {
   toHaveBeenCalled(): void;
   toHaveLength(length: number): void;
   toMatch(pattern: RegExp): void;
+  toMatchSnapshot(): void;
   toMatchObject(expected: Record<string, unknown>): void;
   toThrow(expected?: string | RegExp): void;
   toBeGreaterThan(expected: number): void;

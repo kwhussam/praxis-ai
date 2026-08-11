@@ -6,7 +6,7 @@ import { colors, riskColors, type RiskTone } from "@/constants/colors";
 const labels: Record<RiskTone, string> = {
   critical: "Kritisch",
   warning: "Achtung",
-  safe: "Sicher",
+  safe: "Kein dringender Befund",
   info: "Info"
 };
 
