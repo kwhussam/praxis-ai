@@ -87,6 +87,8 @@ The dashboard intentionally has two audience levels:
 The persisted `scoreReport.ampel` is authoritative for the status. UI code must not derive a more
 positive posture from the numeric score. A legacy green status is downgraded in presentation when
 evidence confidence/coverage is below the scoring gate, review is required, or evidence is stale.
+`deriveScoreReportPosture` is the single shared derivation for both dashboard posture and practice
+guidance; consumers must not duplicate its threshold or freshness rules.
 Unknown freshness is shown as unknown and never silently relabelled as current. The dashboard Worker
 also projects persisted WLAN and monitoring coverage, including platform capabilities marked
 `unsupported`; unsupported sensors remain visible but are not counted as failed supported sensors.

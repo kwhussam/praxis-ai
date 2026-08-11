@@ -1,6 +1,7 @@
 import type { Report } from "@/lib/ai/report";
 import { toneForScore, type RiskTone } from "@/constants/colors";
 import type { NetworkSecurityFinding } from "@/lib/security/networkProbeTypes";
+import { deriveScoreReportPosture } from "@/lib/security/scoreReportPosture";
 import type { RuleEvaluation, ScoreReport } from "@/lib/security/scoring";
 
 export type PracticeGuidance = {
@@ -105,14 +106,8 @@ export function guidanceFromScoreReport(report: ScoreReport): PracticeGuidance {
     .map((rule) => RULE_ACTIONS[rule.rule_id])
     .filter((action): action is string => Boolean(action));
 
-  const tone = report.ampel === "rot" ? "critical" : report.ampel === "grün" ? "safe" : "warning";
-  const coverage = Math.max(0, Math.min(100, Math.round(report.evidence_coverage_score)));
-  const confidence = Math.max(0, Math.min(100, Math.round(report.evidence_confidence)));
-  const staleEvidence = report.rule_results.some((rule) => rule.status !== "not_applicable" && rule.freshness === "stale");
-  const effectiveTone =
-    tone === "safe" && (report.review_status === "review_required" || coverage < 70 || confidence < 70 || staleEvidence)
-      ? "warning"
-      : tone;
+  const posture = deriveScoreReportPosture(report);
+  const effectiveTone = posture.tone;
 
   return {
     tone: effectiveTone,
@@ -123,9 +118,9 @@ export function guidanceFromScoreReport(report: ScoreReport): PracticeGuidance {
           ? "Die geprüften Kontrollen zeigen offenen Handlungsbedarf."
           : "Die geprüften Kontrollen zeigen derzeit keinen dringenden Handlungsbedarf.",
     summary:
-      coverage < 70
-        ? `Nur ${coverage} % der vorgesehenen Evidenz sind abgedeckt. Das Ergebnis ist keine vollständige Entwarnung.`
-        : staleEvidence
+      posture.coverageInsufficient
+        ? `Nur ${posture.coverage} % der vorgesehenen Evidenz sind abgedeckt. Das Ergebnis ist keine vollständige Entwarnung.`
+        : posture.staleEvidence
           ? "Mindestens ein Nachweis ist veraltet und sollte vor einer aktuellen Bewertung erneut geprüft werden."
           : effectiveTone === "critical"
             ? "Bitte behandeln Sie die nächsten Schritte als dringend."
