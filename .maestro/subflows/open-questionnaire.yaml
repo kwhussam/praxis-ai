@@ -4,7 +4,7 @@ appId: ai.praxisshield.app
     id: tab-check
 - extendedWaitUntil:
     visible:
-      id: check-start
+      id: check-start-screen
     timeout: 15000
 - scrollUntilVisible:
     element:
@@ -15,8 +15,7 @@ appId: ai.praxisshield.app
     visibilityPercentage: 80
     centerElement: true
 - tapOn:
-    id: check-start
-    retryTapIfNoChange: true
+    text: Check starten
 - extendedWaitUntil:
     visible:
       id: questionnaire-answer-mfa-yes

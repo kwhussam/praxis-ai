@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Settings } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 
 import { ScoreHistory } from "@/components/charts/ScoreHistory";
 import { EvidenceCoveragePanel } from "@/components/modules/EvidenceCoveragePanel";
@@ -18,6 +18,8 @@ import { useSessionStore } from "@/lib/store/session";
 
 export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcTime?: number }) {
   const [viewMode, setViewMode] = useState<DashboardViewMode>("practice");
+  const { fontScale, width } = useWindowDimensions();
+  const stackDashboardControls = width <= 390 && fontScale > 1.5;
   const practice = useSessionStore((state) => state.practice);
   const practiceId = practice?.id ?? null;
   // PERF-05: dashboard data now flows through React Query instead of a manual useEffect fetch.
@@ -55,9 +57,9 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
   return (
     <Screen>
       <View style={styles.top}>
-        <View>
-          <Text style={styles.kicker}>Praxis-Sicherheitsüberblick</Text>
-          <Text style={styles.title}>{practice?.name ?? "Praxis"}</Text>
+        <View style={styles.topHeading}>
+          <Text maxFontSizeMultiplier={1.5} style={styles.kicker}>Praxis-Sicherheitsüberblick</Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.title}>{practice?.name ?? "Praxis"}</Text>
         </View>
         <Pressable testID="dashboard-settings" accessibilityLabel="Profil und Einstellungen öffnen" style={styles.settingsButton} onPress={() => router.push("/(tabs)/settings")}>
           <Settings color={colors.electricMuted} size={22} />
@@ -78,7 +80,7 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
         <NoDataState />
       ) : dashboard && dashboard.hasData ? (
         <>
-          <DashboardViewSwitch value={viewMode} onChange={setViewMode} />
+          <DashboardViewSwitch value={viewMode} onChange={setViewMode} stacked={stackDashboardControls} />
           {viewMode === "practice" ? (
             <>
               {guidance ? <PracticeGuidanceCard guidance={guidance} /> : <NoOverallAssessment />}
@@ -96,6 +98,7 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
                     coverage={posture.coverage}
                     confidence={posture.confidence}
                     freshness={posture.freshnessLabel}
+                    stacked={stackDashboardControls}
                   />
                   <View style={styles.scoreWrap}>
                     <ScoreRing score={dashboard.latest.questionnaire.score} label="Fragebogen-Teilwert" />
@@ -118,9 +121,17 @@ export default function DashboardScreen({ queryGcTime = 5 * 60_000 }: { queryGcT
   );
 }
 
-function DashboardViewSwitch({ value, onChange }: { value: DashboardViewMode; onChange: (value: DashboardViewMode) => void }) {
+function DashboardViewSwitch({
+  value,
+  onChange,
+  stacked
+}: {
+  value: DashboardViewMode;
+  onChange: (value: DashboardViewMode) => void;
+  stacked: boolean;
+}) {
   return (
-    <View accessibilityRole="tablist" accessibilityLabel="Dashboard-Ansicht" style={styles.viewSwitch}>
+    <View accessibilityRole="tablist" accessibilityLabel="Dashboard-Ansicht" style={[styles.viewSwitch, stacked ? styles.viewSwitchStacked : null]}>
       {([
         ["practice", "Für die Praxis"],
         ["technical", "Technikdetails"]
@@ -133,10 +144,10 @@ function DashboardViewSwitch({ value, onChange }: { value: DashboardViewMode; on
             accessibilityRole="tab"
             accessibilityLabel={label}
             accessibilityState={{ selected }}
-            style={[styles.viewOption, selected ? styles.viewOptionSelected : null]}
+            style={[styles.viewOption, stacked ? styles.viewOptionStacked : null, selected ? styles.viewOptionSelected : null]}
             onPress={() => onChange(mode)}
           >
-            <Text style={[styles.viewOptionText, selected ? styles.viewOptionTextSelected : null]}>{label}</Text>
+            <Text maxFontSizeMultiplier={1.5} style={[styles.viewOptionText, selected ? styles.viewOptionTextSelected : null]}>{label}</Text>
           </Pressable>
         );
       })}
@@ -155,17 +166,29 @@ function CoverageSummaryCard({ posture, checkedAt }: { posture: ReturnType<typeo
     >
       <View style={styles.coverageHeader}>
         <View style={styles.coverageHeading}>
-          <Text style={styles.cardKicker}>Aussagekraft</Text>
-          <Text style={styles.cardTitle}>{posture.coverage} % Evidenzabdeckung</Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.cardKicker}>Aussagekraft</Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.cardTitle}>{posture.coverage} % Evidenzabdeckung</Text>
         </View>
       </View>
-      <Text style={styles.coverageMessage}>{posture.coverageMessage}</Text>
-      <Text style={styles.coverageMeta}>Fragebogenstand: {formatDateTime(checkedAt)} · Evidenzfrische: {posture.freshnessLabel}</Text>
+      <Text maxFontSizeMultiplier={2} style={styles.coverageMessage}>{posture.coverageMessage}</Text>
+      <Text maxFontSizeMultiplier={2} style={styles.coverageMeta}>Fragebogenstand: {formatDateTime(checkedAt)} · Evidenzfrische: {posture.freshnessLabel}</Text>
     </View>
   );
 }
 
-function TechnicalMetrics({ score, coverage, confidence, freshness }: { score: number; coverage: number; confidence: number; freshness: string }) {
+function TechnicalMetrics({
+  score,
+  coverage,
+  confidence,
+  freshness,
+  stacked
+}: {
+  score: number;
+  coverage: number;
+  confidence: number;
+  freshness: string;
+  stacked: boolean;
+}) {
   const metrics = [
     ["Fragebogen-Teilwert", `${score}/100`],
     ["Evidenzabdeckung", `${coverage} %`],
@@ -176,9 +199,9 @@ function TechnicalMetrics({ score, coverage, confidence, freshness }: { score: n
   return (
     <View testID="dashboard-technical-metrics" style={styles.metrics}>
       {metrics.map(([label, value]) => (
-        <View key={label} accessible accessibilityLabel={`${label}: ${value}`} style={styles.metricCard}>
-          <Text style={styles.metricLabel}>{label}</Text>
-          <Text style={styles.metricValue}>{value}</Text>
+        <View key={label} accessible accessibilityLabel={`${label}: ${value}`} style={[styles.metricCard, stacked ? styles.metricCardStacked : null]}>
+          <Text maxFontSizeMultiplier={1.5} style={styles.metricLabel}>{label}</Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.metricValue}>{value}</Text>
         </View>
       ))}
     </View>
@@ -261,14 +284,14 @@ function LatestDataCard({ dashboard, mode }: { dashboard: DashboardData; mode: D
 
   return (
     <View style={styles.latestCard}>
-      <Text style={styles.latestTitle}>{mode === "technical" ? "Teilwerte nach Prüfbereich" : "Letzte Prüfungen"}</Text>
+      <Text maxFontSizeMultiplier={2} style={styles.latestTitle}>{mode === "technical" ? "Teilwerte nach Prüfbereich" : "Letzte Prüfungen"}</Text>
       {items.map((item) => (
         <View key={item.label} style={styles.latestRow}>
-          <View>
-            <Text style={styles.latestLabel}>{item.label}</Text>
-            <Text style={styles.latestMeta}>{item.meta}</Text>
+          <View style={styles.latestDetails}>
+            <Text maxFontSizeMultiplier={2} style={styles.latestLabel}>{item.label}</Text>
+            <Text maxFontSizeMultiplier={2} style={styles.latestMeta}>{item.meta}</Text>
           </View>
-          <Text style={styles.latestValue}>{item.value}</Text>
+          <Text maxFontSizeMultiplier={2} style={styles.latestValue}>{item.value}</Text>
         </View>
       ))}
     </View>
@@ -320,6 +343,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24
   },
+  topHeading: {
+    flex: 1,
+    minWidth: 0
+  },
   kicker: {
     color: colors.electric,
     fontSize: 12,
@@ -351,6 +378,9 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     padding: 4
   },
+  viewSwitchStacked: {
+    flexDirection: "column"
+  },
   viewOption: {
     alignItems: "center",
     borderRadius: 6,
@@ -362,6 +392,10 @@ const styles = StyleSheet.create({
   },
   viewOptionSelected: {
     backgroundColor: colors.electric
+  },
+  viewOptionStacked: {
+    flex: 0,
+    width: "100%"
   },
   viewOptionText: {
     color: colors.muted,
@@ -430,6 +464,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     minHeight: 86,
     padding: 14
+  },
+  metricCardStacked: {
+    flexBasis: "100%"
   },
   metricLabel: {
     color: colors.muted,
@@ -520,13 +557,21 @@ const styles = StyleSheet.create({
     marginBottom: 6
   },
   latestRow: {
-    alignItems: "center",
+    alignItems: "flex-start",
     borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
     justifyContent: "space-between",
     minHeight: 54,
     paddingVertical: 10
+  },
+  latestDetails: {
+    flexBasis: 180,
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 0
   },
   latestLabel: {
     color: colors.ink,
@@ -535,12 +580,18 @@ const styles = StyleSheet.create({
   },
   latestMeta: {
     color: colors.muted,
+    flexShrink: 1,
     fontSize: 12,
+    lineHeight: 17,
     marginTop: 3
   },
   latestValue: {
     color: colors.electric,
+    flexGrow: 1,
+    flexShrink: 1,
     fontSize: 16,
-    fontWeight: "900"
+    fontWeight: "900",
+    minWidth: 140,
+    textAlign: "right"
   },
 });

@@ -1,0 +1,75 @@
+appId: ai.praxisshield.app
+name: 14-dashboard-responsive
+tags:
+  - ui-e2e
+  - sp2-03
+---
+- runFlow: ../subflows/bootstrap.yaml
+- runScript:
+    file: ../scripts/seed-dashboard-questionnaire.js
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+      PRACTICE_ID: 20000000-0000-4000-8000-0000000000a1
+- assertTrue:
+    condition: ${output.dashboardSeed.persisted === true}
+    label: Dashboard questionnaire fixture is persisted in the real backend
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- extendedWaitUntil:
+    visible:
+      id: dashboard-view-practice
+    timeout: 30000
+- assertNotVisible:
+    id: dashboard-technical-metrics
+- takeScreenshot: artifacts/sp2-03/dashboard-${SCREENSHOT_VARIANT}-practice-top
+- repeat:
+    times: 20
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: dashboard-coverage-summary
+          commands:
+            - swipe:
+                start: "50%,72%"
+                end: "50%,38%"
+                duration: 350
+- extendedWaitUntil:
+    visible:
+      id: dashboard-coverage-summary
+    timeout: 15000
+- takeScreenshot: artifacts/sp2-03/dashboard-${SCREENSHOT_VARIANT}-practice-coverage
+- repeat:
+    times: 20
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: dashboard-view-technical
+          commands:
+            - swipe:
+                start: "50%,35%"
+                end: "50%,75%"
+                duration: 350
+- extendedWaitUntil:
+    visible:
+      id: dashboard-view-technical
+    timeout: 15000
+- repeat:
+    times: 3
+    commands:
+      - swipe:
+          start: "50%,35%"
+          end: "50%,75%"
+          duration: 350
+- tapOn:
+    id: dashboard-view-technical
+- extendedWaitUntil:
+    visible:
+      id: dashboard-technical-metrics
+    timeout: 15000
+- takeScreenshot: artifacts/sp2-03/dashboard-${SCREENSHOT_VARIANT}-technical-top

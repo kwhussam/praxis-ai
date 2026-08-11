@@ -79,4 +79,5 @@ bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
   -e "WORKER_URL=http://127.0.0.1:8787" \
   -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
   -e "DEV_CLIENT_URL=$DEV_CLIENT_URL" \
+  -e "SCREENSHOT_VARIANT=smoke" \
   .

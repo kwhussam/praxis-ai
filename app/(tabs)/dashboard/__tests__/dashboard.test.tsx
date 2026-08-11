@@ -18,6 +18,7 @@ declare const jest: {
 };
 
 var mockLoadDashboardData = jest.fn();
+var mockWindowDimensions = { fontScale: 1, height: 1334, scale: 2, width: 750 };
 
 function renderDashboard(client: QueryClient): ReactTestRenderer {
   return renderer.create(
@@ -48,6 +49,7 @@ jest.mock("react-native", () => {
     Pressable: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("Pressable", props, children),
     StyleSheet: { create: (styles: unknown) => styles },
     Text: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("Text", props, children),
+    useWindowDimensions: () => mockWindowDimensions,
     View: ({ children, ...props }: { children?: React.ReactNode }) => React.createElement("View", props, children)
   };
 });
@@ -289,6 +291,39 @@ describe("DashboardScreen", () => {
     expect(text.includes("EvidenceCoveragePanel")).toBe(true);
     expect(text.includes("History:")).toBe(true);
 
+    await act(async () => {
+      unmountRenderer(tree!);
+      client.clear();
+    });
+  });
+
+  it("stapelt Ansichtsumschalter und Technikmetriken bei großer Schrift auf schmalen Displays", async () => {
+    mockWindowDimensions = { fontScale: 3.1, height: 667, scale: 2, width: 375 };
+    mockLoadDashboardData.mockClear();
+    mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
+    const client = newQueryClient();
+    let tree: ReactTestRenderer;
+
+    await act(async () => {
+      tree = renderDashboard(client);
+      await flushQuery();
+    });
+
+    const switchStyles = testProps(tree!.root.findByProps({ accessibilityLabel: "Dashboard-Ansicht" })).style as Array<
+      Record<string, unknown> | null
+    >;
+    expect(switchStyles.some((style) => style?.flexDirection === "column")).toBe(true);
+
+    await act(async () => {
+      press(technicalTab(tree!.root));
+    });
+
+    const metricStyles = testProps(tree!.root.findByProps({ accessibilityLabel: "Fragebogen-Teilwert: 83/100" })).style as Array<
+      Record<string, unknown> | null
+    >;
+    expect(metricStyles.some((style) => style?.flexBasis === "100%")).toBe(true);
+
+    mockWindowDimensions = { fontScale: 1, height: 1334, scale: 2, width: 750 };
     await act(async () => {
       unmountRenderer(tree!);
       client.clear();

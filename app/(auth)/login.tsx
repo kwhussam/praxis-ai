@@ -133,7 +133,7 @@ export default function LoginScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
+      <View style={styles.header} testID="auth-screen">
         <Text style={styles.title}>{hasPendingInvitation ? "Einladung abschließen" : mode === "login" ? "Willkommen zurück" : "Konto anlegen"}</Text>
         <Text style={styles.copy}>
           {hasPendingInvitation

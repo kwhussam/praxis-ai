@@ -3,6 +3,18 @@ appId: ai.praxisshield.app
 - tapOn:
     id: auth-email
 - inputText: "${EMAIL}"
+- repeat:
+    times: 5
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: auth-password
+          commands:
+            - swipe:
+                start: "50%,75%"
+                end: "50%,25%"
+                duration: 350
 - tapOn:
     id: auth-password
 - inputText: "${PASSWORD}"

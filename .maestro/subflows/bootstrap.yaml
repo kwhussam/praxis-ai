@@ -13,6 +13,9 @@ appId: ai.praxisshield.app
 - waitForAnimationToEnd:
     timeout: 420000
 - tapOn:
+    text: "Open|Öffnen"
+    optional: true
+- tapOn:
     text: Continue
     optional: true
 - waitForAnimationToEnd:
@@ -32,7 +35,7 @@ appId: ai.praxisshield.app
 - runFlow:
     when:
       notVisible:
-        id: auth-email
+        id: auth-screen
     commands:
       - retry:
           maxRetries: 3
@@ -41,6 +44,9 @@ appId: ai.praxisshield.app
                 link: "${DEV_CLIENT_URL}"
       - waitForAnimationToEnd:
           timeout: 420000
+      - tapOn:
+          text: "Open|Öffnen"
+          optional: true
       - tapOn:
           text: Continue
           optional: true
@@ -58,7 +64,19 @@ appId: ai.praxisshield.app
           point: "94%,43%"
       - waitForAnimationToEnd:
           timeout: 30000
+- repeat:
+    times: 6
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: auth-email
+          commands:
+            - swipe:
+                start: "50%,75%"
+                end: "50%,25%"
+                duration: 350
 - extendedWaitUntil:
     visible:
       id: auth-email
-    timeout: 420000
+    timeout: 30000

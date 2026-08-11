@@ -10,6 +10,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.electric,
         tabBarInactiveTintColor: colors.muted,
+        tabBarAllowFontScaling: false,
         tabBarStyle: {
           backgroundColor: "rgba(10, 22, 40, 0.92)",
           borderTopColor: colors.border,

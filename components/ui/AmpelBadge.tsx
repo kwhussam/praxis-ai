@@ -32,7 +32,7 @@ export function AmpelBadge({ tone, label = labels[tone], pulsing = false }: Ampe
         ) : null}
         <View style={[styles.dot, { backgroundColor: color }]} />
       </View>
-      <Text style={styles.label}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.5} style={styles.label}>{label}</Text>
     </View>
   );
 }

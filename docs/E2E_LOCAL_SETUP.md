@@ -2,7 +2,7 @@
 
 This setup is local-only. It starts a real Supabase stack, replays every migration,
 loads the shared RLS/E2E seed, and starts the Hono Worker against that stack. No
-Maestro flows are included yet.
+mock backend is used by the Maestro flows.
 
 ## Why a development build
 
@@ -67,6 +67,30 @@ Flow `13-inventory-persistence` is the native SP2-01A lifecycle gate. It verifie
 encrypted local writes, process restart, logout/login rehydration and isolation
 between seeded practices A and B. The app exposes `inventory-persistence-ready`
 only after the current SQLite revision has been confirmed.
+
+Flow `14-dashboard-responsive` is the native SP2-03 presentation gate. It creates
+an idempotent questionnaire fixture through the real authenticated Worker, then
+checks the default practice view, its evidence-coverage disclosure and the
+technical view. Screenshots are written below `.maestro/artifacts/sp2-03/`.
+The flow is intentionally independent of the long questionnaire wizard, so a
+wizard-navigation failure cannot produce a false dashboard failure.
+
+For the small-screen/Dynamic-Type release check, run it on an iPhone SE-class
+simulator once at the default size and once in an iOS accessibility category:
+
+```bash
+xcrun simctl ui <device-udid> content_size large
+# Run 14-dashboard-responsive with SCREENSHOT_VARIANT=default.
+
+xcrun simctl ui <device-udid> content_size accessibility-extra-large
+# Run 14-dashboard-responsive with SCREENSHOT_VARIANT=dynamic-type.
+
+xcrun simctl ui <device-udid> content_size large
+```
+
+The gate requires all three target states in both runs. Content remains scalable
+and scrollable; layout-critical tabs, badges and navigation labels use bounded
+scaling so they do not turn into clipped or single-character controls.
 
 ## Start the backend
 

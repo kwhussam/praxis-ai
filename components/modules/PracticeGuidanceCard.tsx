@@ -16,21 +16,21 @@ export function PracticeGuidanceCard({ guidance, compact = false }: PracticeGuid
     <GlassCard tone={guidance.tone} criticalGlow={guidance.tone === "critical"} style={compact ? styles.compactCard : styles.card}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text style={styles.kicker}>Einordnung</Text>
-          <Text style={styles.headline}>{guidance.headline}</Text>
+          <Text maxFontSizeMultiplier={1.5} style={styles.kicker}>Einordnung</Text>
+          <Text maxFontSizeMultiplier={1.4} style={styles.headline}>{guidance.headline}</Text>
         </View>
         <AmpelBadge tone={guidance.tone} pulsing={guidance.tone === "critical"} />
       </View>
-      <Text style={styles.summary}>{guidance.summary}</Text>
+      <Text maxFontSizeMultiplier={2} style={styles.summary}>{guidance.summary}</Text>
 
       <View style={styles.actions}>
-        <Text style={styles.actionsTitle}>Was muss ich jetzt tun?</Text>
+        <Text maxFontSizeMultiplier={2} style={styles.actionsTitle}>Was muss ich jetzt tun?</Text>
         {guidance.actions.slice(0, 3).map((action, index) => (
           <View key={`${index}-${action}`} style={styles.actionRow}>
             <View style={[styles.actionIndex, { backgroundColor: riskColors[guidance.tone] }]}>
-              <Text style={styles.actionIndexText}>{index + 1}</Text>
+              <Text maxFontSizeMultiplier={1.5} style={styles.actionIndexText}>{index + 1}</Text>
             </View>
-            <Text style={styles.actionText}>{action}</Text>
+            <Text maxFontSizeMultiplier={2} style={styles.actionText}>{action}</Text>
           </View>
         ))}
       </View>
@@ -38,7 +38,7 @@ export function PracticeGuidanceCard({ guidance, compact = false }: PracticeGuid
       {compact ? null : (
         <View style={styles.note}>
           <Ionicons name="information-circle" size={16} color={colors.electric} />
-          <Text style={styles.noteText}>Die Empfehlungen ersetzen keine IT-Prüfung vor Ort, helfen aber bei der nächsten klaren Entscheidung.</Text>
+          <Text maxFontSizeMultiplier={2} style={styles.noteText}>Die Empfehlungen ersetzen keine IT-Prüfung vor Ort, helfen aber bei der nächsten klaren Entscheidung.</Text>
         </View>
       )}
     </GlassCard>
@@ -55,11 +55,14 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "flex-start",
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 12,
     justifyContent: "space-between"
   },
   headerText: {
-    flex: 1
+    flexGrow: 1,
+    flexShrink: 1,
+    minWidth: 220
   },
   kicker: {
     color: colors.electric,

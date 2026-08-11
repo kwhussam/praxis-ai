@@ -18,3 +18,4 @@ executionOrder:
     - 11-password-reset
     - 12-invitation-auth-handoff
     - 13-inventory-persistence
+    - 14-dashboard-responsive
