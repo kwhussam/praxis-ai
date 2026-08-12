@@ -158,9 +158,7 @@ export type ExternalCheckResult = {
 };
 
 export type ExternalCheckConsent = {
-  /** User has agreed to run the SSL/DNS/port/reputation check itself. */
-  consent: boolean;
-  /** Separate, explicit opt-in required before `email` is sent to HIBP for a leak check. */
+  /** Request intent only; authorization is read from the server-side consent registry. */
   leakConsentAccepted?: boolean;
 };
 
@@ -175,7 +173,6 @@ export async function runExternalCheck(domain: string, email: string | undefined
       domain,
       email,
       practiceId,
-      consent: consent.consent === true,
       leakConsentAccepted: consent.leakConsentAccepted === true
     }
   });

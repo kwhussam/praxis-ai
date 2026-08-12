@@ -29,6 +29,8 @@ import { ScoreRing } from "@/components/ui/ScoreRing";
 import { Screen } from "@/components/ui/Screen";
 import { colors, riskColors, type RiskTone } from "@/constants/colors";
 import { AppConfig } from "@/lib/config/environment";
+import { CONSENT_DEFINITIONS, type RegistryConsentType } from "@/lib/legal/consent-contract";
+import { emptyRegistry, loadConsentRegistry, setRegistryConsent } from "@/lib/legal/consent";
 import {
   buildEmptyDashboard,
   buildDemoDashboard,
@@ -73,7 +75,7 @@ export default function MonitoringScreen() {
   const [domainDraft, setDomainDraft] = useState("");
   const [subdomainDraft, setSubdomainDraft] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
-  const [leakConsentAccepted, setLeakConsentAccepted] = useState(false);
+  const [consentSaving, setConsentSaving] = useState<RegistryConsentType | null>(null);
 
   // PERF-05: the initial monitoring load runs through React Query (cache/dedup on remount +
   // bounded retry). The Realtime subscription and manual scans still layer their deltas onto local
@@ -93,6 +95,17 @@ export default function MonitoringScreen() {
     retry: 2
   });
   const loading = Boolean(practiceId) && isPending;
+  const consentQuery = useQuery({
+    queryKey: ["consent-registry", practiceId],
+    queryFn: () => loadConsentRegistry(practiceId),
+    enabled: Boolean(practiceId),
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    retry: 1
+  });
+  const consentRegistry = consentQuery.data ?? emptyRegistry(practiceId);
+  const providerConsentActive = consentRegistry.consents.external_provider_checks.active;
+  const leakConsentAccepted = consentRegistry.consents.hibp_email_leak_check.active;
 
   useEffect(() => {
     ensurePracticeInventory(practice);
@@ -181,6 +194,10 @@ export default function MonitoringScreen() {
 
   async function handleManualScan() {
     if (!practice) return;
+    if (!providerConsentActive) {
+      setNotice("Bitte erteilen Sie zuerst die Einwilligung für externe Sicherheitsprüfungen.");
+      return;
+    }
 
     setScanning(true);
     setNotice(null);
@@ -197,6 +214,22 @@ export default function MonitoringScreen() {
       setNotice("Scan konnte nicht gestartet werden. Bitte prüfen Sie Verbindung und Berechtigungen.");
     } finally {
       setScanning(false);
+    }
+  }
+
+  async function handleConsentChange(type: RegistryConsentType) {
+    if (!practice || consentSaving) return;
+    const current = consentRegistry.consents[type].active;
+    setConsentSaving(type);
+    setNotice(null);
+    try {
+      await setRegistryConsent(practice.id, type, !current);
+      await consentQuery.refetch();
+      setNotice(current ? "Einwilligung wurde widerrufen." : "Einwilligung wurde protokolliert.");
+    } catch {
+      setNotice("Einwilligungsstatus konnte nicht geändert werden. Berechtigung und Verbindung prüfen.");
+    } finally {
+      setConsentSaving(null);
     }
   }
 
@@ -289,13 +322,18 @@ export default function MonitoringScreen() {
         subdomainDraft={subdomainDraft}
         emailDraft={emailDraft}
         leakConsentAccepted={leakConsentAccepted}
+        providerConsentActive={providerConsentActive}
+        providerConsentExpiresAt={consentRegistry.consents.external_provider_checks.expiresAt}
+        leakConsentExpiresAt={consentRegistry.consents.hibp_email_leak_check.expiresAt}
+        consentLoading={consentQuery.isPending || consentSaving !== null}
         onDomainDraftChange={setDomainDraft}
         onSubdomainDraftChange={setSubdomainDraft}
         onEmailDraftChange={setEmailDraft}
         onAddDomain={() => handleAddTarget("domain", domainDraft, setDomainDraft)}
         onAddSubdomain={() => handleAddTarget("subdomain", subdomainDraft, setSubdomainDraft)}
         onAddEmail={() => handleAddTarget("email", emailDraft, setEmailDraft)}
-        onToggleLeakConsent={() => setLeakConsentAccepted((current) => !current)}
+        onToggleProviderConsent={() => void handleConsentChange("external_provider_checks")}
+        onToggleLeakConsent={() => void handleConsentChange("hibp_email_leak_check")}
         onRemoveTarget={(value) => {
           if (!practice) return;
           if (inventoryPersistence.status !== "ready" && inventoryPersistence.status !== "saving" && inventoryPersistence.status !== "volatile") {
@@ -328,13 +366,18 @@ function MonitoringTargetCard({
   domainDraft,
   subdomainDraft,
   emailDraft,
+  providerConsentActive,
+  providerConsentExpiresAt,
   leakConsentAccepted,
+  leakConsentExpiresAt,
+  consentLoading,
   onDomainDraftChange,
   onSubdomainDraftChange,
   onEmailDraftChange,
   onAddDomain,
   onAddSubdomain,
   onAddEmail,
+  onToggleProviderConsent,
   onToggleLeakConsent,
   onRemoveTarget
 }: {
@@ -342,13 +385,18 @@ function MonitoringTargetCard({
   domainDraft: string;
   subdomainDraft: string;
   emailDraft: string;
+  providerConsentActive: boolean;
+  providerConsentExpiresAt: string | null;
   leakConsentAccepted: boolean;
+  leakConsentExpiresAt: string | null;
+  consentLoading: boolean;
   onDomainDraftChange: (value: string) => void;
   onSubdomainDraftChange: (value: string) => void;
   onEmailDraftChange: (value: string) => void;
   onAddDomain: () => void;
   onAddSubdomain: () => void;
   onAddEmail: () => void;
+  onToggleProviderConsent: () => void;
   onToggleLeakConsent: () => void;
   onRemoveTarget: (value: string) => void;
 }) {
@@ -362,30 +410,77 @@ function MonitoringTargetCard({
         Praxisadressen und Unterseiten werden von außen auf erreichbare Dienste, Verschlüsselung und Warnzeichen geprüft. E-Mail-Adressen werden nur nach separater Einwilligung für Datenleck-Hinweise verwendet.
       </Text>
 
+      <ConsentControl
+        type="external_provider_checks"
+        active={providerConsentActive}
+        expiresAt={providerConsentExpiresAt}
+        loading={consentLoading}
+        onPress={onToggleProviderConsent}
+      />
+
       <TargetInput label="Praxisadresse" value={domainDraft} placeholder="praxis.de" onChangeText={onDomainDraftChange} onAdd={onAddDomain} />
       <TargetInput label="Unteradresse" value={subdomainDraft} placeholder="vpn.praxis.de" onChangeText={onSubdomainDraftChange} onAdd={onAddSubdomain} />
       <TargetInput label="E-Mail" value={emailDraft} placeholder="kontakt@praxis.de" onChangeText={onEmailDraftChange} onAdd={onAddEmail} keyboardType="email-address" />
 
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: leakConsentAccepted }}
-        accessibilityLabel="Einwilligung zur Datenleck-Prüfung der E-Mail-Adressen"
-        style={styles.consentRow}
+      <ConsentControl
+        type="hibp_email_leak_check"
+        active={leakConsentAccepted}
+        expiresAt={leakConsentExpiresAt}
+        loading={consentLoading}
         onPress={onToggleLeakConsent}
-      >
-        <View style={[styles.checkbox, leakConsentAccepted ? styles.checkboxActive : null]}>
-          {leakConsentAccepted ? <CheckCircle2 color={colors.ink} size={14} /> : null}
-        </View>
-        <Text style={styles.consentText}>
-          Ich bin berechtigt, die freigegebenen Praxis-E-Mail-Adressen für Datenleck-Prüfungen zu verwenden. Es werden nur Treffer-Metadaten verarbeitet.
-        </Text>
-      </Pressable>
+      />
 
       <TargetList title="Praxisadressen" items={targets.domains} onRemove={onRemoveTarget} />
       <TargetList title="Unteradressen" items={targets.subdomains} onRemove={onRemoveTarget} />
       <TargetList title="E-Mail-Adressen" items={targets.emails} onRemove={onRemoveTarget} disabled={!leakConsentAccepted} />
     </GlassCard>
   );
+}
+
+function ConsentControl({
+  type,
+  active,
+  expiresAt,
+  loading,
+  onPress
+}: {
+  type: RegistryConsentType;
+  active: boolean;
+  expiresAt: string | null;
+  loading: boolean;
+  onPress: () => void;
+}) {
+  const definition = CONSENT_DEFINITIONS[type];
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: active, disabled: loading }}
+      accessibilityLabel={`${definition.title}: ${active ? "erteilt" : "nicht erteilt"}`}
+      disabled={loading}
+      style={[styles.consentRow, loading ? styles.consentDisabled : null]}
+      onPress={onPress}
+      testID={`consent-${type}`}
+    >
+      <View style={[styles.checkbox, active ? styles.checkboxActive : null]}>
+        {active ? <CheckCircle2 color={colors.ink} size={14} /> : null}
+      </View>
+      <View style={styles.consentBody}>
+        <Text style={styles.consentTitle}>{definition.title}</Text>
+        <Text style={styles.consentText}>{definition.description}</Text>
+        <Text style={styles.consentStatus}>
+          {active
+            ? `Erteilt bis ${formatConsentDate(expiresAt)} · Antippen zum Widerrufen`
+            : "Nicht erteilt · Antippen zum Erteilen"}
+        </Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function formatConsentDate(value: string | null) {
+  if (!value) return "unbekannt";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "unbekannt" : date.toLocaleDateString("de-DE");
 }
 
 function TargetInput({
@@ -1011,6 +1106,18 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 14
   },
+  consentDisabled: {
+    opacity: 0.6
+  },
+  consentBody: {
+    flex: 1
+  },
+  consentTitle: {
+    color: colors.ink,
+    fontSize: 14,
+    fontWeight: "900",
+    marginBottom: 3
+  },
   checkbox: {
     alignItems: "center",
     borderColor: colors.borderStrong,
@@ -1027,10 +1134,15 @@ const styles = StyleSheet.create({
   },
   consentText: {
     color: colors.ink,
-    flex: 1,
     fontSize: 13,
     fontWeight: "700",
     lineHeight: 19
+  },
+  consentStatus: {
+    color: colors.electric,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 5
   },
   targetList: {
     marginTop: 14

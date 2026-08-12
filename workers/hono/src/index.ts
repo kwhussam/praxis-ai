@@ -17,6 +17,13 @@ import {
 import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/assessment/coverage";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
 import { canonicalizeJsonForHash } from "@/lib/security/canonical-json";
+import {
+  CONSENT_DEFINITIONS,
+  CONSENT_REGISTRY_VERSION,
+  REGISTRY_CONSENT_TYPES,
+  isRegistryConsentType,
+  type RegistryConsentType
+} from "@/lib/legal/consent-contract";
 import { addDays, type DeletionReport } from "./privacy";
 
 type Env = {
@@ -138,7 +145,7 @@ type DashboardHistoryPoint = {
   checkedAt: string;
 };
 
-// DB-08: must mirror consent_log_type_check (20260715121000_extend_consent_log_types.sql)
+// DB-08/SP2-05: must mirror the current consent_log_type_check migration
 // exactly so invalid values are rejected with 400 before hitting the DB constraint.
 const CONSENT_TYPES = [
   "avv",
@@ -146,7 +153,8 @@ const CONSENT_TYPES = [
   "wlan_scan",
   "ai_processing",
   "wlan_audit_scan",
-  "wlan_ipv6_reachability_scan"
+  "wlan_ipv6_reachability_scan",
+  ...REGISTRY_CONSENT_TYPES
 ] as const;
 type ConsentType = (typeof CONSENT_TYPES)[number];
 
@@ -625,6 +633,7 @@ app.post("/api/alert/acknowledge", async (c) => handleAlertAcknowledge(c));
 app.post("/api/privacy/delete", async (c) => handlePrivacyDelete(c));
 app.get("/api/privacy/export", async (c) => handlePrivacyExport(c));
 app.post("/api/legal/avv/accept", async (c) => handleAvvAccept(c));
+app.get("/api/legal/consent/status", async (c) => handleConsentStatus(c));
 app.post("/api/legal/consent", async (c) => handleConsent(c));
 
 // ---- B2 Backoffice Admin-API (E-027) --------------------------------------
@@ -1011,10 +1020,6 @@ async function handleExternalCheck(
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  if (options.requirePractice && payload.consent !== true) {
-    return c.json({ error: "consent_required", message: "Vor externen Checks ist eine Einwilligung erforderlich." }, 400);
-  }
-
   const access = options.requirePractice || payload.practiceId
     ? await requirePracticeAccess(c, payload.practiceId, "external_check", "manager")
     : null;
@@ -1027,6 +1032,18 @@ async function handleExternalCheck(
   }
 
   if (access) {
+    const consentResponse = await requireRegistryConsents(c, access, ["external_provider_checks"]);
+    if (consentResponse) return consentResponse;
+  }
+
+  // HIBP receives an email address and therefore requires its own purpose-bound
+  // consent. Both gates run before quota consumption or any provider call.
+  if (access && payload.leakConsentAccepted === true) {
+    const consentResponse = await requireRegistryConsents(c, access, ["hibp_email_leak_check"]);
+    if (consentResponse) return consentResponse;
+  }
+
+  if (access) {
     const allowed = await consumeExternalQuotaOrErrorResponse(c, access, "external_check");
     if (allowed instanceof Response) return allowed;
     if (!allowed) {
@@ -1036,14 +1053,9 @@ async function handleExternalCheck(
     }
   }
 
-  // SEC-02: the general `consent` gate above only covers running the SSL/DNS/port/
-  // reputation checks. Sending an email address to HIBP is a separate action and needs
-  // its own explicit opt-in, matching handleMonitoringRun's leakConsentAccepted gate -
-  // otherwise the domain-wide consent silently doubled as blanket HIBP consent too.
-  const leakEmails =
-    payload.leakConsentAccepted === true
-      ? uniqueEmails([payload.email, access?.practice.email].filter((item): item is string => Boolean(item)))
-      : [];
+  const leakEmails = payload.leakConsentAccepted === true
+    ? uniqueEmails([payload.email, access?.practice.email].filter((item): item is string => Boolean(item)))
+    : [];
   const result = await performExternalCheck(domain, leakEmails, c.env);
 
   if (access && options.persist) {
@@ -2667,6 +2679,14 @@ async function handleMonitoringRun(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, payload.practiceId, "monitoring_run", "manager");
   if (access instanceof Response) return access;
 
+  const providerConsentResponse = await requireRegistryConsents(c, access, ["external_provider_checks"]);
+  if (providerConsentResponse) return providerConsentResponse;
+
+  if (payload.leakConsentAccepted === true) {
+    const leakConsentResponse = await requireRegistryConsents(c, access, ["hibp_email_leak_check"]);
+    if (leakConsentResponse) return leakConsentResponse;
+  }
+
   const domain = normalizeDomain(payload.domain || access?.practice.domain);
 
   if (!domain) {
@@ -2829,7 +2849,7 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
       ),
       supabaseRest<unknown[]>(
         c.env,
-        `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        `/rest/v1/consent_log?select=type,version,accepted,accepted_at,withdrawn_at,expires_at,scope,supersedes_id,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
         { method: "GET" }
       ),
       // DB-01: complete_privacy_deletion (20260721121000) hard-deletes wlan_scans and
@@ -2984,10 +3004,31 @@ async function handleConsent(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "invalid_type", message: `type must be one of: ${CONSENT_TYPES.join(", ")}` }, 400);
   }
 
-  await insertConsentLog(c, access, [consentType], payload.version ?? "1.0", payload.accepted === true);
+  const registryType = isRegistryConsentType(consentType) ? consentType : null;
+  const version = registryType ? CONSENT_REGISTRY_VERSION : payload.version ?? "1.0";
+  if (registryType && payload.version && payload.version !== CONSENT_REGISTRY_VERSION) {
+    return c.json({ error: "stale_consent_text", currentVersion: CONSENT_REGISTRY_VERSION }, 409);
+  }
+
+  await insertConsentLog(c, access, [consentType], version, payload.accepted === true, registryType
+    ? {
+        scope: CONSENT_DEFINITIONS[registryType].scope,
+        expiresAt: payload.accepted === true
+          ? addDays(new Date(), CONSENT_DEFINITIONS[registryType].validityDays).toISOString()
+          : null
+      }
+    : undefined);
   await auditPracticeAccess(c, access, payload.accepted === true ? "accept" : "withdraw", "consent_log", { type: consentType });
 
-  return c.json({ ok: true });
+  return registryType ? c.json(await buildConsentRegistryStatus(c.env, access.practice.id)) : c.json({ ok: true });
+}
+
+async function handleConsentStatus(c: Context<{ Bindings: Env }>) {
+  const access = await requirePracticeAccess(c, c.req.query("practiceId"), "consent_log", "viewer");
+  if (access instanceof Response) return access;
+  const status = await buildConsentRegistryStatus(c.env, access.practice.id);
+  await auditPracticeAccess(c, access, "read", "consent_log", { types: REGISTRY_CONSENT_TYPES });
+  return c.json(status);
 }
 
 async function insertConsentLog(
@@ -2995,7 +3036,8 @@ async function insertConsentLog(
   access: PracticeAccess,
   types: ConsentType[],
   version: string,
-  accepted: boolean
+  accepted: boolean,
+  registry?: { scope: Record<string, unknown>; expiresAt: string | null }
 ) {
   const now = new Date().toISOString();
   const ipHash = await sha256Text(c.req.header("cf-connecting-ip") ?? "unknown");
@@ -3012,26 +3054,121 @@ async function insertConsentLog(
       accepted_at: now,
       ip_hash: ipHash,
       user_agent_hash: userAgentHash,
-      withdrawn_at: accepted ? null : now
+      withdrawn_at: accepted ? null : now,
+      scope: registry?.scope ?? {},
+      expires_at: registry?.expiresAt ?? null
     }))
   });
 }
 
+async function hasActiveRegistryConsent(env: Env, practiceId: string, type: RegistryConsentType) {
+  return supabaseRest<boolean>(env, "/rest/v1/rpc/has_active_practice_consent", {
+    method: "POST",
+    body: {
+      p_practice_id: practiceId,
+      p_type: type,
+      p_version: CONSENT_REGISTRY_VERSION,
+      p_at: new Date().toISOString()
+    }
+  });
+}
+
+async function requireRegistryConsents(
+  c: Context<{ Bindings: Env }>,
+  access: PracticeAccess,
+  types: RegistryConsentType[]
+) {
+  const states = await Promise.all(types.map(async (type) => ({
+    type,
+    active: await hasActiveRegistryConsent(c.env, access.practice.id, type)
+  })));
+  const missing = states.filter((state) => !state.active).map((state) => state.type);
+  if (missing.length === 0) return null;
+
+  await auditPracticeAccess(c, access, "consent_denied", "external_provider", { missing_types: missing });
+  return c.json({
+    error: "consent_required",
+    message: "Die erforderliche Einwilligung fehlt, ist abgelaufen oder wurde widerrufen.",
+    requiredTypes: missing,
+    consentVersion: CONSENT_REGISTRY_VERSION
+  }, 403);
+}
+
+async function buildConsentRegistryStatus(env: Env, practiceId: string) {
+  const entries = await Promise.all(REGISTRY_CONSENT_TYPES.map(async (type) => {
+    const rows = await supabaseRest<unknown[]>(
+      env,
+      `/rest/v1/consent_log?select=id,type,version,accepted,accepted_at,withdrawn_at,expires_at,scope&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.${encodeURIComponent(type)}&order=accepted_at.desc,created_at.desc,id.desc&limit=1`,
+      { method: "GET" }
+    );
+    const row = asRecordOrNull(rows[0]);
+    const expiresAt = typeof row?.expires_at === "string" ? row.expires_at : null;
+    const withdrawnAt = typeof row?.withdrawn_at === "string" ? row.withdrawn_at : null;
+    const active = row?.accepted === true
+      && row.version === CONSENT_REGISTRY_VERSION
+      && withdrawnAt === null
+      && expiresAt !== null
+      && new Date(expiresAt).getTime() > Date.now();
+    return [type, {
+      type,
+      active,
+      version: typeof row?.version === "string" ? row.version : CONSENT_REGISTRY_VERSION,
+      acceptedAt: typeof row?.accepted_at === "string" ? row.accepted_at : null,
+      expiresAt,
+      withdrawnAt,
+      scope: asRecordOrNull(row?.scope) ?? CONSENT_DEFINITIONS[type].scope
+    }] as const;
+  }));
+
+  return {
+    practiceId,
+    consents: Object.fromEntries(entries)
+  };
+}
+
+async function fetchPracticesWithActiveConsent(env: Env, type: RegistryConsentType) {
+  const rows = await supabaseRest<unknown[]>(env, "/rest/v1/rpc/list_practices_with_active_consent", {
+    method: "POST",
+    body: {
+      p_type: type,
+      p_version: CONSENT_REGISTRY_VERSION,
+      p_at: new Date().toISOString()
+    }
+  });
+  return new Set(rows
+    .map((row) => asRecordOrNull(row)?.practice_id)
+    .filter((practiceId): practiceId is string => typeof practiceId === "string" && isUuid(practiceId)));
+}
+
 async function runScheduledMonitoring(cron: string, env: Env) {
   const modules = CRON_MODULES.get(cron) ?? ALL_MONITORING_MODULES;
-  const targets = await fetchMonitoringTargets(env);
+  const [targets, providerConsentIds, leakConsentIds] = await Promise.all([
+    fetchMonitoringTargets(env),
+    fetchPracticesWithActiveConsent(env, "external_provider_checks"),
+    fetchPracticesWithActiveConsent(env, "hibp_email_leak_check")
+  ]);
 
   await mapInBatches(
-    targets,
+    targets.filter((target) => providerConsentIds.has(target.id)),
     monitoringConcurrencyLimit(env),
     async (target) => {
+      const leakConsentActive = leakConsentIds.has(target.id);
       const previousState = await fetchPreviousMonitoringSnapshot(env, target.id);
-      const result = await performExternalCheck(target.domain, normalizeEmail(target.email), env, {
-        modules,
-        previousChecks: previousState.checks
-      });
+      const result = await performExternalCheck(
+        target.domain,
+        leakConsentActive ? normalizeEmail(target.email) : null,
+        env,
+        { modules, previousChecks: previousState.checks }
+      );
       const comparison = buildMonitoringComparison([result], previousState.summary);
-      const snapshot = buildMonitoringSnapshot(target.id, result, "scheduled", comparison, [target.domain], target.email ? 1 : 0);
+      const snapshot = buildMonitoringSnapshot(
+        target.id,
+        result,
+        "scheduled",
+        comparison,
+        [target.domain],
+        leakConsentActive && target.email ? 1 : 0
+      );
       const events = buildMonitoringEvents(result, modules, comparison);
 
       await persistMonitoringResult(env, snapshot, events);

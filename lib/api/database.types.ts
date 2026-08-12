@@ -268,9 +268,12 @@ export type Database = {
           accepted: boolean
           accepted_at: string
           created_at: string | null
+          expires_at: string | null
           id: string
           ip_hash: string | null
           practice_id: string | null
+          scope: Json
+          supersedes_id: string | null
           type: string
           user_agent_hash: string | null
           user_id: string | null
@@ -281,9 +284,12 @@ export type Database = {
           accepted: boolean
           accepted_at: string
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           ip_hash?: string | null
           practice_id?: string | null
+          scope?: Json
+          supersedes_id?: string | null
           type: string
           user_agent_hash?: string | null
           user_id?: string | null
@@ -294,9 +300,12 @@ export type Database = {
           accepted?: boolean
           accepted_at?: string
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           ip_hash?: string | null
           practice_id?: string | null
+          scope?: Json
+          supersedes_id?: string | null
           type?: string
           user_agent_hash?: string | null
           user_id?: string | null
@@ -309,6 +318,13 @@ export type Database = {
             columns: ["practice_id"]
             isOneToOne: false
             referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consent_log_supersedes_id_fkey"
+            columns: ["supersedes_id"]
+            isOneToOne: false
+            referencedRelation: "consent_log"
             referencedColumns: ["id"]
           },
         ]
@@ -1929,6 +1945,19 @@ export type Database = {
         Args: { p_practice_id: string; p_user_id: string }
         Returns: Json
       }
+      has_active_practice_consent: {
+        Args: {
+          p_at?: string
+          p_practice_id: string
+          p_type: string
+          p_version: string
+        }
+        Returns: boolean
+      }
+      list_practices_with_active_consent: {
+        Args: { p_at?: string; p_type: string; p_version: string }
+        Returns: { practice_id: string }[]
+      }
       consume_ai_report_quota: {
         Args: {
           p_limit: number
@@ -2228,4 +2257,3 @@ export const Constants = {
     },
   },
 } as const
-

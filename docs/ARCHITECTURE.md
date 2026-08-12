@@ -124,6 +124,25 @@ each detail view can export its own canonical artifact.
 
 ## Security Model
 
+### Purpose-bound consent registry (SP2-05)
+
+External providers are authorized only by the server-side, append-only `consent_log`; request booleans
+express scan intent and never grant permission. Registry events bind practice, actor, purpose, exact
+text version, structured provider/data scope, acceptance time, expiry and withdrawal. PostgreSQL
+links every new event to its predecessor while an advisory transaction lock serializes concurrent
+events for the same practice and purpose. Active-state RPCs accept the Worker `service_role` only,
+use a fixed empty `search_path`, and return true only for the latest accepted, unwithdrawn,
+unexpired event on the current text version.
+
+The authenticated Worker owns all writes and derives version, scope and one-year validity from the
+shared consent contract. Managers may grant or withdraw; viewers may read the current status. Both
+the manual provider path and the monitoring path check the registry before quota consumption or any
+outbound request. HIBP has a separate purpose because it receives an email address. Scheduled runs
+first obtain the active-practice sets from the database and skip practices or email checks without
+the respective consent. Registry lookup failure is fail-closed. Consent evidence is included in the
+privacy export; its legal retention/deletion treatment remains subject to the documented privacy
+policy and legal review.
+
 - No third-party API key is bundled into the app.
 - Supabase anon key is public but protected by RLS.
 - Service role keys stay in server environments only.
@@ -140,5 +159,5 @@ each detail view can export its own canonical artifact.
 - External checks expose per-provider status (`active`, `not_configured`, `unavailable`) so missing API keys are reported as not checked instead of being interpreted as no risk.
 - Domain checks include bounded subdomain discovery through SecurityTrails, with a Cloudflare DNS common-host fallback, and evaluate each discovered subdomain separately for DNS/TLS posture.
 - Mail security checks cover SPF, DKIM and DMARC alignment readiness plus MTA-STS, TLS-RPT and CAA DNS records.
-- The Monitoring tab lets practices maintain explicit external targets for domains, subdomains and email addresses. Email addresses are sent for leak checks only when the user grants explicit consent for that run.
+- The Monitoring tab lets practices maintain explicit external targets for domains, subdomains and email addresses. Provider and HIBP permissions are persisted, purpose-bound, expiring and immediately revocable through the consent registry.
 - Monitoring snapshots persist a small comparison summary for open critical ports, DNS fingerprints, DMARC policy and certificate fingerprints. This enables historical states for findings: new, recurring, resolved or unchanged, while full check payloads remain encrypted.

@@ -171,18 +171,42 @@ describe("POST /api/check/external", () => {
     }
   });
 
-  it("fordert Consent vor dem Praxis-Check", async () => {
-    const res = await worker.fetch(
-      new Request("http://localhost/api/check/external", {
-        method: "POST",
-        body: JSON.stringify({ practiceId: "11111111-1111-4111-8111-111111111111", domain: "praxis.de" })
-      }),
-      baseEnv,
-      {} as ExecutionContext
-    );
+  it("vertraut einem Request-Flag nicht und stoppt ohne aktiven Registry-Eintrag vor Quota und Providern", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: "11111111-1111-4111-8111-111111111111", owner_id: "22222222-2222-4222-8222-222222222222", domain: "praxis.de", email: "kontakt@praxis.de", plan: "free" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) return Response.json(true);
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) return Response.json(false);
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) return new Response(null, { status: 204 });
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
 
-    expect(res.status).toBe(400);
-    expect(await res.json()).toMatchObject({ error: "consent_required" });
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token", "content-type": "application/json" },
+          body: JSON.stringify({ practiceId: "11111111-1111-4111-8111-111111111111", domain: "praxis.de", consent: true })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: "consent_required", requiredTypes: ["external_provider_checks"] });
+      expect(requestedUrls.some((url) => url.includes("consume_external_check_quota"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://api.ssllabs.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("lehnt fehlendes JWT vor jedem Service-Role-DB-Zugriff mit 401 ab", async () => {
@@ -342,6 +366,9 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json({ message: "internal database detail" }, { status: 500 });
       }
@@ -410,6 +437,9 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(false);
       }
@@ -467,6 +497,9 @@ describe("POST /api/check/external", () => {
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) {
         return new Response(null, { status: 204 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         rateLimitRequestBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -775,6 +808,9 @@ describe("POST /api/check/external", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(true);
       }
@@ -871,6 +907,9 @@ describe("POST /api/check/external", () => {
         return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
         return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
@@ -1010,7 +1049,8 @@ describe("POST /api/check/external", () => {
       }
       if (
         url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window") ||
-        url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")
+        url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota") ||
+        url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")
       ) {
         return Response.json(true);
       }
@@ -1175,8 +1215,8 @@ describe("POST /api/check/external", () => {
 });
 
 describe("POST /api/check/external HIBP-Consent getrennt vom allgemeinen Consent (SEC-02)", () => {
-  function installExternalCheckFetch(requestedUrls: string[]) {
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
+  function installExternalCheckFetch(requestedUrls: string[], inactiveConsentType?: string) {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       requestedUrls.push(url);
 
@@ -1200,6 +1240,10 @@ describe("POST /api/check/external HIBP-Consent getrennt vom allgemeinen Consent
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { p_type?: string };
+        return Response.json(body.p_type !== inactiveConsentType);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(true);
@@ -1298,6 +1342,36 @@ describe("POST /api/check/external HIBP-Consent getrennt vom allgemeinen Consent
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("stoppt bei fehlender HIBP-Einwilligung vor Quota und Provideraufruf", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+    installExternalCheckFetch(requestedUrls, "hibp_email_leak_check");
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/check/external", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token", "content-type": "application/json" },
+          body: JSON.stringify({
+            practiceId: "11111111-1111-4111-8111-111111111111",
+            domain: "praxis.de",
+            email: "kontakt@praxis.de",
+            leakConsentAccepted: true
+          })
+        }),
+        { ...baseEnv, HIBP_API_KEY: "hibp-test" },
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ error: "consent_required", requiredTypes: ["hibp_email_leak_check"] });
+      expect(requestedUrls.some((url) => url.includes("consume_external_check_quota"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://haveibeenpwned.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("performExternalCheck Subrequest-Fan-out (PERF-01)", () => {
@@ -1330,6 +1404,9 @@ describe("performExternalCheck Subrequest-Fan-out (PERF-01)", () => {
         return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
+        return Response.json(true);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
         return Response.json(true);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
@@ -1452,6 +1529,9 @@ describe("Provider-Fehlerbehandlung markiert unavailable statt sauber (TS-01)", 
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(true);
       }
@@ -1567,6 +1647,9 @@ describe("Provider-Fehlerbehandlung markiert unavailable statt sauber (TS-01)", 
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window")) {
         return Response.json(true);
       }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        return Response.json(true);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota")) {
         return Response.json(true);
       }
@@ -1680,6 +1763,38 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
     };
   }
 
+  it("ueberspringt Praxen ohne aktive Provider-Einwilligung vor jedem Scan", async () => {
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: targetId, domain: "praxis.de", email: "kontakt@praxis.de" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/list_practices_with_active_consent")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { p_type?: string };
+        return Response.json(body.p_type === "external_provider_checks" ? [] : [{ practice_id: targetId }]);
+      }
+      return Response.json({}, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const waitUntilPromises: Promise<unknown>[] = [];
+      const ctx = { waitUntil: (promise: Promise<unknown>) => waitUntilPromises.push(promise) } as unknown as ExecutionContext;
+
+      worker.scheduled({ cron: "0 */6 * * *", scheduledTime: Date.now() } as unknown as ScheduledController, baseEnv, ctx);
+      await Promise.all(waitUntilPromises);
+
+      expect(requestedUrls.some((url) => url.includes("monitoring_snapshots"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://api.ssllabs.com"))).toBe(false);
+      expect(requestedUrls.some((url) => url.startsWith("https://haveibeenpwned.com"))).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("ruft bei einem ssl_check-Cron nur SSL frisch ab und uebernimmt DNS/E-Mail/Subdomains aus dem letzten Snapshot", async () => {
     const originalFetch = globalThis.fetch;
     const cloudflareDnsCalls: string[] = [];
@@ -1693,6 +1808,9 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
 
       if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
         return Response.json([{ id: targetId, domain: "praxis.de", email: "kontakt@praxis.de" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/list_practices_with_active_consent")) {
+        return Response.json([{ practice_id: targetId }]);
       }
       if (url.includes("/rest/v1/monitoring_snapshots") && url.includes("select=checks,encrypted_checks")) {
         return Response.json([
@@ -1773,6 +1891,9 @@ describe("runScheduledMonitoring modulweise Provider-Aufrufe (PERF-02)", () => {
 
       if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
         return Response.json([{ id: targetId, domain: "praxis.de", email: "kontakt@praxis.de" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/list_practices_with_active_consent")) {
+        return Response.json([{ practice_id: targetId }]);
       }
       if (url.includes("/rest/v1/monitoring_snapshots") && url.includes("select=checks,encrypted_checks")) {
         return Response.json([]);
@@ -2902,6 +3023,74 @@ describe("POST /api/legal/consent (DB-08)", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("speichert Registry-Ereignisse mit serverseitiger Version, Zweckbindung und Ablauf", async () => {
+    const originalFetch = globalThis.fetch;
+    const insertedRows: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: roleGatePracticeId, owner_id: "22222222-2222-4222-8222-222222222222", name: "Praxis", domain: "praxis.de", email: "kontakt@praxis.de", plan: "free" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) return Response.json(true);
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) return new Response(null, { status: 204 });
+      if (url.startsWith("https://example.supabase.co/rest/v1/consent_log") && init?.method === "POST") {
+        insertedRows.push(...JSON.parse(String(init.body)) as Array<Record<string, unknown>>);
+        return new Response(null, { status: 201 });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/consent_log")) {
+        const type = decodeURIComponent(new URL(url).searchParams.get("type")?.replace("eq.", "") ?? "");
+        return Response.json(insertedRows.filter((row) => row.type === type).slice(-1));
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/legal/consent", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token", "content-type": "application/json" },
+          body: JSON.stringify({
+            practiceId: roleGatePracticeId,
+            type: "external_provider_checks",
+            accepted: true,
+            version: "2026-08-12.v1",
+            scope: { injected: true },
+            expiresAt: "2099-01-01T00:00:00Z"
+          })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(insertedRows).toHaveLength(1);
+      expect(insertedRows[0]).toMatchObject({
+        practice_id: roleGatePracticeId,
+        type: "external_provider_checks",
+        version: "2026-08-12.v1",
+        accepted: true,
+        scope: {
+          target_kind: "practice_managed_domains",
+          data_fields: ["domain", "subdomain"],
+          providers: ["cloudflare_dns", "qualys_ssl_labs", "shodan", "virustotal", "securitytrails", "direct_https"],
+          purposes: ["dns", "tls", "ports", "reputation", "subdomains"]
+        }
+      });
+      expect(insertedRows[0].scope).not.toEqual({ injected: true });
+      expect(new Date(String(insertedRows[0].expires_at)).getTime()).toBeLessThan(new Date("2099-01-01T00:00:00Z").getTime());
+      expect(await res.json()).toMatchObject({
+        practiceId: roleGatePracticeId,
+        consents: { external_provider_checks: { active: true, version: "2026-08-12.v1" } }
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe("GET /api/reports pagination (DB-04)", () => {
@@ -3209,6 +3398,7 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
     if (
       url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_rate_limit_window") ||
       url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_external_check_quota") ||
+      url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent") ||
       url.startsWith("https://example.supabase.co/rest/v1/rpc/consume_ai_report_quota")
     ) {
       return Response.json(true);
