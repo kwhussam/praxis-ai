@@ -75,11 +75,12 @@ Aufbewahrungsentscheidung in einer separaten geprüften Migration entfernen.
   ungenutzten Parameter in `create_or_get_own_practice` werden gemeldet;
 - Worker-Negativtests prüfen fehlende Provider-/HIBP-Einwilligung vor Quota und Outbound Requests;
 - Clienttests prüfen, dass Scope, Version und Ablauf nicht vom Client gesetzt werden.
+- GitHub-CI-Run `31616201072` für Commit `b253d76`: `quality` einschließlich Secret Scan und
+  Gesamtverifikation sowie `rls-pgtap` vollständig erfolgreich.
 
 ## Noch offene Release-Gates
 
 - Datenschutz-/Fachrechtsfreigabe des V1-Wortlauts, der Rechtsgrundlage, Drittanbieterinformationen,
   Aufbewahrung und Widerrufsfolgen;
 - nativer iOS-/Android-Smoke für Erteilen, App-Neustart, Ablaufanzeige, Widerruf und blockierten
-  Folgescan;
-- grüner GitHub-CI-Lauf nach Push, einschließlich `quality`, Gitleaks und `rls-pgtap`.
+  Folgescan.
