@@ -23,6 +23,10 @@ jobs:
       - name: Verify
         run: npm run verify
         env:
+          # Remote-environment Jest probes run when all TEST_* secrets exist.
+          # Tenant/RPC enforcement is always covered by the mandatory local
+          # rls-pgtap job below, so absent remote secrets are an explicit skip.
+          ALLOW_MISSING_REMOTE_RLS_CONFIG: "true"
           SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}

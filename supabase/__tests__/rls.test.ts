@@ -22,14 +22,15 @@ const missingConfig = Object.entries(requiredConfig)
 
 const configErrorMessage = `RLS integration tests are missing required configuration: ${missingConfig.join(", ")}`;
 const isCi = process.env.CI === "true";
+const allowMissingConfig = process.env.ALLOW_MISSING_REMOTE_RLS_CONFIG === "true";
 const describeIfConfigured = missingConfig.length === 0 ? describe : describe.skip;
 
-if (missingConfig.length > 0 && isCi) {
+if (missingConfig.length > 0 && isCi && !allowMissingConfig) {
   throw new Error(configErrorMessage);
 }
 
-if (missingConfig.length > 0 && !isCi) {
-  console.warn(`${configErrorMessage}. Skipping locally; CI must provide this configuration.`);
+if (missingConfig.length > 0) {
+  console.warn(`${configErrorMessage}. Skipping the optional remote suite; the CI pgTAP job remains mandatory.`);
 }
 
 describeIfConfigured("RLS: Praxis darf nur eigene Daten sehen", () => {

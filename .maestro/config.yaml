@@ -19,3 +19,4 @@ executionOrder:
     - 12-invitation-auth-handoff
     - 13-inventory-persistence
     - 14-dashboard-responsive
+    - 15-pdf-export

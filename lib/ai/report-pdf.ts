@@ -1,4 +1,5 @@
 import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 import { apiResponse } from "@/lib/api/client";
 
@@ -48,6 +49,26 @@ export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
     encoding: FileSystem.EncodingType.Base64
   });
   return filePath;
+}
+
+/** Opens the native PDF share/view dialog and removes the plaintext temp file afterwards. */
+export async function shareReportPdf(options: ExportOptions) {
+  const filePath = await exportReportPdf(options);
+
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      throw new Error("Auf diesem Gerät ist kein sicherer PDF-Teilen-Dialog verfügbar.");
+    }
+    await Sharing.shareAsync(filePath, {
+      mimeType: "application/pdf",
+      UTI: "com.adobe.pdf",
+      dialogTitle: "PraxisShield-Bericht öffnen oder teilen"
+    });
+  } finally {
+    // The receiving app owns any user-approved copy. PraxisShield retains no
+    // plaintext export after the native dialog has closed or failed.
+    await FileSystem.deleteAsync(filePath, { idempotent: true });
+  }
 }
 
 /** Removes canonical PDF cache files for one tenant or for every tenant on logout. */

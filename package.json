@@ -28,7 +28,9 @@
     "e2e:rls": "bash scripts/e2e/run-rls.sh",
     "e2e:maestro:check": "bash scripts/e2e/maestro.sh --version",
     "e2e:smoke": "bash scripts/e2e/smoke.sh ios",
-    "e2e:smoke:android": "bash scripts/e2e/smoke.sh android"
+    "e2e:smoke:android": "bash scripts/e2e/smoke.sh android",
+    "e2e:pdf:ios": "bash scripts/e2e/smoke.sh ios pdf",
+    "e2e:pdf:android": "bash scripts/e2e/smoke.sh android pdf"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.0.4",
@@ -53,6 +55,7 @@
     "expo-notifications": "~0.28.19",
     "expo-router": "~3.5.24",
     "expo-secure-store": "~13.0.2",
+    "expo-sharing": "~12.0.1",
     "expo-sqlite": "~14.0.6",
     "expo-status-bar": "~1.12.1",
     "hono": "^4.6.3",

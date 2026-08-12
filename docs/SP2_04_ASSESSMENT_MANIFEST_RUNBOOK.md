@@ -24,11 +24,13 @@ Status: `verification`
   und Reporthash und rendert mit dem im Manifest gespeicherten Zeitstempel und Templatevertrag.
   Altberichte ohne Manifest liefern `409 canonical_report_unavailable`; ein ungültiges oder nicht
   entschlüsselbares Report-Envelope liefert fail-closed `409 report_integrity_failed` statt `500`.
-- Die App rendert kein eigenes HTML/PDF mehr. Sie validiert Content-Type und `%PDF-`-Signatur und
-  cached die Serverbytes ausschließlich tenantgetrennt unter `cacheDirectory`. Dieser Cache ist
-  nicht Bestandteil regulärer iOS-Backups und wird bei Logout, Praxiswechsel sowie lokal erkanntem
-  Entzug/Löschen einer Praxis idempotent entfernt. Eine serverseitige Löschung von einem anderen
-  Gerät kann lokale Offline-Dateien naturgemäß erst beim nächsten Session-/Praxisabgleich entfernen.
+- Die App rendert kein eigenes HTML/PDF mehr. Sie validiert Content-Type und `%PDF-`-Signatur,
+  öffnet das Serverartefakt im nativen Teilen-/Öffnen-Dialog und cached dessen Bytes nur temporär,
+  tenantgetrennt unter `cacheDirectory`. Die Klartextdatei wird in einem `finally` nach Schließen
+  oder Fehlschlag des Dialogs gelöscht. Zusätzlich entfernen Logout, Praxiswechsel sowie lokal
+  erkannter Entzug/Löschen einer Praxis den Cache idempotent. Eine serverseitige Löschung von einem
+  anderen Gerät kann lokale Offline-Dateien naturgemäß erst beim nächsten Session-/Praxisabgleich
+  entfernen.
 
 ## Datenschutz
 
@@ -42,13 +44,14 @@ Quellchecks und Berichte anonymisiert werden.
 
 1. Datenbankmigration `20260811130000_sp2_04_assessment_manifest.sql` anwenden.
 2. Worker deployen. Erst dieser Worker nutzt `persist_assessment_report` und den neuen PDF-Vertrag.
-3. App-Build mit `expo-file-system` ausrollen.
+3. App-Build mit `expo-file-system` und `expo-sharing` ausrollen.
 4. Einen neuen Fragebogenbericht erzeugen und prüfen:
    - Report und Manifest besitzen dieselbe Praxis und Quellcheck-ID;
    - ein Retry mit gleicher `client_sync_id` erzeugt keine zweite Zeile;
    - zwei PDF-Exporte besitzen identische Bytes/ETags;
    - fremde Praxis erhält keine Manifest- oder Reportzeile;
-   - App-Neustart lädt die Berichtshistorie und der Detail-Export cached das Server-PDF;
+   - App-Neustart lädt die Berichtshistorie und der Detail-Export öffnet das Server-PDF nativ;
+   - nach Schließen/Fehlschlag des Dialogs verbleibt keine Klartext-PDF im App-Cache;
    - Logout und Praxiswechsel entfernen den jeweiligen lokalen PDF-Cache.
 5. Fehlerraten für `canonical_report_unavailable` (erwartete Altberichte) und
    `report_integrity_failed` (nicht erwarteter Integritätsalarm) getrennt beobachten.
@@ -78,11 +81,18 @@ Der sichere Rollback ist vorwärtskompatibel und löscht keine Evidenz:
 - Worker-Test: manipuliertes Manifest und nicht entschlüsselbarer Report werden vor PDF-Ausgabe
   mit `409 report_integrity_failed` abgelehnt;
 - App-Test: Request enthält nur Praxis-/Report-ID, Cache schreibt exakt die Serverbytes in
-  `cacheDirectory` und wird tenantbezogen beziehungsweise vollständig gelöscht.
+  `cacheDirectory`, der native Dialog wird aufgerufen und die temporäre Datei wird auch im
+  Fehlerfall gelöscht; tenantbezogene und vollständige Cachebereinigung sind separat geprüft.
+- GitHub-CI nach dem ersten Push: Gitleaks und die verpflichtende pgTAP-Suite bestanden; die
+  Quality-Stage deckte zwei CI-Portabilitätsfehler auf (Zeitzone und optionale Remote-RLS-Suite),
+  deren Korrektur in diesem Arbeitsstand enthalten ist und nach Push erneut bewiesen werden muss.
+- iOS-18.6-Simulator: kanonischer Bericht geladen und echtes Server-PDF mit Vorschau im nativen
+  Teilen-/Öffnen-Dialog dargestellt. Der abschließende automatisierte Cleanup-Nachweis wurde durch
+  einen lokalen Docker-/Datenträgerfehler unterbrochen und gilt daher noch nicht als bestanden.
 
 ## Noch offene Release-Gates
 
-- CI-Lauf der pgTAP-/Jest-Gates nach Push;
+- grüner CI-Gesamtlauf nach Push der Portabilitätskorrekturen;
 - nativer PDF-Export-, Öffnen-, Logout- und Praxiswechsel-Smoke auf iOS und Android;
 - Datenschutz-Sign-off für ADR-001 und externe D1-Rechtsprüfung. Der vorbestehende Löschumfang für
   Inventar- und Monitoring-Target-Tabellen bleibt ein ADR-001-Blocker vor M5 und wird durch SP2-04

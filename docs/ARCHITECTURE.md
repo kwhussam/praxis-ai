@@ -114,11 +114,13 @@ zero, rejects unsupported/cyclic values, and delegates decimal/exponent renderin
 tenant-scoped encrypted report, verifies the manifest and report hashes, and renders every PDF page
 from the stored artifact with the manifest's original timestamp. Repeated exports are byte-identical;
 the response exposes PDF and manifest integrity metadata. Android/iOS never render an alternative
-report: they cache the returned server bytes in a tenant-scoped `expo-file-system` cache directory,
-not the backup-included documents directory. Logout, practice switching and local practice removal
-delete that cache idempotently. Legacy reports without a manifest remain readable but fail closed for
-canonical PDF export; decrypt failures are reported as integrity conflicts. The report index reloads
-persisted history after restart, and each detail view can export its own canonical artifact.
+report: they write the returned server bytes only to a tenant-scoped `expo-file-system` cache
+directory, not the backup-included documents directory, and open that artifact through the native
+`expo-sharing` dialog. A `finally` removes the plaintext PDF as soon as the dialog closes or fails;
+logout, practice switching and local practice removal also delete the cache idempotently. Legacy
+reports without a manifest remain readable but fail closed for canonical PDF export; decrypt failures
+are reported as integrity conflicts. The report index reloads persisted history after restart, and
+each detail view can export its own canonical artifact.
 
 ## Security Model
 

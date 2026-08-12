@@ -7,7 +7,7 @@ import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
-import { exportReportPdf } from "@/lib/ai/report-pdf";
+import { shareReportPdf } from "@/lib/ai/report-pdf";
 import { generateReportWithId } from "@/lib/ai/report";
 import { loadReports, type ReportListItem } from "@/lib/ai/report-service";
 import { AppConfig } from "@/lib/config/environment";
@@ -29,7 +29,6 @@ export default function ReportsScreen() {
   const demoSampleReport = AppConfig.isDemoMode && practice?.id.startsWith("demo-") ? SAMPLE_STORED_REPORT : null;
   const latestReport = storedReport ?? demoSampleReport;
   const saveReport = useReportStore((state) => state.saveReport);
-  const setPdfPath = useReportStore((state) => state.setPdfPath);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,12 +113,10 @@ export default function ReportsScreen() {
     setExporting(true);
 
     try {
-      const pdfPath = await exportReportPdf({
+      await shareReportPdf({
         practiceId: practice?.id ?? "",
         reportId: latestReport.id
       });
-      setPdfPath(latestReport.id, pdfPath);
-      Alert.alert("PDF erstellt", `Der Bericht wurde gespeichert:\n${pdfPath}`);
     } catch (nextError) {
       Alert.alert("PDF-Export fehlgeschlagen", nextError instanceof Error ? nextError.message : "Unbekannter Fehler");
     } finally {
@@ -214,6 +211,7 @@ export default function ReportsScreen() {
             onPress={handleExportPdf}
             variant="ghost"
             style={styles.actionButton}
+            testID="report-export-pdf"
             icon={exporting ? <ActivityIndicator color={colors.ink} /> : undefined}
           />
         </View>
@@ -232,6 +230,7 @@ export default function ReportsScreen() {
                 onPress={() => router.push({ pathname: "/(tabs)/report/[id]", params: { id: item.id } })}
                 variant="ghost"
                 style={styles.historyButton}
+                testID={`report-history-${item.id}`}
               />
             );
           })}

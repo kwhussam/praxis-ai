@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLATFORM="${1:-ios}"
+SUITE="${2:-all}"
 RUNTIME_ENV="$ROOT_DIR/.e2e/runtime.env"
 METRO_PID_FILE="$ROOT_DIR/.e2e/metro.pid"
 METRO_LOG="$ROOT_DIR/.e2e/metro.log"
@@ -11,7 +12,11 @@ RESULT_FILE="$ROOT_DIR/.maestro/artifacts/results.xml"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT="${MAESTRO_DRIVER_STARTUP_TIMEOUT:-180000}"
 
 if [[ "$PLATFORM" != "ios" && "$PLATFORM" != "android" ]]; then
-  echo "Usage: smoke.sh <ios|android>" >&2
+  echo "Usage: smoke.sh <ios|android> [all|pdf]" >&2
+  exit 1
+fi
+if [[ "$SUITE" != "all" && "$SUITE" != "pdf" ]]; then
+  echo "Usage: smoke.sh <ios|android> [all|pdf]" >&2
   exit 1
 fi
 
@@ -22,6 +27,10 @@ set -a
 # shellcheck disable=SC1090
 source "$RUNTIME_ENV"
 set +a
+
+if [[ "$SUITE" == "pdf" ]]; then
+  node scripts/e2e/seed-canonical-report.mjs
+fi
 
 if [[ "$PLATFORM" == "ios" ]]; then
   if ! xcrun simctl list devices booted | grep -q "(Booted)"; then
@@ -69,6 +78,10 @@ mkdir -p "$(dirname "$RESULT_FILE")"
 rm -f "$RESULT_FILE"
 
 cd "$ROOT_DIR/.maestro"
+MAESTRO_TARGET="."
+if [[ "$SUITE" == "pdf" ]]; then
+  MAESTRO_TARGET="flows/15-pdf-export.yaml"
+fi
 bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
   --format=JUNIT \
   --output="$RESULT_FILE" \
@@ -79,5 +92,23 @@ bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
   -e "WORKER_URL=http://127.0.0.1:8787" \
   -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
   -e "DEV_CLIENT_URL=$DEV_CLIENT_URL" \
-  -e "SCREENSHOT_VARIANT=smoke" \
-  .
+  -e "SCREENSHOT_VARIANT=${PLATFORM}-smoke" \
+  "$MAESTRO_TARGET"
+
+if [[ "$SUITE" == "pdf" && "$PLATFORM" == "ios" ]]; then
+  APP_DATA_CONTAINER="$(xcrun simctl get_app_container booted ai.praxisshield.app data)"
+  if find "$APP_DATA_CONTAINER/Library/Caches" -name 'PraxisShield-Bericht-*.pdf' -print | grep -q .; then
+    echo "Plaintext PDF remained in the iOS cache after the native share dialog closed." >&2
+    exit 1
+  fi
+elif [[ "$SUITE" == "pdf" ]]; then
+  ANDROID_CACHE_FILES="$(adb shell run-as ai.praxisshield.app find cache -name 'PraxisShield-Bericht-*.pdf' -print 2>/dev/null || true)"
+  if [[ -n "$ANDROID_CACHE_FILES" ]]; then
+    echo "Plaintext PDF remained in the Android cache after the native share dialog closed." >&2
+    exit 1
+  fi
+fi
+
+if [[ "$SUITE" == "pdf" ]]; then
+  echo "Native $PLATFORM PDF open/share and plaintext-cache cleanup smoke passed."
+fi

@@ -1,0 +1,59 @@
+appId: ai.praxisshield.app
+name: 15-pdf-export
+tags:
+  - ui-e2e
+  - sp2-04
+  - native-storage
+---
+- runFlow: ../subflows/bootstrap.yaml
+- runFlow:
+    file: ../subflows/login.yaml
+    env:
+      EMAIL: owner-a@example.test
+      PASSWORD: "${TEST_PASSWORD}"
+- tapOn:
+    id: tab-reports
+- extendedWaitUntil:
+    visible:
+      id: report-history-a2400000-0000-4000-8000-000000000001
+    timeout: 30000
+- tapOn:
+    id: report-history-a2400000-0000-4000-8000-000000000001
+- swipe:
+    start: "50%,72%"
+    end: "50%,38%"
+    duration: 350
+- swipe:
+    start: "50%,72%"
+    end: "50%,38%"
+    duration: 350
+- swipe:
+    start: "50%,72%"
+    end: "50%,38%"
+    duration: 350
+- extendedWaitUntil:
+    visible:
+      id: report-detail-export-pdf
+    timeout: 30000
+# Keep the button's center above the persistent tab bar before Maestro taps it.
+- swipe:
+    start: "50%,70%"
+    end: "50%,52%"
+    duration: 350
+- extendedWaitUntil:
+    visible:
+      id: report-detail-export-pdf
+    timeout: 30000
+- tapOn:
+    id: report-detail-export-pdf
+- extendedWaitUntil:
+    visible: "PraxisShield-Bericht-a2400000.*"
+    timeout: 60000
+- takeScreenshot: artifacts/sp2-04/pdf-native-share-${SCREENSHOT_VARIANT}
+- tapOn:
+    text: "Abbrechen|Cancel|Schließen|Close"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: report-detail-export-pdf
+    timeout: 30000

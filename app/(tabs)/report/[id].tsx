@@ -12,7 +12,7 @@ import { Screen } from "@/components/ui/Screen";
 import { colors, colorForScore } from "@/constants/colors";
 import { buildReportScore } from "@/lib/ai/report-findings";
 import type { Report } from "@/lib/ai/report";
-import { exportReportPdf } from "@/lib/ai/report-pdf";
+import { shareReportPdf } from "@/lib/ai/report-pdf";
 import { loadReportById, ReportNotFoundError, type LoadedReport } from "@/lib/ai/report-service";
 import { AppConfig } from "@/lib/config/environment";
 import { SAMPLE_STORED_REPORT, useReportStore } from "@/lib/store/report";
@@ -126,8 +126,7 @@ export default function ReportDetailScreen() {
     if (!practice?.id || !id || !UUID_RE.test(practice.id) || !UUID_RE.test(id)) return;
     setExporting(true);
     try {
-      const path = await exportReportPdf({ practiceId: practice.id, reportId: id });
-      Alert.alert("PDF erstellt", `Der kanonische Bericht wurde gespeichert:\n${path}`);
+      await shareReportPdf({ practiceId: practice.id, reportId: id });
     } catch (error) {
       Alert.alert("PDF-Export fehlgeschlagen", error instanceof Error ? error.message : "Unbekannter Fehler");
     } finally {
@@ -151,6 +150,7 @@ export default function ReportDetailScreen() {
           disabled={exporting}
           variant="ghost"
           style={styles.pdfButton}
+          testID="report-detail-export-pdf"
           icon={exporting ? <ActivityIndicator color={colors.ink} /> : undefined}
         />
       ) : null}

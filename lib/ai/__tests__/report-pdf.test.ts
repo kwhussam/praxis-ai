@@ -3,6 +3,8 @@ const mockApiCalls: Array<{ path: string; options: Record<string, unknown> }> = 
 const mockWriteCalls: Array<{ path: string; contents: string; options: Record<string, unknown> }> = [];
 const mockDirectoryCalls: Array<{ path: string; options: Record<string, unknown> }> = [];
 const mockDeleteCalls: Array<{ path: string; options: Record<string, unknown> }> = [];
+const mockShareCalls: Array<{ path: string; options: Record<string, unknown> }> = [];
+let mockSharingAvailable = true;
 
 declare const jest: { mock(moduleName: string, factory: () => unknown): void };
 declare function beforeEach(fn: () => void): void;
@@ -28,7 +30,14 @@ jest.mock("expo-file-system", () => ({
   }
 }));
 
-import { clearCachedReportPdfs, exportReportPdf } from "@/lib/ai/report-pdf";
+jest.mock("expo-sharing", () => ({
+  isAvailableAsync: async () => mockSharingAvailable,
+  shareAsync: async (path: string, options: Record<string, unknown>) => {
+    mockShareCalls.push({ path, options });
+  }
+}));
+
+import { clearCachedReportPdfs, exportReportPdf, shareReportPdf } from "@/lib/ai/report-pdf";
 
 const practiceId = "11111111-1111-4111-8111-111111111111";
 const reportId = "66666666-6666-4666-8666-666666666666";
@@ -39,6 +48,8 @@ describe("exportReportPdf", () => {
     mockWriteCalls.length = 0;
     mockDirectoryCalls.length = 0;
     mockDeleteCalls.length = 0;
+    mockShareCalls.length = 0;
+    mockSharingAvailable = true;
   });
 
   it("cached ausschließlich die Bytes des kanonischen Server-PDFs", async () => {
@@ -81,6 +92,34 @@ describe("exportReportPdf", () => {
         options: { idempotent: true }
       }
     ]);
+  });
+
+  it("öffnet das kanonische PDF nativ und löscht die temporäre Klartextdatei danach", async () => {
+    mockResponse = new Response("%PDF-1.4\nfixture", { headers: { "content-type": "application/pdf" } });
+    const path = `file:///cache/praxisshield-report-cache/${practiceId}/PraxisShield-Bericht-${reportId}.pdf`;
+
+    await shareReportPdf({ practiceId, reportId });
+
+    expect(mockShareCalls).toEqual([{
+      path,
+      options: {
+        mimeType: "application/pdf",
+        UTI: "com.adobe.pdf",
+        dialogTitle: "PraxisShield-Bericht öffnen oder teilen"
+      }
+    }]);
+    expect(mockDeleteCalls).toContainEqual({ path, options: { idempotent: true } });
+  });
+
+  it("löscht die temporäre Datei auch wenn kein nativer Teilen-Dialog verfügbar ist", async () => {
+    mockSharingAvailable = false;
+    mockResponse = new Response("%PDF-1.4\nfixture", { headers: { "content-type": "application/pdf" } });
+    const path = `file:///cache/praxisshield-report-cache/${practiceId}/PraxisShield-Bericht-${reportId}.pdf`;
+
+    await expect(shareReportPdf({ practiceId, reportId })).rejects.toThrow("kein sicherer PDF-Teilen-Dialog");
+
+    expect(mockShareCalls).toHaveLength(0);
+    expect(mockDeleteCalls).toContainEqual({ path, options: { idempotent: true } });
   });
 
   it("sendet weder Reportinhalt noch frei wählbare Metadaten", async () => {

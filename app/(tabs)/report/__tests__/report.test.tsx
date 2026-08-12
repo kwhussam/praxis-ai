@@ -64,7 +64,7 @@ jest.mock("@/lib/ai/report", () => ({
 }));
 
 jest.mock("@/lib/ai/report-pdf", () => ({
-  exportReportPdf: () => Promise.reject(new Error("not used"))
+  shareReportPdf: () => Promise.reject(new Error("not used"))
 }));
 
 jest.mock("@/lib/ai/report-service", () => ({
