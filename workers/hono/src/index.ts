@@ -16,6 +16,7 @@ import {
 } from "@/lib/security/assessment-contract";
 import { calculateMonitoringCoverage, type MonitoringCoverage } from "@/lib/assessment/coverage";
 import { questionnaireAnswersToCheckData, type QuestionnaireAnswerValue } from "@/lib/security/questionnaire";
+import { canonicalizeJsonForHash } from "@/lib/security/canonical-json";
 import { addDays, type DeletionReport } from "./privacy";
 
 type Env = {
@@ -1596,7 +1597,12 @@ async function handleReportPdf(c: Context<{ Bindings: Env }>) {
     return c.json({ error: "report_integrity_failed", message: "Die Integritätsprüfung des Reportmanifests ist fehlgeschlagen." }, 409);
   }
 
-  const report = validateReport(await decryptJson(c.env, row.encrypted_content));
+  let report: Report;
+  try {
+    report = validateReport(await decryptJson(c.env, row.encrypted_content));
+  } catch {
+    return c.json({ error: "report_integrity_failed", message: "Die Integritätsprüfung des Berichts ist fehlgeschlagen." }, 409);
+  }
   const reportHash = await sha256Json(report);
   if (reportHash !== manifest.report_payload_sha256 || reportHash !== row.payload_sha256) {
     return c.json({ error: "report_integrity_failed", message: "Die Integritätsprüfung des Berichts ist fehlgeschlagen." }, 409);
@@ -2460,19 +2466,7 @@ function decodeEncryptionKey(value?: string) {
 }
 
 async function sha256Json(value: unknown) {
-  return sha256Text(JSON.stringify(canonicalizeJson(value)));
-}
-
-function canonicalizeJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalizeJson);
-  if (!value || typeof value !== "object") return value;
-
-  const record = value as Record<string, unknown>;
-  const canonical: Record<string, unknown> = {};
-  for (const key of Object.keys(record).sort()) {
-    if (record[key] !== undefined) canonical[key] = canonicalizeJson(record[key]);
-  }
-  return canonical;
+  return sha256Text(JSON.stringify(canonicalizeJsonForHash(value)));
 }
 
 async function sha256Text(value: string) {

@@ -30,14 +30,14 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   setPractice: (practice) => {
     const previousPracticeId = get().practice?.id;
     if (previousPracticeId && previousPracticeId !== practice.id) {
-      clearLocalTenantCaches();
+      clearLocalTenantCaches(previousPracticeId);
     }
     set({ practice });
   },
   setSession: (session) => set({ session }),
   clearPractice: () => {
     if (get().practice) {
-      clearLocalTenantCaches();
+      clearLocalTenantCaches(get().practice?.id);
     }
     set({ practice: null });
   },

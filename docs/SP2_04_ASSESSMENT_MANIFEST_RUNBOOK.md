@@ -1,6 +1,6 @@
 # SP2-04 – Assessment-Manifest und kanonisches PDF
 
-Stand: 2026-08-11
+Stand: 2026-08-12
 Status: `verification`
 
 ## Sicherheits- und Datenvertrag
@@ -12,14 +12,23 @@ Status: `verification`
   als AES-256-GCM-Envelope gespeichert. Das Klartext-Manifest enthält ausschließlich IDs, Versionen
   und SHA-256-Werte.
 - JSON-Hashes verwenden rekursiv sortierte Objektschlüssel. Arrayreihenfolgen bleiben fachlich
-  relevant. Dadurch bleiben Hashes nach einer JSONB-Rundreise stabil.
+  relevant. Nur endliche JavaScript-Zahlen sind zulässig, `-0` wird zu `0`; die konkrete
+  Dezimal-/Exponentschreibweise erzeugt `JSON.stringify`. Ganzzahlen außerhalb des exakt
+  darstellbaren JavaScript-Bereichs müssen im jeweiligen Fachvertrag als String modelliert werden.
+  `undefined`-Objektfelder werden ausgelassen, `undefined` in Arrays sowie BigInt, Zyklen und
+  Nicht-JSON-Objekte werden abgelehnt. Dadurch sind Sonderfälle explizit und Hashes nach einer
+  JSONB-Rundreise stabil.
 - `persist_assessment_report` schreibt Snapshotmanifest und Bericht atomar. Ein identischer
   `client_sync_id` liefert auch bei einem konkurrierenden Retry das zuerst persistierte Paar zurück.
 - Der PDF-Endpunkt nimmt ausschließlich `practiceId` und `reportId` an, prüft Tenant, Manifesthash
   und Reporthash und rendert mit dem im Manifest gespeicherten Zeitstempel und Templatevertrag.
-  Altberichte ohne Manifest liefern `409 canonical_report_unavailable`.
+  Altberichte ohne Manifest liefern `409 canonical_report_unavailable`; ein ungültiges oder nicht
+  entschlüsselbares Report-Envelope liefert fail-closed `409 report_integrity_failed` statt `500`.
 - Die App rendert kein eigenes HTML/PDF mehr. Sie validiert Content-Type und `%PDF-`-Signatur und
-  cached die Serverbytes lokal.
+  cached die Serverbytes ausschließlich tenantgetrennt unter `cacheDirectory`. Dieser Cache ist
+  nicht Bestandteil regulärer iOS-Backups und wird bei Logout, Praxiswechsel sowie lokal erkanntem
+  Entzug/Löschen einer Praxis idempotent entfernt. Eine serverseitige Löschung von einem anderen
+  Gerät kann lokale Offline-Dateien naturgemäß erst beim nächsten Session-/Praxisabgleich entfernen.
 
 ## Datenschutz
 
@@ -39,7 +48,8 @@ Quellchecks und Berichte anonymisiert werden.
    - ein Retry mit gleicher `client_sync_id` erzeugt keine zweite Zeile;
    - zwei PDF-Exporte besitzen identische Bytes/ETags;
    - fremde Praxis erhält keine Manifest- oder Reportzeile;
-   - App-Neustart lädt die Berichtshistorie und der Detail-Export cached das Server-PDF.
+   - App-Neustart lädt die Berichtshistorie und der Detail-Export cached das Server-PDF;
+   - Logout und Praxiswechsel entfernen den jeweiligen lokalen PDF-Cache.
 5. Fehlerraten für `canonical_report_unavailable` (erwartete Altberichte) und
    `report_integrity_failed` (nicht erwarteter Integritätsalarm) getrennt beobachten.
 
@@ -62,6 +72,18 @@ Der sichere Rollback ist vorwärtskompatibel und löscht keine Evidenz:
 - `supabase db lint --local --level warning`: keine neue SP2-04-Warnung;
 - reale RLS-Probe: Praxis A sieht kein Manifest von Praxis B;
 - reale RPC-Probe: Manifest+Report atomar, Retry idempotent;
+- `supabase db test --local`: eigenständige `assessment_manifest.sql` prüft 19 RLS-, Grant-,
+  `search_path`-, Cross-Tenant-FK-, Atomicity- und Idempotenz-Eigenschaften; gesamter Lauf 225 Tests;
 - Worker-Test: zwei Exporte byte-identisch, mehrseitig, tenantgebunden;
-- Worker-Test: manipuliertes Manifest wird vor PDF-Ausgabe abgelehnt;
-- App-Test: Request enthält nur Praxis-/Report-ID, Cache schreibt exakt die Serverbytes.
+- Worker-Test: manipuliertes Manifest und nicht entschlüsselbarer Report werden vor PDF-Ausgabe
+  mit `409 report_integrity_failed` abgelehnt;
+- App-Test: Request enthält nur Praxis-/Report-ID, Cache schreibt exakt die Serverbytes in
+  `cacheDirectory` und wird tenantbezogen beziehungsweise vollständig gelöscht.
+
+## Noch offene Release-Gates
+
+- CI-Lauf der pgTAP-/Jest-Gates nach Push;
+- nativer PDF-Export-, Öffnen-, Logout- und Praxiswechsel-Smoke auf iOS und Android;
+- Datenschutz-Sign-off für ADR-001 und externe D1-Rechtsprüfung. Der vorbestehende Löschumfang für
+  Inventar- und Monitoring-Target-Tabellen bleibt ein ADR-001-Blocker vor M5 und wird durch SP2-04
+  nicht als behoben deklariert.

@@ -1,11 +1,12 @@
 import { router } from "expo-router";
 import { LogOut, Mail, UserCog } from "lucide-react-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { Screen } from "@/components/ui/Screen";
 import { colors } from "@/constants/colors";
+import { clearCachedReportPdfs } from "@/lib/ai/report-pdf";
 import { supabase } from "@/lib/supabase/client";
 import { useSessionStore } from "@/lib/store/session";
 
@@ -21,6 +22,13 @@ export default function SettingsScreen() {
     setSigningOut(true);
     setError(null);
 
+    let cacheError: unknown;
+    try {
+      await clearCachedReportPdfs();
+    } catch (nextError) {
+      cacheError = nextError;
+    }
+
     const { error: signOutError } = await supabase.auth.signOut();
     clearSession();
     setSigningOut(false);
@@ -28,6 +36,13 @@ export default function SettingsScreen() {
     if (signOutError) {
       setError(errorMessage(signOutError));
       return;
+    }
+
+    if (cacheError) {
+      Alert.alert(
+        "Lokaler PDF-Cache",
+        "Sie wurden abgemeldet, aber der lokale PDF-Cache konnte nicht vollständig bereinigt werden. Bitte löschen Sie die App-Daten, bevor Sie das Gerät weitergeben."
+      );
     }
 
     router.replace("/(auth)/login");

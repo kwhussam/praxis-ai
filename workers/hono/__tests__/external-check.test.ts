@@ -2605,6 +2605,53 @@ describe("POST /api/report/pdf canonical artifact (SP2-04)", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("meldet einen nicht entschlüsselbaren Report als Integritätskonflikt statt als Serverfehler", async () => {
+    const originalFetch = globalThis.fetch;
+    const reportId = "66666666-6666-4666-8666-666666666666";
+    const manifestId = "77777777-7777-4777-8777-777777777777";
+    const report = { ...validAiReport(), scoring_version: "2026.1" };
+    const reportHash = await sha256Fixture(report);
+    const manifest = {
+      manifest_version: "1.0.0",
+      assessment_snapshot: { id: manifestId, sha256: "a".repeat(64) },
+      source_check_id: "44444444-4444-4444-8444-444444444444",
+      generated_at: "2026-08-11T10:00:00.000Z",
+      facts_version: "1.0.0",
+      scoring_version: report.scoring_version,
+      report_format_version: "1.0.0",
+      report_payload_sha256: reportHash,
+      pdf_template_version: "1.0.0"
+    };
+    installReportReadFetch([{
+      id: reportId,
+      assessment_manifest_id: manifestId,
+      encrypted_content: { alg: "AES-256-GCM", iv: "invalid", data: "invalid" },
+      payload_sha256: reportHash,
+      report_manifest: manifest,
+      report_manifest_sha256: await sha256Fixture(manifest),
+      created_at: manifest.generated_at
+    }]);
+
+    try {
+      const res = await worker.fetch(
+        new Request("http://localhost/api/report/pdf", {
+          method: "POST",
+          headers: { authorization: "Bearer user-token" },
+          body: JSON.stringify({ practiceId: roleGatePracticeId, reportId })
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({
+        error: "report_integrity_failed",
+        message: "Die Integritätsprüfung des Berichts ist fehlgeschlagen."
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 type PracticeRole = "owner" | "manager" | "viewer";

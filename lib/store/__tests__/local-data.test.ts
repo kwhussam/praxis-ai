@@ -4,6 +4,8 @@ declare const jest: {
 
 declare function afterEach(fn: () => void): void;
 
+const mockClearedPdfCaches: Array<string | undefined> = [];
+
 jest.mock("expo-crypto", () => ({
   getRandomBytesAsync: async (length: number) => new Uint8Array(length)
 }));
@@ -51,34 +53,58 @@ const practiceB: Practice = {
   plan: "free"
 };
 
+jest.mock("@/lib/ai/report-pdf", () => ({
+  clearCachedReportPdfs: async (practiceId?: string) => {
+    mockClearedPdfCaches.push(practiceId);
+  }
+}));
+
 describe("local tenant cache handling", () => {
   afterEach(() => {
+    mockClearedPdfCaches.length = 0;
     useReportStore.getState().clear();
     useInventoryStore.getState().clear();
     useSessionStore.setState({ practice: null, session: null });
   });
 
-  it("clears locally cached tenant data on logout", () => {
+  it("clears locally cached tenant data and every PDF on logout", async () => {
     useSessionStore.getState().setPractice(practiceA);
     seedTenantCaches(practiceA.id);
 
     useSessionStore.getState().clear();
+    await Promise.resolve();
 
     expect(useReportStore.getState().latest).toBeNull();
     expect(useInventoryStore.getState().getItems(practiceA.id)).toHaveLength(0);
     expect(useSessionStore.getState().practice).toBeNull();
     expect(useSessionStore.getState().session).toBeNull();
+    expect(mockClearedPdfCaches).toContain(undefined);
   });
 
-  it("clears locally cached tenant data when practice changes", () => {
+  it("clears locally cached tenant data and prior tenant PDFs when practice changes", async () => {
     useSessionStore.getState().setPractice(practiceA);
     seedTenantCaches(practiceA.id);
 
     useSessionStore.getState().setPractice(practiceB);
+    await Promise.resolve();
 
     expect(useReportStore.getState().latest).toBeNull();
     expect(useInventoryStore.getState().getItems(practiceA.id)).toHaveLength(0);
     expect(useSessionStore.getState().practice?.id).toBe(practiceB.id);
+    expect(mockClearedPdfCaches).toContain(practiceA.id);
+  });
+
+  it("clears tenant PDFs when an inaccessible or deleted practice is removed locally", async () => {
+    useSessionStore.getState().setPractice(practiceA);
+    seedTenantCaches(practiceA.id);
+
+    useSessionStore.getState().clearPractice();
+    await Promise.resolve();
+
+    expect(useSessionStore.getState().practice).toBeNull();
+    expect(useReportStore.getState().latest).toBeNull();
+    expect(useInventoryStore.getState().getItems(practiceA.id)).toHaveLength(0);
+    expect(mockClearedPdfCaches).toContain(practiceA.id);
   });
 });
 

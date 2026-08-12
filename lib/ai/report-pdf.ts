@@ -8,6 +8,7 @@ type ExportOptions = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const REPORT_CACHE_DIRECTORY = "praxisshield-report-cache";
 
 /**
  * Downloads the canonical server artifact and only caches its bytes locally.
@@ -27,8 +28,8 @@ export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
     throw new Error("Der Server hat kein gültiges PDF geliefert.");
   }
 
-  const directory = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-  if (!directory) throw new Error("Auf diesem Gerät ist kein lokaler PDF-Speicher verfügbar.");
+  const directory = reportCacheDirectory(practiceId);
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
 
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (
@@ -47,6 +48,24 @@ export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
     encoding: FileSystem.EncodingType.Base64
   });
   return filePath;
+}
+
+/** Removes canonical PDF cache files for one tenant or for every tenant on logout. */
+export async function clearCachedReportPdfs(practiceId?: string) {
+  const directory = practiceId ? reportCacheDirectory(practiceId) : reportCacheRoot();
+  await FileSystem.deleteAsync(directory, { idempotent: true });
+}
+
+function reportCacheDirectory(practiceId: string) {
+  requireUuid(practiceId, "Practice-ID");
+  return `${reportCacheRoot()}${practiceId}/`;
+}
+
+function reportCacheRoot() {
+  if (!FileSystem.cacheDirectory) {
+    throw new Error("Auf diesem Gerät ist kein nicht-persistenter PDF-Cache verfügbar.");
+  }
+  return `${FileSystem.cacheDirectory}${REPORT_CACHE_DIRECTORY}/`;
 }
 
 function requireUuid(value: string, label: string) {

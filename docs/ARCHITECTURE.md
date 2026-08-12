@@ -106,13 +106,19 @@ manifest binds that snapshot hash to the source check, facts/scoring/report vers
 payload hash and PDF template version. `persist_assessment_report` writes manifest and report in one
 database transaction and returns an existing pair for an idempotent client retry.
 
+Canonical JSON accepts only the JSON value domain and finite JavaScript numbers, normalizes negative
+zero, rejects unsupported/cyclic values, and delegates decimal/exponent rendering to
+`JSON.stringify`. Domain values that cannot be represented exactly as JavaScript numbers use strings.
+
 `POST /api/report/pdf` accepts only `practiceId` and a persisted `reportId`. It reloads the
 tenant-scoped encrypted report, verifies the manifest and report hashes, and renders every PDF page
 from the stored artifact with the manifest's original timestamp. Repeated exports are byte-identical;
 the response exposes PDF and manifest integrity metadata. Android/iOS never render an alternative
-report: they cache the returned server bytes through `expo-file-system`. Legacy reports without a
-manifest remain readable but fail closed for canonical PDF export. The report index reloads persisted
-history after restart, and each detail view can export its own canonical artifact.
+report: they cache the returned server bytes in a tenant-scoped `expo-file-system` cache directory,
+not the backup-included documents directory. Logout, practice switching and local practice removal
+delete that cache idempotently. Legacy reports without a manifest remain readable but fail closed for
+canonical PDF export; decrypt failures are reported as integrity conflicts. The report index reloads
+persisted history after restart, and each detail view can export its own canonical artifact.
 
 ## Security Model
 
