@@ -83,16 +83,15 @@ Der sichere Rollback ist vorwärtskompatibel und löscht keine Evidenz:
 - App-Test: Request enthält nur Praxis-/Report-ID, Cache schreibt exakt die Serverbytes in
   `cacheDirectory`, der native Dialog wird aufgerufen und die temporäre Datei wird auch im
   Fehlerfall gelöscht; tenantbezogene und vollständige Cachebereinigung sind separat geprüft.
-- GitHub-CI nach dem ersten Push: Gitleaks und die verpflichtende pgTAP-Suite bestanden; die
-  Quality-Stage deckte zwei CI-Portabilitätsfehler auf (Zeitzone und optionale Remote-RLS-Suite),
-  deren Korrektur in diesem Arbeitsstand enthalten ist und nach Push erneut bewiesen werden muss.
+- GitHub-CI-Run `31600094527` für Commit `ac97390`: `quality` einschließlich Gitleaks sowie
+  `rls-pgtap` vollständig erfolgreich. Die zuvor gefundenen CI-Portabilitätsfehler für Zeitzone und
+  optionale Remote-RLS-Konfiguration sind damit geschlossen.
 - iOS-18.6-Simulator: kanonischer Bericht geladen und echtes Server-PDF mit Vorschau im nativen
   Teilen-/Öffnen-Dialog dargestellt. Der abschließende automatisierte Cleanup-Nachweis wurde durch
   einen lokalen Docker-/Datenträgerfehler unterbrochen und gilt daher noch nicht als bestanden.
 
 ## Noch offene Release-Gates
 
-- grüner CI-Gesamtlauf nach Push der Portabilitätskorrekturen;
 - nativer PDF-Export-, Öffnen-, Logout- und Praxiswechsel-Smoke auf iOS und Android;
 - Datenschutz-Sign-off für ADR-001 und externe D1-Rechtsprüfung. Der vorbestehende Löschumfang für
   Inventar- und Monitoring-Target-Tabellen bleibt ein ADR-001-Blocker vor M5 und wird durch SP2-04
