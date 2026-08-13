@@ -40,6 +40,7 @@ requireText(androidManifest, 'android:allowBackup="false"', "Android release man
 requireText(androidManifest, 'android:fullBackupContent="@xml/backup_rules"', "Android release manifest");
 requireText(androidManifest, 'android:dataExtractionRules="@xml/data_extraction_rules"', "Android release manifest");
 requireText(androidManifest, 'android:usesCleartextTraffic="false"', "Android release manifest");
+forbidText(androidManifest, "android:directBootAware=", "Android release manifest");
 requireText(androidManifest, 'android:name="android.permission.ACCESS_FINE_LOCATION"', "Android release manifest");
 requireText(
   androidManifest,
@@ -74,8 +75,11 @@ const credentialDomains = ["root", "file", "database", "sharedpref", "external"]
 const deviceProtectedDomains = ["device_root", "device_file", "device_database", "device_sharedpref"];
 
 const legacyRules = read("android/app/src/main/res/xml/backup_rules.xml");
-for (const domain of [...credentialDomains, ...deviceProtectedDomains]) {
+for (const domain of credentialDomains) {
   requireText(legacyRules, `<exclude domain="${domain}" path="."/>`, "Android legacy backup rules");
+}
+for (const domain of deviceProtectedDomains) {
+  forbidText(legacyRules, `domain="${domain}"`, "Android legacy backup rules");
 }
 
 const extractionRules = read("android/app/src/main/res/xml/data_extraction_rules.xml");

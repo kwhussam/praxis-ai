@@ -7,6 +7,9 @@ const {
   withDangerousMod
 } = require("@expo/config-plugins");
 
+// Expo SDK 51's Android release lint accepts these five backup domains. PraxisShield is not
+// directBootAware and does not create device-protected storage; verify-native-config enforces that
+// manifest boundary so sensitive data cannot silently move into an uncovered storage class.
 const LEGACY_RULES = `<?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
   <exclude domain="root" path="."/>
@@ -14,10 +17,6 @@ const LEGACY_RULES = `<?xml version="1.0" encoding="utf-8"?>
   <exclude domain="database" path="."/>
   <exclude domain="sharedpref" path="."/>
   <exclude domain="external" path="."/>
-  <exclude domain="device_root" path="."/>
-  <exclude domain="device_file" path="."/>
-  <exclude domain="device_database" path="."/>
-  <exclude domain="device_sharedpref" path="."/>
 </full-backup-content>
 `;
 

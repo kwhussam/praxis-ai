@@ -45,17 +45,7 @@ describe("SP2-06 native release configuration", () => {
     expect(plugin).toContain("Release signing is injected only by the protected CI/EAS credential provider.");
     expect(plugin).toContain("Could not remove the Expo template's debug signing");
 
-    for (const domain of [
-      "root",
-      "file",
-      "database",
-      "sharedpref",
-      "external",
-      "device_root",
-      "device_file",
-      "device_database",
-      "device_sharedpref"
-    ]) {
+    for (const domain of ["root", "file", "database", "sharedpref", "external"]) {
       expect(plugin).toContain(`<exclude domain="${domain}" path="."/>`);
     }
 
@@ -66,8 +56,7 @@ describe("SP2-06 native release configuration", () => {
       expect(occurrences).toBe(3);
     }
     for (const domain of ["device_root", "device_file", "device_database", "device_sharedpref"]) {
-      const occurrences = plugin.split(`<exclude domain="${domain}" path="."/>`).length - 1;
-      expect(occurrences).toBe(1);
+      expect(plugin).not.toContain(`domain="${domain}"`);
     }
   });
 
