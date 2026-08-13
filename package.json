@@ -13,6 +13,8 @@
     "verify": "npm run lint && npm run typecheck && npm test -- --runInBand",
     "test": "jest",
     "test:secrets": "jest --runTestsByPath security/__tests__/secret-exposure.test.ts",
+    "verify:native-config": "node scripts/verify-native-config.mjs",
+    "verify:android-release-manifest": "node scripts/verify-android-release-manifest.mjs",
     "test:unit": "jest lib/security/__tests__",
     "test:worker": "jest workers/hono/__tests__",
     "test:rls": "jest supabase/__tests__ --runInBand",

@@ -1,8 +1,48 @@
 const fs = require("fs");
 const path = require("path");
-const { withDangerousMod } = require("@expo/config-plugins");
+const { IOSConfig, withDangerousMod, withXcodeProject } = require("@expo/config-plugins");
+
+const IOS_PROBE_FILES = ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"];
 
 module.exports = function withNetworkSecurityProbe(config) {
+  config = withXcodeProject(config, (modConfig) => {
+    const projectName = modConfig.modRequest.projectName;
+    const project = IOSConfig.Swift.ensureSwiftBridgingHeaderSetup({
+      projectRoot: modConfig.modRequest.projectRoot,
+      project: modConfig.modResults
+    });
+    const groupKey = project.findPBXGroupKey({ name: projectName });
+    if (!groupKey) throw new Error(`Could not find iOS source group ${projectName}`);
+
+    for (const fileName of IOS_PROBE_FILES) {
+      const projectPath = `${projectName}/${fileName}`;
+      if (!project.hasFile(projectPath)) project.addSourceFile(projectPath, {}, groupKey);
+    }
+    modConfig.modResults = project;
+    return modConfig;
+  });
+
+  config = withDangerousMod(config, [
+    "ios",
+    async (modConfig) => {
+      const projectName = modConfig.modRequest.projectName;
+      const sourceDir = path.join(__dirname, "native", "ios");
+      const targetDir = path.join(modConfig.modRequest.platformProjectRoot, projectName);
+      fs.mkdirSync(targetDir, { recursive: true });
+      for (const fileName of IOS_PROBE_FILES) {
+        fs.copyFileSync(path.join(sourceDir, fileName), path.join(targetDir, fileName));
+      }
+
+      const bridgingHeader = path.join(targetDir, `${projectName}-Bridging-Header.h`);
+      const reactImport = "#import <React/RCTBridgeModule.h>";
+      const header = fs.existsSync(bridgingHeader)
+        ? fs.readFileSync(bridgingHeader, "utf8")
+        : "// Generated bridging header for the PraxisShield native network probe.\n";
+      if (!header.includes(reactImport)) fs.writeFileSync(bridgingHeader, `${header.trimEnd()}\n${reactImport}\n`);
+      return modConfig;
+    }
+  ]);
+
   return withDangerousMod(config, [
     "android",
     async (modConfig) => {

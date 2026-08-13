@@ -1,0 +1,98 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const root = process.cwd();
+
+function read(relativePath) {
+  return readFileSync(resolve(root, relativePath), "utf8");
+}
+
+function requireText(contents, expected, source) {
+  if (!contents.includes(expected)) throw new Error(`${source} is missing: ${expected}`);
+}
+
+function forbidText(contents, forbidden, source) {
+  if (contents.includes(forbidden)) throw new Error(`${source} unexpectedly contains: ${forbidden}`);
+}
+
+const iosEntitlements = read("ios/PraxisShieldAI/PraxisShieldAI.entitlements");
+requireText(iosEntitlements, "<key>com.apple.developer.networking.wifi-info</key>", "iOS entitlements");
+requireText(iosEntitlements, "<true/>", "iOS entitlements");
+
+const iosInfo = read("ios/PraxisShieldAI/Info.plist");
+requireText(iosInfo, "NSLocalNetworkUsageDescription", "iOS Info.plist");
+requireText(iosInfo, "NSLocationWhenInUseUsageDescription", "iOS Info.plist");
+forbidText(iosInfo, "NSBonjourServices", "iOS Info.plist");
+
+const iosProject = read("ios/PraxisShieldAI.xcodeproj/project.pbxproj");
+for (const fileName of ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"]) {
+  requireText(iosProject, `${fileName} in Sources`, "iOS Xcode project");
+  requireText(read(`ios/PraxisShieldAI/${fileName}`), "PraxisShieldNetworkProbe", `iOS ${fileName}`);
+}
+requireText(
+  read("ios/PraxisShieldAI/PraxisShieldAI-Bridging-Header.h"),
+  "#import <React/RCTBridgeModule.h>",
+  "iOS bridging header"
+);
+
+const androidManifest = read("android/app/src/main/AndroidManifest.xml");
+requireText(androidManifest, 'android:allowBackup="false"', "Android release manifest");
+requireText(androidManifest, 'android:fullBackupContent="@xml/backup_rules"', "Android release manifest");
+requireText(androidManifest, 'android:dataExtractionRules="@xml/data_extraction_rules"', "Android release manifest");
+requireText(androidManifest, 'android:usesCleartextTraffic="false"', "Android release manifest");
+requireText(androidManifest, 'android:name="android.permission.ACCESS_FINE_LOCATION"', "Android release manifest");
+requireText(
+  androidManifest,
+  'android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation"',
+  "Android release manifest"
+);
+for (const permission of ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "SYSTEM_ALERT_WINDOW"]) {
+  requireText(
+    androidManifest,
+    `android:name="android.permission.${permission}" tools:node="remove"`,
+    "Android permission removal contract"
+  );
+}
+
+const androidApplication = read("android/app/src/main/java/ai/praxisshield/app/MainApplication.kt");
+const androidProbe = read(
+  "android/app/src/main/java/ai/praxisshield/app/networkprobe/PraxisShieldNetworkProbeModule.kt"
+);
+requireText(androidApplication, "PraxisShieldNetworkProbePackage()", "Android MainApplication");
+requireText(androidProbe, "class PraxisShieldNetworkProbeModule", "Android network probe");
+
+const androidBuild = read("android/app/build.gradle");
+const releaseBuild = androidBuild.slice(androidBuild.indexOf("release {"), androidBuild.indexOf("packagingOptions"));
+forbidText(releaseBuild, "signingConfig signingConfigs.debug", "Android release build type");
+requireText(
+  releaseBuild,
+  "Release signing is injected only by the protected CI/EAS credential provider.",
+  "Android release build type"
+);
+
+const legacyRules = read("android/app/src/main/res/xml/backup_rules.xml");
+for (const domain of ["root", "file", "database", "sharedpref", "external"]) {
+  requireText(legacyRules, `<exclude domain="${domain}" path="."/>`, "Android legacy backup rules");
+}
+
+const extractionRules = read("android/app/src/main/res/xml/data_extraction_rules.xml");
+requireText(extractionRules, "<cloud-backup>", "Android data extraction rules");
+requireText(extractionRules, "<device-transfer>", "Android data extraction rules");
+for (const domain of [
+  "root",
+  "file",
+  "database",
+  "sharedpref",
+  "external",
+  "device_root",
+  "device_file",
+  "device_database",
+  "device_sharedpref"
+]) {
+  const marker = `<exclude domain="${domain}" path="."/>`;
+  if (extractionRules.split(marker).length - 1 !== 2) {
+    throw new Error(`Android data extraction rules must exclude ${domain} from cloud backup and device transfer`);
+  }
+}
+
+console.log("Native iOS/Android release configuration verified.");

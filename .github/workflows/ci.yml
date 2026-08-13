@@ -14,12 +14,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
       - name: Install dependencies
         run: npm ci
       - name: Secret Scan
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate and verify native release configuration
+        run: npx expo prebuild --no-install && npm run verify:native-config
+        env:
+          EXPO_PUBLIC_APP_ENV: production
+      - name: Compile unsigned Android release and verify merged manifest
+        run: ./android/gradlew -p android :app:assembleRelease && npm run verify:android-release-manifest
+        env:
+          EXPO_PUBLIC_APP_ENV: production
+          EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-public-anon-placeholder
+          EXPO_PUBLIC_API_BASE_URL: https://api.ci-placeholder.invalid
       - name: Verify
         run: npm run verify
         env:

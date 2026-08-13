@@ -143,6 +143,22 @@ the respective consent. Registry lookup failure is fail-closed. Consent evidence
 privacy export; its legal retention/deletion treatment remains subject to the documented privacy
 policy and legal review.
 
+### Native release contract (SP2-06)
+
+`app.json` and committed Expo config plugins are the sole source of truth for native capabilities;
+ignored `ios/` and `android/` directories are disposable build output. A clean prebuild generates the
+iOS network-probe Swift/Objective-C sources and Xcode membership, Android Kotlin probe registration,
+platform permission declarations, entitlements and Android backup/data-extraction rules. CI regenerates
+both projects before tests, compiles an unsigned Android release and inspects the merged release
+manifest. Production signing is injected only by the protected release credential provider; the
+Expo template's debug signing fallback is removed from the release build type.
+
+iOS exposes the current SSID only under Apple's entitlement/authorization conditions and does not
+expose general visible-network or Wi-Fi security-capability scans. Those probes report `unsupported`
+and are excluded from reachable coverage. Android visible-network scanning requires Fine Location
+even when API 33+ Nearby Wi-Fi permission is present. General storage, overlay, app-backup and
+cleartext-traffic capabilities are not part of the production contract.
+
 - No third-party API key is bundled into the app.
 - Supabase anon key is public but protected by RLS.
 - Service role keys stay in server environments only.
@@ -151,7 +167,7 @@ policy and legal review.
 
 ## Next Native Milestones
 
-- Add a custom Expo config plugin for the WLAN native module.
+- Complete the physical iOS and Android SP2-06 permission/capability matrix and store-signing smoke.
 - Implement push token registration and alert notification channels.
 - Add versioned partner logo/theme inputs to the server-owned PDF template without introducing a client renderer.
 - Add Supabase generated TypeScript types after the local schema is running.
