@@ -12,8 +12,7 @@ function findManifests(directory) {
       matches.push(...findManifests(path));
     } else if (
       entry.name === "AndroidManifest.xml" &&
-      /merged_manifest/.test(path) &&
-      /(\/release\/|processRelease)/.test(path)
+      /\/merged_manifests?\/[^/]*release(?:\/|$)/i.test(path)
     ) {
       matches.push(path);
     }
@@ -21,15 +20,17 @@ function findManifests(directory) {
   return matches;
 }
 
-const manifestPath = findManifests(mergedRoot).sort((left, right) => left.length - right.length)[0];
-if (!manifestPath) throw new Error(`No merged release manifest found below ${mergedRoot}`);
-const manifest = readFileSync(manifestPath, "utf8");
+const manifestPaths = findManifests(mergedRoot).sort((left, right) => left.localeCompare(right));
+if (manifestPaths.length === 0) throw new Error(`No merged release manifest found below ${mergedRoot}`);
 
-for (const expected of ['android:allowBackup="false"', 'android:usesCleartextTraffic="false"']) {
-  if (!manifest.includes(expected)) throw new Error(`Merged release manifest is missing ${expected}`);
-}
-for (const forbidden of ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "SYSTEM_ALERT_WINDOW"]) {
-  if (manifest.includes(forbidden)) throw new Error(`Merged release manifest still grants ${forbidden}`);
+for (const manifestPath of manifestPaths) {
+  const manifest = readFileSync(manifestPath, "utf8");
+  for (const expected of ['android:allowBackup="false"', 'android:usesCleartextTraffic="false"']) {
+    if (!manifest.includes(expected)) throw new Error(`${manifestPath} is missing ${expected}`);
+  }
+  for (const forbidden of ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "SYSTEM_ALERT_WINDOW"]) {
+    if (manifest.includes(forbidden)) throw new Error(`${manifestPath} still grants ${forbidden}`);
+  }
 }
 
-console.log(`Merged Android release manifest verified: ${manifestPath}`);
+console.log(`Verified ${manifestPaths.length} merged Android release manifest(s):\n${manifestPaths.join("\n")}`);

@@ -12,7 +12,7 @@ export type WifiAuthMode =
   | "mixed"
   | "unknown";
 
-export type ProbeSource = "measured" | "inferred" | "unavailable" | "questionnaire";
+export type ProbeSource = "measured" | "inferred" | "unsupported" | "unavailable" | "questionnaire";
 export type ProbeConfidence = "high" | "medium" | "low";
 export type ProbeState = "open" | "closed" | "filtered" | "unknown";
 export type SmbDialect = "SMB1" | "SMB2" | "SMB3" | "UNKNOWN";

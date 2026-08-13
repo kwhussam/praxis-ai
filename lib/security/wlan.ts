@@ -30,6 +30,7 @@ import { assessDnsOperation } from "@/lib/security/dnsAssessment";
 import { classifyDevice } from "@/lib/security/deviceClassification";
 import { assessGatewaySecurity, assessDeviceSecurity, assessWifiSecurity, calculateSecurityFindingScore } from "@/lib/security/networkSecurityAssessment";
 import { getNativeWifiSecurityDetails, probeDeviceServices, probeGatewaySecurity, probeIpv6TcpPorts, probeTcpPorts } from "@/lib/security/networkProbes";
+import { mdnsCollectionResult } from "@/lib/security/probeCollection";
 import { assessRogueAccessPoints, rogueApFinding } from "@/lib/security/rogueApAssessment";
 import { assessRogueDevices, rogueDeviceFinding } from "@/lib/security/rogueDeviceAssessment";
 import { assessRouterCredentialRisk, defaultPasswordRiskFinding } from "@/lib/security/routerCredentialRisk";
@@ -62,7 +63,7 @@ import type { Json } from "@/lib/api/database.types";
 export type { NetworkSecurityFinding, WifiSecurityDetails } from "@/lib/security/networkProbeTypes";
 export type { NetworkSegmentId } from "@/lib/security/networkProbeTypes";
 export type SecurityProtocol = WifiSecurityProtocol;
-export type DataSource = "measured" | "inferred" | "unavailable" | "simulated" | "questionnaire";
+export type DataSource = "measured" | "inferred" | "unsupported" | "unavailable" | "simulated" | "questionnaire";
 export type FindingConfidence = "high" | "medium" | "low";
 
 export interface WlanFinding<TValue> {
@@ -84,6 +85,7 @@ export type WlanCollectionState = {
   securityProtocol: CollectionMetadata;
   visibleWifiNetworks: CollectionMetadata;
   localDevices: CollectionMetadata;
+  mdnsDiscovery: CollectionMetadata;
 };
 
 export type WlanVulnCategory =
@@ -505,6 +507,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
       });
       gatewayProbe.deviceClassifications = [gatewayClassification];
       context.gatewayProbe = gatewayProbe;
+      context.collection.mdnsDiscovery = collectionMetadata(mdnsCollectionResult(gatewayProbe.mdns));
       const gatewayPorts = gatewayProbeToPortProbes(gatewayProbe);
       context.devices = upsertGatewayPorts(context.devices, context.gatewayIp, gatewayPorts, gatewayClassification);
       if (options?.ipv6Security?.reachabilityConsentAccepted) {
@@ -576,7 +579,8 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
       currentWifi: collection.currentWifi.status,
       securityProtocol: collection.securityProtocol.status,
       visibleWifiNetworks: collection.visibleWifiNetworks.status,
-      localDevices: collection.localDevices.status
+      localDevices: collection.localDevices.status,
+      mdnsDiscovery: collection.mdnsDiscovery.status
     }),
     interactionContext: options?.interactionContext
   };
@@ -1033,7 +1037,8 @@ async function readNetworkContext(scanMode: WlanScanMode, scanSegment: NetworkSe
       currentWifi: collectionMetadata(ssidResult),
       securityProtocol: collectionMetadata(securityProtocolObservation.result),
       visibleWifiNetworks: collectionMetadata(visibleNetworksResult),
-      localDevices: collectionMetadata(notCollected("not_checked", "Die lokale Geräteerkennung wurde noch nicht ausgeführt."))
+      localDevices: collectionMetadata(notCollected("not_checked", "Die lokale Geräteerkennung wurde noch nicht ausgeführt.")),
+      mdnsDiscovery: collectionMetadata(notCollected("not_checked", "Die mDNS-Erkennung wurde noch nicht ausgeführt."))
     }
   };
 }

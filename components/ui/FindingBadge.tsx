@@ -7,6 +7,7 @@ import type { DataSource } from "@/lib/security/wlan";
 const SOURCE_CONFIG: Record<DataSource, { label: string; color: string; icon: keyof typeof Ionicons.glyphMap }> = {
   measured: { label: "Gemessen", color: colors.safe, icon: "checkmark-circle" },
   inferred: { label: "Heuristisch", color: colors.warning, icon: "analytics" },
+  unsupported: { label: "Nicht unterstützt", color: colors.muted, icon: "remove-circle" },
   unavailable: { label: "Nicht verfügbar", color: colors.muted, icon: "remove-circle" },
   simulated: { label: "Demo", color: colors.info, icon: "flask" },
   questionnaire: { label: "Selbstauskunft", color: colors.info, icon: "clipboard" }

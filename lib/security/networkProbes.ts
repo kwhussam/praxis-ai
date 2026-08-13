@@ -79,7 +79,7 @@ export async function probeGatewaySecurity(options: {
       http: [],
       tcp: [],
       ssdp: unavailableSsdp("invalid_private_ip"),
-      mdns: [],
+      mdns: unavailableMdnsServices(DEFAULT_MDNS_TYPES, "invalid_private_ip"),
       snmp: [],
       smb: unavailableSmbSecurity([host], "invalid_private_ip"),
       deviceClassifications: [],
@@ -228,26 +228,33 @@ export async function probeSsdp(timeoutMs = 1600): Promise<SsdpProbeResult> {
 
 export async function discoverMdnsServices(types = DEFAULT_MDNS_TYPES, timeoutMs = 1600): Promise<MdnsServiceResult[]> {
   if (!nativeNetworkProbe?.discoverMdnsServices) {
-    return types.map((type) => ({
-      type,
-      addresses: [],
-      source: "unavailable",
-      confidence: "low",
-      errorCode: Platform.OS === "web" ? "web_mdns_unavailable" : "native_mdns_module_unavailable"
-    }));
+    if (Platform.OS === "ios" || Platform.OS === "web") {
+      return types.map((type) => ({
+        type,
+        addresses: [],
+        source: "unsupported",
+        confidence: "low",
+        errorCode: Platform.OS === "ios" ? "ios_mdns_unsupported" : "web_mdns_unsupported"
+      }));
+    }
+    return unavailableMdnsServices(types, "native_mdns_module_unavailable");
   }
 
   try {
     return await nativeNetworkProbe.discoverMdnsServices({ types, timeoutMs });
   } catch (error) {
-    return types.map((type) => ({
-      type,
-      addresses: [],
-      source: "unavailable",
-      confidence: "low",
-      errorCode: error instanceof Error ? error.message : "native_mdns_probe_failed"
-    }));
+    return unavailableMdnsServices(types, error instanceof Error ? error.message : "native_mdns_probe_failed");
   }
+}
+
+function unavailableMdnsServices(types: MdnsServiceType[], errorCode: string): MdnsServiceResult[] {
+  return types.map((type) => ({
+    type,
+    addresses: [],
+    source: "unavailable",
+    confidence: "low",
+    errorCode
+  }));
 }
 
 export async function probeSnmpBasic(hosts: string[], timeoutMs = 900): Promise<SnmpProbeResult[]> {

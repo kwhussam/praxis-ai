@@ -58,7 +58,7 @@ describe("WLAN collection contract", () => {
     expect(result.collection.visibleWifiNetworks.status).toBe("unsupported");
     expect(result.collection.localDevices.status).toBe("not_checked");
     expect(result.coverage).toMatchObject({
-      score: 50,
+      score: 33,
       status: "insufficient",
       unsupported: ["securityProtocol", "visibleWifiNetworks"]
     });
@@ -128,7 +128,8 @@ function minimalScanResult(): WlanScanResult {
       currentWifi: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" },
       securityProtocol: { status: "collected", observed_at: "2026-07-14T12:00:00.000Z", expires_at: "2026-07-14T12:05:00.000Z", freshness: "fresh" },
       visibleWifiNetworks: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
-      localDevices: { status: "not_checked", reason: "Nicht ausgeführt", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
+      localDevices: { status: "not_checked", reason: "Nicht ausgeführt", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
+      mdnsDiscovery: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
     },
     coverage: {
       score: 67,

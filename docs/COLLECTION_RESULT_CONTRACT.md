@@ -70,6 +70,7 @@ Ein `WlanScanResult` enthält ab jetzt:
 - `collection.securityProtocol`;
 - `collection.visibleWifiNetworks`;
 - `collection.localDevices`;
+- `collection.mdnsDiscovery`;
 - `coverage` mit Anteil erfolgreich erhobener, auf der Plattform unterstützter
   Sensoren sowie getrennten Listen für fehlende und nicht unterstützte Quellen.
 
@@ -79,6 +80,11 @@ erreichen. Die nicht durch öffentliche iOS-APIs erlaubten Prüfungen werden in
 `coverage.unsupported` und in der Oberfläche ausdrücklich als „Auf diesem Gerät
 nicht unterstützt“ ausgewiesen. Ein System ganz ohne unterstützte Sensoren
 erhält weiterhin keine ausreichende Coverage.
+
+Die bewusst nicht implementierte iOS-mDNS-Erkennung trägt `unsupported` und wird damit aus dem
+Coverage-Nenner entfernt. Ein Lauf, der die mDNS-Phase noch nicht ausgeführt hat, bleibt
+`not_checked`; ein technischer Ausfall auf einer grundsätzlich unterstützten Plattform bleibt
+`unavailable` und reduziert die Coverage.
 
 Die relevanten `WlanFinding`-Objekte tragen Collection-Status, Grund,
 Beobachtungszeit, Ablaufzeit und Freshness weiter. Nicht erfolgreiche Sensoren

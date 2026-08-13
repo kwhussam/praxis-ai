@@ -53,8 +53,8 @@ Der `quality`-Job erzeugt `ios/` und `android/` in jedem Lauf neu und prüft ans
 2. Android-Berechtigungs- und Removal-Vertrag, Backup-/Transfer-Ausschlüsse, deaktivierten
    Klartextverkehr und fehlende Debug-Signatur im Release-Buildtyp;
 3. einen vollständigen `assembleRelease`-Compile mit Java 17;
-4. das tatsächlich zusammengeführte Release-Manifest: keine Storage-/Overlay-Rechte,
-   `allowBackup=false` und `usesCleartextTraffic=false`.
+4. jedes tatsächlich zusammengeführte Release-Manifest aller Release-Varianten und Flavors:
+   keine Storage-/Overlay-Rechte, `allowBackup=false` und `usesCleartextTraffic=false`.
 
 Die CI installiert die von Expo SDK 51 fest erwartete NDK-Version `25.1.8937393` explizit. Der
 erste Buildnachweis zeigte, dass ein bloßes `ubuntu-latest` diese Native-Toolchain nicht garantiert;
@@ -91,6 +91,14 @@ Automatisierter Nachweis: GitHub-CI-Run `31705322225` für Commit `8af2d52` best
 Der Quality-Job erzeugte ein unsigniertes Android-Release, bestand Release-Lint und prüfte das
 zusammengeführte Manifest fail-closed; Secret-Scan, Gesamtverifikation und `rls-pgtap` waren ebenfalls
 grün.
+
+Die beiden P4-Hinweise des unabhängigen Reviews sind geschlossen: Der Manifest-Verifier wählt
+nicht länger einen einzelnen Pfad, sondern prüft fail-closed sämtliche gefundenen Release-Flavors;
+ein Regressionstest mit zwei Varianten verhindert eine spätere Teilprüfung. Die bewusst nicht
+implementierte iOS-mDNS-Erkennung wird im Collection-Vertrag ausdrücklich als `unsupported`
+geführt und aus dem Coverage-Nenner entfernt. Ein fehlendes Modul auf einer grundsätzlich
+unterstützten Plattform bleibt dagegen `unavailable` und mindert die Coverage. Die Zuordnung und
+beide Coverage-Fälle sind automatisiert getestet (`npm run verify`: 428 bestandene Tests).
 
 ## Referenzgrenzen
 

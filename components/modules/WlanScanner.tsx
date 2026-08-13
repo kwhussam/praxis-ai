@@ -616,13 +616,17 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
     visibleWifiNetworks: next.collection.visibleWifiNetworks,
     localDevices: next.collection.localDevices.status === "not_checked"
       ? previous.collection.localDevices
-      : next.collection.localDevices
+      : next.collection.localDevices,
+    mdnsDiscovery: next.collection.mdnsDiscovery.status === "not_checked"
+      ? previous.collection.mdnsDiscovery
+      : next.collection.mdnsDiscovery
   };
   const coverage = calculateCollectionCoverage({
     currentWifi: collection.currentWifi.status,
     securityProtocol: collection.securityProtocol.status,
     visibleWifiNetworks: collection.visibleWifiNetworks.status,
-    localDevices: collection.localDevices.status
+    localDevices: collection.localDevices.status,
+    mdnsDiscovery: collection.mdnsDiscovery.status
   });
   const methodology = Array.from(new Set([...previous.methodology, ...next.methodology]))
     .filter((line) => !line.startsWith("Erhebung "))
@@ -796,6 +800,7 @@ function collectionSensorLabel(sensor: string) {
   if (sensor === "securityProtocol") return "WLAN-Sicherheitsprotokoll";
   if (sensor === "visibleWifiNetworks") return "sichtbare WLAN-Netze";
   if (sensor === "localDevices") return "native Geräteerkennung";
+  if (sensor === "mdnsDiscovery") return "mDNS-Diensterkennung";
   return sensor;
 }
 
