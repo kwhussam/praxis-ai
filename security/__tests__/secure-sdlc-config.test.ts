@@ -37,12 +37,12 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(unpinned).toEqual([]);
   });
 
-  it("keeps critical dependency, SBOM and SAST gates fail-closed", () => {
+  it("keeps high/critical dependency, SBOM and SAST gates fail-closed", () => {
     const workflow = readFileSync(join(workflowsDir, "security.yml"), "utf8");
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
-    expect(packageJson.scripts["security:dependencies"]).toBe("npm audit --audit-level=critical");
+    expect(packageJson.scripts["security:dependencies"]).toBe("npm audit --audit-level=high");
     expect(workflow).toContain("npm run security:dependencies");
-    expect(workflow).toContain("fail-on-severity: critical");
+    expect(workflow).toContain("fail-on-severity: high");
     expect(workflow).toContain("queries: security-extended");
     expect(workflow).toContain("security:sarif:gate");
     expect(workflow).toContain("if-no-files-found: error");
@@ -72,15 +72,15 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(ios).toContain("actions/attest@");
   });
 
-  it("blocks critical SARIF but accepts lower-severity results", () => {
+  it("blocks high SARIF but accepts medium-severity results", () => {
     const fixtureRoot = mkdtempSync(join(tmpdir(), "praxisshield-sarif-"));
     try {
       mkdirSync(fixtureRoot, { recursive: true });
       const sarifPath = join(fixtureRoot, "results.sarif");
-      writeFileSync(sarifPath, sarif("8.9"), "utf8");
+      writeFileSync(sarifPath, sarif("6.9"), "utf8");
       expect(execFileSync("node", [sarifGate, fixtureRoot], { encoding: "utf8" })).toContain("SAST gate passed");
 
-      writeFileSync(sarifPath, sarif("9.0"), "utf8");
+      writeFileSync(sarifPath, sarif("7.0"), "utf8");
       expect(() => execFileSync("node", [sarifGate, fixtureRoot], { encoding: "utf8", stdio: "pipe" })).toThrow();
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });

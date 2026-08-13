@@ -18,7 +18,7 @@
     "security:sbom": "node scripts/generate-sbom.mjs",
     "security:sbom:verify": "node scripts/verify-sbom.mjs build/security/praxisshield.cdx.json",
     "security:sarif:gate": "node scripts/gate-sarif.mjs",
-    "security:dependencies": "npm audit --audit-level=critical",
+    "security:dependencies": "npm audit --audit-level=high",
     "test:unit": "jest lib/security/__tests__",
     "test:worker": "jest workers/hono/__tests__",
     "test:rls": "jest supabase/__tests__ --runInBand",

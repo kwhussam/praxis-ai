@@ -16,9 +16,9 @@ for (const file of files) {
       const rule = rules.get(result.ruleId);
       const rawSeverity = result.properties?.["security-severity"] ?? rule?.properties?.["security-severity"];
       const securitySeverity = Number.parseFloat(String(rawSeverity ?? ""));
-      const critical = Number.isFinite(securitySeverity) && securitySeverity >= 9;
+      const highOrCritical = Number.isFinite(securitySeverity) && securitySeverity >= 7;
       const unclassifiedError = result.level === "error" && !Number.isFinite(securitySeverity);
-      if (critical || unclassifiedError) {
+      if (highOrCritical || unclassifiedError) {
         blocking.push({
           ruleId: result.ruleId ?? "unknown-rule",
           level: result.level ?? "warning",
@@ -32,9 +32,9 @@ for (const file of files) {
 
 if (blocking.length > 0) {
   for (const finding of blocking) console.error(JSON.stringify(finding));
-  throw new Error(`SAST gate blocked ${blocking.length} critical or unclassified-error finding(s)`);
+  throw new Error(`SAST gate blocked ${blocking.length} high/critical or unclassified-error finding(s)`);
 }
-console.log(`SAST gate passed: ${resultCount} finding(s), none critical`);
+console.log(`SAST gate passed: ${resultCount} finding(s), none high or critical`);
 
 function findSarifFiles(path) {
   const entry = statSync(path);

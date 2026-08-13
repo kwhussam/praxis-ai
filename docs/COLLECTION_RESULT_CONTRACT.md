@@ -84,7 +84,9 @@ erhält weiterhin keine ausreichende Coverage.
 Die bewusst nicht implementierte iOS-mDNS-Erkennung trägt `unsupported` und wird damit aus dem
 Coverage-Nenner entfernt. Ein Lauf, der die mDNS-Phase noch nicht ausgeführt hat, bleibt
 `not_checked`; ein technischer Ausfall auf einer grundsätzlich unterstützten Plattform bleibt
-`unavailable` und reduziert die Coverage.
+`unavailable` und reduziert die Coverage. Auch ein vollständig leeres mDNS-Ergebnis ist ohne
+explizite Messbelege `unavailable`; eine leere Liste darf nicht als erfolgreiche Nullmessung
+interpretiert werden.
 
 Die relevanten `WlanFinding`-Objekte tragen Collection-Status, Grund,
 Beobachtungszeit, Ablaufzeit und Freshness weiter. Nicht erfolgreiche Sensoren

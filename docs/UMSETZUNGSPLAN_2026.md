@@ -549,7 +549,7 @@ Kein Paket startet, wenn es autonome Exploitation, ungesicherte Remote-Shell, Pa
 
 | Ticket | Umsetzung | Abnahme |
 |---|---|---|
-| SP3-01 | SBOM/Secret/SAST/Dependency/Release-Signing Gates | CI blockiert definierte kritische Fehler |
+| SP3-01 | SBOM/Secret/SAST/Dependency/Release-Signing Gates | CI blockiert definierte hohe und kritische Fehler |
 | SP3-02 | Restore-, Schlüsselrotations- und Incident-Tabletop | Protokoll mit RTO/RPO und Follow-ups |
 | SP3-03 | Assessment-Snapshot-Schema und API-Vertrag | ADR, Migration, Contract Fixtures freigegeben |
 | SP3-04 | SafeScan-Policy und Scan-Authorization-Schema | fachlich/rechtlich reviewed, Safety Fixture Suite vorhanden |
@@ -858,7 +858,7 @@ GitHub-CI-Run `31705322225` für Commit `8af2d52` bestand vollständig: Das Java
 kompilierte das unsignierte Android-Release, bestand Release-Lint sowie Merge-Manifest-Prüfung;
 Secret-Scan, Gesamtverifikation und `rls-pgtap` sind ebenfalls grün.
 
-Nachtrag zum SP3-01-Arbeitsstand: Die vollständige lokale Verifikation ist mit **434 bestandenen
+Nachtrag zum SP3-01-Arbeitsstand: Die vollständige lokale Verifikation ist mit **435 bestandenen
 Tests**, 6 bewusst übersprungenen Tests und 2 Semantik-Snapshots grün. Die neue CycloneDX-SBOM
 enthält 1.725 Komponenten und bestand den Strukturvertrag; das Offline-Dependency-Audit meldete
 keine bekannte Schwachstelle. Der Status bleibt bis zum GitHub-/Signing-Nachweis `verification`.

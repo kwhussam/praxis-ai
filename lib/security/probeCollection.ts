@@ -4,7 +4,9 @@ import type { MdnsServiceResult } from "@/lib/security/networkProbeTypes";
 const MDNS_OBSERVATION_TTL_MS = 5 * 60 * 1000;
 
 export function mdnsCollectionResult(results: MdnsServiceResult[]): CollectionResult<number> {
-  if (results.length === 0) return collected(0, { ttlMs: MDNS_OBSERVATION_TTL_MS });
+  if (results.length === 0) {
+    return notCollected("unavailable", "Die mDNS-Erkennung lieferte keine Messbelege.");
+  }
   if (results.every((result) => result.source === "unsupported")) {
     return notCollected("unsupported", "mDNS-Erkennung wird auf dieser Plattform nicht angeboten.");
   }

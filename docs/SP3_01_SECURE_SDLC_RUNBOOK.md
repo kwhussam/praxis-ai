@@ -15,18 +15,19 @@ im Repository, in einer Expo-Konfiguration oder in einem Buildartefakt.
 | Gate | Ausführung | Blockiert | Evidenz |
 |---|---|---|---|
 | Gitleaks | jeder Push/PR im bestehenden CI | jeden erkannten Secret-Fund | CI-Log |
-| npm Audit | Push, PR, wöchentlich und Release | bekannte Abhängigkeit mit Einstufung `critical` | CI-Log |
-| Dependency Review | jeder PR gegen `main` | neu eingeführte kritische Runtime- oder Dev-Abhängigkeit | PR-Check |
-| CodeQL `security-extended` | Push, PR und wöchentlich | Security-Severity ≥ 9.0 sowie nicht klassifizierte Error-Funde | Code-Scanning + SARIF-Gate |
+| npm Audit | Push, PR, wöchentlich und Release | bekannte Abhängigkeit mit Einstufung `high` oder `critical` | CI-Log |
+| Dependency Review | jeder PR gegen `main` | neu eingeführte hohe oder kritische Runtime-/Dev-Abhängigkeit | PR-Check |
+| CodeQL `security-extended` | Push, PR und wöchentlich | Security-Severity ≥ 7.0 sowie nicht klassifizierte Error-Funde | Code-Scanning + SARIF-Gate |
 | CycloneDX 1.5 | Push, PR, wöchentlich und Release | fehlende/ungültige SBOM, leere Komponenten- oder Dependency-Liste | validierte JSON-SBOM, 90/365 Tage |
 | Native Release-Vertrag | jeder normale CI-Lauf | Debug-Signing, unzulässige Berechtigungen, Backup/Klartext oder unvollständige Signierkonfiguration | Native Config/Build Gates |
 | Produktionssignatur | Tag/manuell von `main`, geschützte Umgebung | fehlendes Secret, falscher Tag/Branch, falsche Team-/Zertifikatsidentität, Debug-/Development-Signatur | signiertes AAB/IPA |
 | Provenienz | jeder Produktionsrelease | Attestation kann nicht erzeugt werden | GitHub/Sigstore-Attestation mit SBOM |
 
-Kritisch ist für SAST eine numerische `security-severity` ab 9.0. Ein SARIF-Ergebnis auf Error-Level
-ohne Klassifizierung wird ebenfalls blockiert, damit eine fehlende Severity nicht als Umgehung wirkt.
-Hohe und mittlere Befunde bleiben sichtbar und folgen den Patch-SLAs, blockieren in dieser Baseline
-aber nicht automatisch jede Auslieferung.
+High oder kritisch ist für das Release-Gate eine numerische `security-severity` ab 7.0. Ein
+SARIF-Ergebnis auf Error-Level ohne Klassifizierung wird ebenfalls blockiert, damit eine fehlende
+Severity nicht als Umgehung wirkt. Diese verschärfte Produktentscheidung schützt insbesondere
+Kryptografie-, Authentifizierungs- und Datenpersistenzabhängigkeiten; mittlere und niedrige Befunde
+bleiben sichtbar und folgen den Patch-SLAs, blockieren aber nicht automatisch jede Auslieferung.
 
 Alle GitHub Actions sind auf vollständige Commit-SHAs fixiert. Dependabot erzeugt wöchentlich
 getrennte Updates für npm und Actions; ein bewegliches Major-Tag kann dadurch nicht unbemerkt Code
@@ -112,7 +113,7 @@ Zusätzlich sind Dependency Graph, Code Scanning, private Vulnerability Reports 
 
 Die Fristen in `SECURITY.md` sind Zielwerte ab reproduzierbarer Bestätigung: kritisch 24 Stunden
 Eindämmung/72 Stunden Fix, hoch 3/7 Tage, mittel 30 Tage und niedrig 90 Tage für die Korrektur.
-Eine Ausnahme für einen bestätigten kritischen Befund darf nicht als CI-Allowlist im Code landen.
+Eine Ausnahme für einen bestätigten hohen oder kritischen Befund darf nicht als CI-Allowlist im Code landen.
 Sie benötigt dokumentierten Owner, Begründung, Kompensationsmaßnahme, Ablaufdatum und Freigabe von
 Security und Product; bis dahin wird der Release gestoppt oder die betroffene Funktion abgeschaltet.
 
@@ -120,7 +121,7 @@ Security und Product; bis dahin wird der Release gestoppt oder die betroffene Fu
 
 Lokal bestanden:
 
-- vollständiges `npm run verify` mit 434 bestandenen Tests, 6 bewusst übersprungenen Tests und
+- vollständiges `npm run verify` mit 435 bestandenen Tests, 6 bewusst übersprungenen Tests und
   2 Semantik-Snapshots;
 - CycloneDX-Erzeugung und strukturelle Prüfung mit 1.725 Komponenten;
 - Dependency-Audit aus dem vorhandenen Offline-Cache: keine bekannte Schwachstelle;

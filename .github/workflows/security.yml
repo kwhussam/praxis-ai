@@ -23,7 +23,7 @@ jobs:
           cache: npm
       - name: Install exactly locked dependencies
         run: npm ci
-      - name: Block critical dependency vulnerabilities
+      - name: Block high and critical dependency vulnerabilities
         run: npm run security:dependencies
       - name: Generate and validate CycloneDX SBOM
         run: npm run security:sbom && npm run security:sbom:verify
@@ -43,10 +43,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Block newly introduced critical dependencies
+      - name: Block newly introduced high and critical dependencies
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
         with:
-          fail-on-severity: critical
+          fail-on-severity: high
           fail-on-scopes: runtime, development
 
   codeql:
@@ -70,5 +70,5 @@ jobs:
           category: /language:javascript-typescript
           output: build/security/codeql-raw
           post-processed-sarif-path: build/security/codeql-sarif
-      - name: Block critical SAST findings
+      - name: Block high and critical SAST findings
         run: npm run security:sarif:gate -- build/security/codeql-sarif

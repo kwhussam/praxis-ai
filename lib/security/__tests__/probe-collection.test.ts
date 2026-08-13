@@ -2,6 +2,17 @@ import { calculateCollectionCoverage } from "@/lib/assessment/coverage";
 import { mdnsCollectionResult } from "@/lib/security/probeCollection";
 
 describe("mDNS collection capability", () => {
+  it("does not treat an empty result set as a successful zero measurement", () => {
+    const mdns = mdnsCollectionResult([]);
+
+    expect(mdns.status).toBe("unavailable");
+    expect(calculateCollectionCoverage({ currentWifi: "collected", mdnsDiscovery: mdns.status })).toMatchObject({
+      score: 50,
+      status: "insufficient",
+      missing: ["mdnsDiscovery"]
+    });
+  });
+
   it("maps a platform boundary to unsupported and excludes it from coverage", () => {
     const mdns = mdnsCollectionResult([
       { type: "_dicom._tcp", addresses: [], source: "unsupported", confidence: "low", errorCode: "ios_mdns_unsupported" }
