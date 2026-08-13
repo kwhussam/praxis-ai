@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
+const appConfig = JSON.parse(readFileSync(resolve(root, "app.json"), "utf8")).expo;
 
 function read(relativePath) {
   return readFileSync(resolve(root, relativePath), "utf8");
@@ -23,6 +24,8 @@ const iosInfo = read("ios/PraxisShieldAI/Info.plist");
 requireText(iosInfo, "NSLocalNetworkUsageDescription", "iOS Info.plist");
 requireText(iosInfo, "NSLocationWhenInUseUsageDescription", "iOS Info.plist");
 forbidText(iosInfo, "NSBonjourServices", "iOS Info.plist");
+requireText(iosInfo, `<string>${appConfig.version}</string>`, "iOS release version");
+requireText(iosInfo, `<string>${appConfig.ios.buildNumber}</string>`, "iOS release build number");
 
 const iosProject = read("ios/PraxisShieldAI.xcodeproj/project.pbxproj");
 for (const fileName of ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"]) {
@@ -63,8 +66,18 @@ requireText(androidApplication, "PraxisShieldNetworkProbePackage()", "Android Ma
 requireText(androidProbe, "class PraxisShieldNetworkProbeModule", "Android network probe");
 
 const androidBuild = read("android/app/build.gradle");
-const releaseBuild = androidBuild.slice(androidBuild.indexOf("release {"), androidBuild.indexOf("packagingOptions"));
+requireText(androidBuild, `versionCode ${appConfig.android.versionCode}`, "Android release version code");
+requireText(androidBuild, `versionName "${appConfig.version}"`, "Android release version name");
+const buildTypesStart = androidBuild.indexOf("buildTypes {");
+const releaseBuildStart = androidBuild.indexOf("release {", buildTypesStart);
+if (buildTypesStart < 0 || releaseBuildStart < buildTypesStart) {
+  throw new Error("Android release build type is missing");
+}
+const releaseBuild = androidBuild.slice(releaseBuildStart, androidBuild.indexOf("packagingOptions", releaseBuildStart));
 forbidText(releaseBuild, "signingConfig signingConfigs.debug", "Android release build type");
+requireText(androidBuild, "PraxisShield release signing contract v1", "Android release signing contract");
+requireText(androidBuild, 'System.getenv("ANDROID_KEYSTORE_PATH")', "Android protected release signing");
+requireText(androidBuild, "praxisShieldReleaseSigningConfigured", "Android protected release signing");
 requireText(
   releaseBuild,
   "Release signing is injected only by the protected CI/EAS credential provider.",

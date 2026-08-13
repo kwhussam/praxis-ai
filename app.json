@@ -9,6 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.praxisshield.app",
+      "buildNumber": "1",
       "entitlements": {
         "com.apple.developer.networking.wifi-info": true
       },
@@ -23,6 +24,7 @@
     },
     "android": {
       "package": "ai.praxisshield.app",
+      "versionCode": 1,
       "allowBackup": false,
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

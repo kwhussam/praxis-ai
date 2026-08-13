@@ -9,6 +9,9 @@ const path = require("path") as {
 };
 
 const repoRoot = path.resolve(__dirname, "../..");
+const { hardenAndroidReleaseSigning } = require("../../plugins/with-secure-android-backup.js") as {
+  hardenAndroidReleaseSigning(contents: string): string;
+};
 
 function read(relativePath: string) {
   return fs.readFileSync(path.resolve(repoRoot, relativePath), "utf8");
@@ -17,11 +20,19 @@ function read(relativePath: string) {
 describe("SP2-06 native release configuration", () => {
   const appConfig = JSON.parse(read("app.json")) as {
     expo: {
-      ios?: { entitlements?: Record<string, unknown>; infoPlist?: Record<string, unknown> };
-      android?: { allowBackup?: boolean; blockedPermissions?: string[]; permissions?: string[] };
+      version?: string;
+      ios?: { buildNumber?: string; entitlements?: Record<string, unknown>; infoPlist?: Record<string, unknown> };
+      android?: { versionCode?: number; allowBackup?: boolean; blockedPermissions?: string[]; permissions?: string[] };
       plugins?: unknown[];
     };
   };
+
+  it("keeps explicit, positive native release versions bound to the product version", () => {
+    const packageVersion = (JSON.parse(read("package.json")) as { version: string }).version;
+    expect(appConfig.expo.version).toBe(packageVersion);
+    expect(appConfig.expo.android?.versionCode).toBeGreaterThan(0);
+    expect(appConfig.expo.ios?.buildNumber).toMatch(/^[1-9][0-9]*$/);
+  });
 
   it("keeps the iOS Wi-Fi information entitlement in the prebuild contract", () => {
     expect(appConfig.expo.ios?.entitlements?.["com.apple.developer.networking.wifi-info"]).toBe(true);
@@ -43,6 +54,10 @@ describe("SP2-06 native release configuration", () => {
     expect(plugin).toContain('application.$["android:dataExtractionRules"] = "@xml/data_extraction_rules"');
     expect(plugin).toContain('application.$["android:usesCleartextTraffic"] = "false"');
     expect(plugin).toContain("Release signing is injected only by the protected CI/EAS credential provider.");
+    expect(plugin).toContain("PraxisShield release signing contract v1");
+    expect(plugin).toContain('System.getenv("ANDROID_KEYSTORE_PATH")');
+    expect(plugin).toContain("praxisShieldReleaseSigningRequested");
+    expect(plugin).toContain("Incomplete PraxisShield Android release signing configuration");
     expect(plugin).toContain("Could not remove the Expo template's debug signing");
 
     for (const domain of ["root", "file", "database", "sharedpref", "external"]) {
@@ -58,6 +73,18 @@ describe("SP2-06 native release configuration", () => {
     for (const domain of ["device_root", "device_file", "device_database", "device_sharedpref"]) {
       expect(plugin).not.toContain(`domain="${domain}"`);
     }
+  });
+
+  it("creates an idempotent, fail-closed protected Android signing configuration", () => {
+    const fixture = `android {\n    buildTypes {\n        release {\n            signingConfig signingConfigs.debug\n            shrinkResources false\n        }\n    }\n}\n`;
+    const secured = hardenAndroidReleaseSigning(fixture);
+
+    expect(secured).not.toContain("signingConfig signingConfigs.debug");
+    expect(secured).toContain("PraxisShield release signing contract v1");
+    expect(secured).toContain("Incomplete PraxisShield Android release signing configuration");
+    expect(secured).toContain("signingConfig signingConfigs.release");
+    expect(hardenAndroidReleaseSigning(secured)).toBe(secured);
+    expect(() => hardenAndroidReleaseSigning("android { buildTypes { release { } } }")).toThrow();
   });
 
   it("keeps production storage and overlay permissions out while retaining explicit Wi-Fi permissions", () => {

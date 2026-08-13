@@ -1,0 +1,74 @@
+name: Secure SDLC
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain:
+    name: Dependency and SBOM Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install exactly locked dependencies
+        run: npm ci
+      - name: Block critical dependency vulnerabilities
+        run: npm run security:dependencies
+      - name: Generate and validate CycloneDX SBOM
+        run: npm run security:sbom && npm run security:sbom:verify
+      - name: Upload immutable SBOM evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cyclonedx-sbom-${{ github.sha }}
+          path: build/security/praxisshield.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+  dependency-review:
+    name: Dependency Review Gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Block newly introduced critical dependencies
+        uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          fail-on-severity: critical
+          fail-on-scopes: runtime, development
+
+  codeql:
+    name: CodeQL SAST Gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
+      - name: Analyze and publish SAST evidence
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          category: /language:javascript-typescript
+          output: build/security/codeql-raw
+          post-processed-sarif-path: build/security/codeql-sarif
+      - name: Block critical SAST findings
+        run: npm run security:sarif:gate -- build/security/codeql-sarif

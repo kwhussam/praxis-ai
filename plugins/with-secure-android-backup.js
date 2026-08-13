@@ -39,6 +39,71 @@ const EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
 </data-extraction-rules>
 `;
 
+function hardenAndroidReleaseSigning(contents) {
+  const signingContract = "PraxisShield release signing contract v1";
+  if (contents.includes(signingContract)) return contents;
+  const releaseStart = contents.indexOf("release {");
+  const debugSigning = "signingConfig signingConfigs.debug";
+  const protectedSigning = "Release signing is injected only by the protected CI/EAS credential provider.";
+  const signingStart = contents.indexOf(debugSigning, releaseStart);
+  const firstReleaseSetting = contents.indexOf("shrinkResources", releaseStart);
+  if (releaseStart < 0 || firstReleaseSetting < releaseStart) {
+    throw new Error("Could not locate the Android release build type");
+  }
+
+  let nextContents = contents;
+  if (signingStart >= releaseStart && signingStart <= firstReleaseSetting) {
+    nextContents =
+      contents.slice(0, signingStart) +
+      `// ${protectedSigning}` +
+      contents.slice(signingStart + debugSigning.length);
+  } else if (contents.indexOf(protectedSigning, releaseStart) < 0) {
+    throw new Error("Could not remove the Expo template's debug signing from the Android release build");
+  }
+
+  const environmentContract = `
+// ${signingContract}. Values are supplied only by the protected release job.
+def praxisShieldReleaseSigningValues = [
+    System.getenv("ANDROID_KEYSTORE_PATH"),
+    System.getenv("ANDROID_KEYSTORE_PASSWORD"),
+    System.getenv("ANDROID_KEY_ALIAS"),
+    System.getenv("ANDROID_KEY_PASSWORD")
+]
+def praxisShieldReleaseSigningRequested = praxisShieldReleaseSigningValues.any { it != null && !it.isEmpty() }
+def praxisShieldReleaseSigningConfigured = praxisShieldReleaseSigningValues.every { it != null && !it.isEmpty() }
+if (praxisShieldReleaseSigningRequested && !praxisShieldReleaseSigningConfigured) {
+    throw new GradleException("Incomplete PraxisShield Android release signing configuration")
+}
+
+`;
+  const signingConfiguration = `    if (praxisShieldReleaseSigningConfigured) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+`;
+  const androidStart = nextContents.indexOf("android {");
+  if (androidStart < 0) throw new Error("Could not locate the Android configuration block");
+  nextContents = nextContents.slice(0, androidStart) + environmentContract + nextContents.slice(androidStart);
+  const buildTypesStart = nextContents.indexOf("    buildTypes {", androidStart + environmentContract.length);
+  if (buildTypesStart < 0) throw new Error("Could not locate Android buildTypes for release signing");
+  nextContents = nextContents.slice(0, buildTypesStart) + signingConfiguration + nextContents.slice(buildTypesStart);
+  const protectedComment = `// ${protectedSigning}`;
+  const protectedCommentStart = nextContents.indexOf(protectedComment, buildTypesStart + signingConfiguration.length);
+  if (protectedCommentStart < 0) throw new Error("Could not locate protected Android signing marker");
+  const protectedCommentEnd = protectedCommentStart + protectedComment.length;
+  return (
+    nextContents.slice(0, protectedCommentEnd) +
+    `\n            if (praxisShieldReleaseSigningConfigured) { signingConfig signingConfigs.release }` +
+    nextContents.slice(protectedCommentEnd)
+  );
+}
+
 module.exports = function withSecureAndroidBackup(config) {
   config = withAndroidManifest(config, (modConfig) => {
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(modConfig.modResults);
@@ -58,20 +123,7 @@ module.exports = function withSecureAndroidBackup(config) {
     if (modConfig.modResults.language !== "groovy") {
       throw new Error("PraxisShield requires a Groovy Android app build file");
     }
-    const contents = modConfig.modResults.contents;
-    const releaseStart = contents.indexOf("release {");
-    const debugSigning = "signingConfig signingConfigs.debug";
-    const protectedSigning = "Release signing is injected only by the protected CI/EAS credential provider.";
-    if (releaseStart >= 0 && contents.indexOf(protectedSigning, releaseStart) >= 0) return modConfig;
-    const signingStart = contents.indexOf(debugSigning, releaseStart);
-    const firstReleaseSetting = contents.indexOf("shrinkResources", releaseStart);
-    if (releaseStart < 0 || signingStart < releaseStart || signingStart > firstReleaseSetting) {
-      throw new Error("Could not remove the Expo template's debug signing from the Android release build");
-    }
-    modConfig.modResults.contents =
-      contents.slice(0, signingStart) +
-      `// ${protectedSigning}` +
-      contents.slice(signingStart + debugSigning.length);
+    modConfig.modResults.contents = hardenAndroidReleaseSigning(modConfig.modResults.contents);
     return modConfig;
   });
 
@@ -86,3 +138,5 @@ module.exports = function withSecureAndroidBackup(config) {
     }
   ]);
 };
+
+module.exports.hardenAndroidReleaseSigning = hardenAndroidReleaseSigning;

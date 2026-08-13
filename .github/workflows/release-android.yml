@@ -1,0 +1,92 @@
+name: Signed Android Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  signed-android-release:
+    name: Signed AAB, SBOM and Provenance
+    runs-on: ubuntu-latest
+    environment: production-android
+    env:
+      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/praxisshield-release.jks
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_SIGNING_CERT_SHA256: ${{ secrets.ANDROID_SIGNING_CERT_SHA256 }}
+      EXPO_PUBLIC_APP_ENV: production
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Validate protected signing inputs
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          test -n "$ANDROID_SIGNING_CERT_SHA256"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL"
+          test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
+          test -n "$EXPO_PUBLIC_API_BASE_URL"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          chmod 600 "$ANDROID_KEYSTORE_PATH"
+      - name: Install pinned Android NDK
+        run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;25.1.8937393"
+      - name: Install exactly locked dependencies
+        run: npm ci
+      - name: Bind release to an approved source revision
+        run: node scripts/verify-release-ref.mjs && git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Run dependency and source verification
+        run: npm run security:dependencies && npm run verify
+      - name: Generate and validate release SBOM
+        run: npm run security:sbom && npm run security:sbom:verify
+      - name: Generate native project and signed release bundle
+        run: npx --no-install expo prebuild --no-install && npm run verify:native-config && ./android/gradlew -p android :app:bundleRelease
+      - name: Verify release certificate and build evidence manifest
+        run: |
+          node scripts/verify-android-release-signature.mjs android/app/build/outputs/bundle/release/app-release.aab
+          node scripts/create-release-manifest.mjs \
+            --artifact android/app/build/outputs/bundle/release/app-release.aab \
+            --sbom build/security/praxisshield.cdx.json \
+            --output build/security/android-release-manifest.json \
+            --platform android \
+            --signing-identity "$ANDROID_SIGNING_CERT_SHA256"
+      - name: Attest signed artifact and CycloneDX SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: android/app/build/outputs/bundle/release/app-release.aab
+          sbom-path: build/security/praxisshield.cdx.json
+      - name: Upload signed release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: praxisshield-android-${{ github.sha }}
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            build/security/praxisshield.cdx.json
+            build/security/android-release-manifest.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Destroy temporary signing material
+        if: always()
+        run: shred --remove "$ANDROID_KEYSTORE_PATH" 2>/dev/null || rm -f "$ANDROID_KEYSTORE_PATH"

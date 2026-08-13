@@ -1,0 +1,135 @@
+name: Signed iOS Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  signed-ios-release:
+    name: Signed IPA, SBOM and Provenance
+    runs-on: macos-15
+    environment: production-ios
+    env:
+      IOS_KEYCHAIN_PATH: ${{ runner.temp }}/praxisshield-release.keychain-db
+      IOS_CERTIFICATE_PATH: ${{ runner.temp }}/praxisshield-distribution.p12
+      IOS_PROFILE_PATH: ${{ runner.temp }}/praxisshield.mobileprovision
+      IOS_PROFILE_PLIST_PATH: ${{ runner.temp }}/praxisshield-profile.plist
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      IOS_CI_KEYCHAIN_PASSWORD: ${{ secrets.IOS_CI_KEYCHAIN_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_PROVISIONING_PROFILE_NAME: ${{ secrets.APPLE_PROVISIONING_PROFILE_NAME }}
+      APPLE_SIGNING_CERT_SHA256: ${{ secrets.APPLE_SIGNING_CERT_SHA256 }}
+      EXPO_PUBLIC_APP_ENV: production
+      EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.PRODUCTION_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Validate and import protected Apple signing inputs
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          test -n "$APPLE_CERTIFICATE_BASE64"
+          test -n "$APPLE_PROVISIONING_PROFILE_BASE64"
+          test -n "$APPLE_CERTIFICATE_PASSWORD"
+          test -n "$IOS_CI_KEYCHAIN_PASSWORD"
+          test -n "$APPLE_TEAM_ID"
+          test -n "$APPLE_PROVISIONING_PROFILE_NAME"
+          test -n "$APPLE_SIGNING_CERT_SHA256"
+          test -n "$EXPO_PUBLIC_SUPABASE_URL"
+          test -n "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
+          test -n "$EXPO_PUBLIC_API_BASE_URL"
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 -D > "$IOS_CERTIFICATE_PATH"
+          printf '%s' "$APPLE_PROVISIONING_PROFILE_BASE64" | base64 -D > "$IOS_PROFILE_PATH"
+          chmod 600 "$IOS_CERTIFICATE_PATH" "$IOS_PROFILE_PATH"
+          security create-keychain -p "$IOS_CI_KEYCHAIN_PASSWORD" "$IOS_KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$IOS_KEYCHAIN_PATH"
+          security unlock-keychain -p "$IOS_CI_KEYCHAIN_PASSWORD" "$IOS_KEYCHAIN_PATH"
+          security import "$IOS_CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$IOS_KEYCHAIN_PATH"
+          security list-keychain -d user -s "$IOS_KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$IOS_CI_KEYCHAIN_PASSWORD" "$IOS_KEYCHAIN_PATH"
+          security cms -D -i "$IOS_PROFILE_PATH" > "$IOS_PROFILE_PLIST_PATH"
+          chmod 600 "$IOS_PROFILE_PLIST_PATH"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$IOS_PROFILE_PLIST_PATH")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$IOS_PROFILE_PLIST_PATH")
+          PROFILE_TEAM=$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$IOS_PROFILE_PLIST_PATH")
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$IOS_PROFILE_PLIST_PATH")
+          test "$PROFILE_NAME" = "$APPLE_PROVISIONING_PROFILE_NAME"
+          test "$PROFILE_TEAM" = "$APPLE_TEAM_ID"
+          test "$PROFILE_APP_ID" = "$APPLE_TEAM_ID.ai.praxisshield.app"
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          cp "$IOS_PROFILE_PATH" "$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
+          printf 'PROVISIONING_PROFILE_PATH=%s\n' "$PROFILES_DIR/$PROFILE_UUID.mobileprovision" >> "$GITHUB_ENV"
+      - name: Install exactly locked dependencies
+        run: npm ci
+      - name: Bind release to an approved source revision
+        run: node scripts/verify-release-ref.mjs && git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Run dependency and source verification
+        run: npm run security:dependencies && npm run verify
+      - name: Generate and validate release SBOM
+        run: npm run security:sbom && npm run security:sbom:verify
+      - name: Generate native iOS project
+        run: npx --no-install expo prebuild --no-install && npm run verify:native-config && pod install --project-directory=ios
+      - name: Prepare export policy and archive signed application
+        run: |
+          node scripts/prepare-ios-export-options.mjs build/security/ExportOptions.plist
+          xcodebuild \
+            -workspace ios/PraxisShieldAI.xcworkspace \
+            -scheme PraxisShieldAI \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/PraxisShieldAI.xcarchive" \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$APPLE_PROVISIONING_PROFILE_NAME" \
+            CODE_SIGN_IDENTITY="Apple Distribution"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PraxisShieldAI.xcarchive" \
+            -exportPath build/release/ios \
+            -exportOptionsPlist build/security/ExportOptions.plist
+          IPA_PATH=$(find build/release/ios -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$IPA_PATH"
+          mv "$IPA_PATH" build/release/ios/praxisshield-ios.ipa
+      - name: Verify release identity and build evidence manifest
+        run: |
+          node scripts/verify-ios-release-signature.mjs build/release/ios/praxisshield-ios.ipa
+          node scripts/create-release-manifest.mjs \
+            --artifact build/release/ios/praxisshield-ios.ipa \
+            --sbom build/security/praxisshield.cdx.json \
+            --output build/security/ios-release-manifest.json \
+            --platform ios \
+            --signing-identity "$APPLE_SIGNING_CERT_SHA256"
+      - name: Attest signed artifact and CycloneDX SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: build/release/ios/praxisshield-ios.ipa
+          sbom-path: build/security/praxisshield.cdx.json
+      - name: Upload signed release evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: praxisshield-ios-${{ github.sha }}
+          path: |
+            build/release/ios/praxisshield-ios.ipa
+            build/security/praxisshield.cdx.json
+            build/security/ios-release-manifest.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Destroy temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$IOS_KEYCHAIN_PATH" 2>/dev/null || true
+          rm -f "$IOS_CERTIFICATE_PATH" "$IOS_PROFILE_PATH" "$IOS_PROFILE_PLIST_PATH" "${PROVISIONING_PROFILE_PATH:-$RUNNER_TEMP/nonexistent-profile}"
