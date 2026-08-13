@@ -56,6 +56,10 @@ Der `quality`-Job erzeugt `ios/` und `android/` in jedem Lauf neu und prüft ans
 4. das tatsächlich zusammengeführte Release-Manifest: keine Storage-/Overlay-Rechte,
    `allowBackup=false` und `usesCleartextTraffic=false`.
 
+Die CI installiert die von Expo SDK 51 fest erwartete NDK-Version `25.1.8937393` explizit. Der
+erste Buildnachweis zeigte, dass ein bloßes `ubuntu-latest` diese Native-Toolchain nicht garantiert;
+ein fehlendes NDK darf nicht erst in einem späteren Release-Build auffallen.
+
 Damit kann eine Abweichung zwischen `app.json`, Config-Plugin, Xcode-Projekt, Gradle und
 zusammengeführtem Manifest nicht unbemerkt veröffentlicht werden.
 
