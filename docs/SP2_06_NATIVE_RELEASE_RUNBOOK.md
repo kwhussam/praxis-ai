@@ -70,7 +70,7 @@ zusammengeführtem Manifest nicht unbemerkt veröffentlicht werden.
 | Clean Prebuild | SDK 51, leeres `ios/`/`android/`, danach Wiederholung | bestanden | Native Projekte und Probes sind reproduzierbar; Plugins sind idempotent |
 | iOS Simulator | iPhone-SE-Viewport, iOS 18.6 | bestanden | Build, Installation und App-Start; simuliertes Xcode-Entitlement enthält Wi-Fi Information |
 | iOS physisch | aktuelle unterstützte iOS-17/18-Version | offen | echter SSID-/Location-/Local-Network-Dialog und Keychain-/Netzwerkprobe |
-| Android CI | API/Target 35, Java 17 | nach Push durch CI | Release-Kompilierung und zusammengeführtes Manifest |
+| Android CI | API/Target 35, Java 17 | bestanden, Run `31705322225` | Release-Kompilierung, Release-Lint und zusammengeführtes Manifest |
 | Android physisch | API 33 und API 35, mindestens ein Samsung- und ein AOSP/Pixel-Gerät | offen | Permission-Kombination, WLAN-Liste, Backup/Restore und lokale Probe |
 | Android Minimum | API 23 | offen | Installation, Start und verständliche Capability-Degradierung |
 
@@ -80,13 +80,17 @@ Gate, ersetzt aber nicht die zwei physischen Android-Smokes.
 
 ## Noch offene Release-Gates
 
-- grüner GitHub-CI-Lauf einschließlich Android-`assembleRelease` und Merge-Manifest-Prüfung;
 - physischer iOS-Smoke: Freigabe verweigert/erteilt, SSID, Local-Network-Dialog, TCP/SSDP und
   korrekte `unsupported`-Anzeige für nicht verfügbare WLAN-Capabilities;
 - physische Android-Smokes auf API 33 und 35: beide Runtime-Rechte, Ablehnungs-/Dauerhaft-
   Ablehnen-Pfade, Scan, App-Neustart sowie Backup-/Restore-Negativnachweis;
 - Minimum-API-23-Smoke und finaler Store-/Production-Signing-Nachweis. Signierschlüssel und
   Passwörter dürfen niemals im Repository oder Buildlog erscheinen.
+
+Automatisierter Nachweis: GitHub-CI-Run `31705322225` für Commit `8af2d52` bestand vollständig.
+Der Quality-Job erzeugte ein unsigniertes Android-Release, bestand Release-Lint und prüfte das
+zusammengeführte Manifest fail-closed; Secret-Scan, Gesamtverifikation und `rls-pgtap` waren ebenfalls
+grün.
 
 ## Referenzgrenzen
 
