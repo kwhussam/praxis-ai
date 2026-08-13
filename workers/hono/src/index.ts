@@ -619,7 +619,7 @@ app.get("/health", (c) =>
   })
 );
 
-app.post("/api/check/external", async (c) => handleExternalCheck(c, { requirePractice: true, persist: true }));
+app.post("/api/check/external", async (c) => handleExternalCheck(c));
 app.post("/api/check/questionnaire", async (c) => handleQuestionnaireCheck(c));
 app.get("/api/dashboard", async (c) => handleDashboard(c));
 app.post("/api/report/generate", async (c) => handleReportGenerate(c, { requirePractice: true, persist: true }));
@@ -1008,10 +1008,7 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-async function handleExternalCheck(
-  c: Context<{ Bindings: Env }>,
-  options: { requirePractice: boolean; persist: boolean }
-) {
+async function handleExternalCheck(c: Context<{ Bindings: Env }>) {
   let payload: ExternalCheckRequest;
 
   try {
@@ -1020,58 +1017,51 @@ async function handleExternalCheck(
     return c.json({ error: "invalid_json" }, 400);
   }
 
-  const access = options.requirePractice || payload.practiceId
-    ? await requirePracticeAccess(c, payload.practiceId, "external_check", "manager")
-    : null;
+  // External provider execution is never public. Keeping the tenant access
+  // requirement inside the handler prevents a future route registration from
+  // accidentally disabling every downstream consent and quota gate.
+  const access = await requirePracticeAccess(c, payload.practiceId, "external_check", "manager");
   if (access instanceof Response) return access;
 
-  const domain = normalizeDomain(payload.domain || access?.practice.domain);
+  const domain = normalizeDomain(payload.domain || access.practice.domain);
 
   if (!domain) {
     return c.json({ error: "domain is required" }, 400);
   }
 
-  if (access) {
-    const consentResponse = await requireRegistryConsents(c, access, ["external_provider_checks"]);
-    if (consentResponse) return consentResponse;
-  }
+  const providerConsentResponse = await requireRegistryConsents(c, access, ["external_provider_checks"]);
+  if (providerConsentResponse) return providerConsentResponse;
 
   // HIBP receives an email address and therefore requires its own purpose-bound
   // consent. Both gates run before quota consumption or any provider call.
-  if (access && payload.leakConsentAccepted === true) {
+  if (payload.leakConsentAccepted === true) {
     const consentResponse = await requireRegistryConsents(c, access, ["hibp_email_leak_check"]);
     if (consentResponse) return consentResponse;
   }
 
-  if (access) {
-    const allowed = await consumeExternalQuotaOrErrorResponse(c, access, "external_check");
-    if (allowed instanceof Response) return allowed;
-    if (!allowed) {
-      await auditPracticeAccess(c, access, "quota_denied", "external_check", { plan: access.practice.plan });
-      const limit = PLAN_DAILY_EXTERNAL_CHECK_LIMIT[access.practice.plan] ?? PLAN_DAILY_EXTERNAL_CHECK_LIMIT.free;
-      return c.json({ error: "daily_limit_reached", limit, plan: access.practice.plan }, 429);
-    }
+  const allowed = await consumeExternalQuotaOrErrorResponse(c, access, "external_check");
+  if (allowed instanceof Response) return allowed;
+  if (!allowed) {
+    await auditPracticeAccess(c, access, "quota_denied", "external_check", { plan: access.practice.plan });
+    const limit = PLAN_DAILY_EXTERNAL_CHECK_LIMIT[access.practice.plan] ?? PLAN_DAILY_EXTERNAL_CHECK_LIMIT.free;
+    return c.json({ error: "daily_limit_reached", limit, plan: access.practice.plan }, 429);
   }
 
   const leakEmails = payload.leakConsentAccepted === true
-    ? uniqueEmails([payload.email, access?.practice.email].filter((item): item is string => Boolean(item)))
+    ? uniqueEmails([payload.email, access.practice.email].filter((item): item is string => Boolean(item)))
     : [];
   const result = await performExternalCheck(domain, leakEmails, c.env);
 
-  if (access && options.persist) {
-    const checkId = await persistSecurityCheck(
-      c.env,
-      access.practice.id,
-      "external",
-      result.overall_score,
-      { summary: redactedExternalSummary(result), encryptedPayload: result },
-      payload.clientSyncId
-    );
-    await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "external" });
-    return c.json({ ...result, checkId });
-  }
-
-  return c.json(result);
+  const checkId = await persistSecurityCheck(
+    c.env,
+    access.practice.id,
+    "external",
+    result.overall_score,
+    { summary: redactedExternalSummary(result), encryptedPayload: result },
+    payload.clientSyncId
+  );
+  await auditPracticeAccess(c, access, "create", "security_checks", { check_id: checkId, type: "external" });
+  return c.json({ ...result, checkId });
 }
 
 async function handleQuestionnaireCheck(c: Context<{ Bindings: Env }>) {
@@ -3061,14 +3051,19 @@ async function insertConsentLog(
   });
 }
 
-async function hasActiveRegistryConsent(env: Env, practiceId: string, type: RegistryConsentType) {
+async function hasActiveRegistryConsent(
+  env: Env,
+  practiceId: string,
+  type: RegistryConsentType,
+  evaluatedAt = new Date().toISOString()
+) {
   return supabaseRest<boolean>(env, "/rest/v1/rpc/has_active_practice_consent", {
     method: "POST",
     body: {
       p_practice_id: practiceId,
       p_type: type,
       p_version: CONSENT_REGISTRY_VERSION,
-      p_at: new Date().toISOString()
+      p_at: evaluatedAt
     }
   });
 }
@@ -3095,20 +3090,19 @@ async function requireRegistryConsents(
 }
 
 async function buildConsentRegistryStatus(env: Env, practiceId: string) {
+  const evaluatedAt = new Date().toISOString();
   const entries = await Promise.all(REGISTRY_CONSENT_TYPES.map(async (type) => {
-    const rows = await supabaseRest<unknown[]>(
-      env,
-      `/rest/v1/consent_log?select=id,type,version,accepted,accepted_at,withdrawn_at,expires_at,scope&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.${encodeURIComponent(type)}&order=accepted_at.desc,created_at.desc,id.desc&limit=1`,
-      { method: "GET" }
-    );
+    const [rows, active] = await Promise.all([
+      supabaseRest<unknown[]>(
+        env,
+        `/rest/v1/consent_log?select=id,type,version,accepted,accepted_at,withdrawn_at,expires_at,scope&practice_id=eq.${encodeURIComponent(practiceId)}&type=eq.${encodeURIComponent(type)}&order=accepted_at.desc,created_at.desc,id.desc&limit=1`,
+        { method: "GET" }
+      ),
+      hasActiveRegistryConsent(env, practiceId, type, evaluatedAt)
+    ]);
     const row = asRecordOrNull(rows[0]);
     const expiresAt = typeof row?.expires_at === "string" ? row.expires_at : null;
     const withdrawnAt = typeof row?.withdrawn_at === "string" ? row.withdrawn_at : null;
-    const active = row?.accepted === true
-      && row.version === CONSENT_REGISTRY_VERSION
-      && withdrawnAt === null
-      && expiresAt !== null
-      && new Date(expiresAt).getTime() > Date.now();
     return [type, {
       type,
       active,

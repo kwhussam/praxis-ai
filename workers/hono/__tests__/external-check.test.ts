@@ -3037,6 +3037,7 @@ describe("POST /api/legal/consent (DB-08)", () => {
         return Response.json([{ id: roleGatePracticeId, owner_id: "22222222-2222-4222-8222-222222222222", name: "Praxis", domain: "praxis.de", email: "kontakt@praxis.de", plan: "free" }]);
       }
       if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) return Response.json(true);
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) return Response.json(true);
       if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) return new Response(null, { status: 204 });
       if (url.startsWith("https://example.supabase.co/rest/v1/consent_log") && init?.method === "POST") {
         insertedRows.push(...JSON.parse(String(init.body)) as Array<Record<string, unknown>>);
@@ -3087,6 +3088,68 @@ describe("POST /api/legal/consent (DB-08)", () => {
         practiceId: roleGatePracticeId,
         consents: { external_provider_checks: { active: true, version: "2026-08-12.v1" } }
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("bezieht active ausschliesslich aus derselben Registry-RPC wie die Ausfuehrungsgates", async () => {
+    const originalFetch = globalThis.fetch;
+    const evaluatedTypes: string[] = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://example.supabase.co/auth/v1/user")) {
+        return Response.json({ id: "22222222-2222-4222-8222-222222222222", email: "owner@praxis.de" });
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practices")) {
+        return Response.json([{ id: roleGatePracticeId, owner_id: "22222222-2222-4222-8222-222222222222", name: "Praxis", domain: "praxis.de", email: "kontakt@praxis.de", plan: "free" }]);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/can_access_practice")) return Response.json(true);
+      if (url.startsWith("https://example.supabase.co/rest/v1/rpc/has_active_practice_consent")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { p_type?: string };
+        evaluatedTypes.push(body.p_type ?? "");
+        return Response.json(false);
+      }
+      if (url.startsWith("https://example.supabase.co/rest/v1/practice_access_audit")) return new Response(null, { status: 204 });
+      if (url.startsWith("https://example.supabase.co/rest/v1/consent_log")) {
+        const type = decodeURIComponent(new URL(url).searchParams.get("type")?.replace("eq.", "") ?? "");
+        return type === "external_provider_checks"
+          ? Response.json([{
+              type,
+              version: "2026-08-12.v1",
+              accepted: true,
+              accepted_at: "2026-08-13T08:00:00.000Z",
+              withdrawn_at: null,
+              expires_at: "2099-08-13T08:00:00.000Z",
+              scope: { target_kind: "practice_managed_domains" }
+            }])
+          : Response.json([]);
+      }
+      return Response.json({}, { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await worker.fetch(
+        new Request(`http://localhost/api/legal/consent/status?practiceId=${roleGatePracticeId}`, {
+          headers: { authorization: "Bearer user-token" }
+        }),
+        baseEnv,
+        {} as ExecutionContext
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({
+        consents: {
+          external_provider_checks: {
+            active: false,
+            acceptedAt: "2026-08-13T08:00:00.000Z",
+            expiresAt: "2099-08-13T08:00:00.000Z"
+          },
+          hibp_email_leak_check: { active: false }
+        }
+      });
+      expect(evaluatedTypes.sort()).toEqual(["external_provider_checks", "hibp_email_leak_check"]);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -77,6 +77,11 @@ Aufbewahrungsentscheidung in einer separaten geprüften Migration entfernen.
 - Clienttests prüfen, dass Scope, Version und Ablauf nicht vom Client gesetzt werden.
 - GitHub-CI-Run `31616201072` für Commit `b253d76`: `quality` einschließlich Secret Scan und
   Gesamtverifikation sowie `rls-pgtap` vollständig erfolgreich.
+- Das unabhängige Review fand keine P1-/P2-/P3-Befunde. Die beiden P4-Hinweise sind geschlossen:
+  Der Status bezieht `active` aus derselben `has_active_practice_consent`-RPC wie die Laufgates,
+  und der externe Handler erzwingt den Praxiszugriff intern ohne abschaltbaren Route-Schalter.
+  Ein Regressionstest hält die RPC-Autorität gegenüber widersprüchlichen Zeilenmetadaten fest;
+  `npm run verify` besteht danach mit 419 Tests.
 
 ## Noch offene Release-Gates
 
