@@ -70,29 +70,25 @@ requireText(
   "Android release build type"
 );
 
+const credentialDomains = ["root", "file", "database", "sharedpref", "external"];
+const deviceProtectedDomains = ["device_root", "device_file", "device_database", "device_sharedpref"];
+
 const legacyRules = read("android/app/src/main/res/xml/backup_rules.xml");
-for (const domain of ["root", "file", "database", "sharedpref", "external"]) {
+for (const domain of [...credentialDomains, ...deviceProtectedDomains]) {
   requireText(legacyRules, `<exclude domain="${domain}" path="."/>`, "Android legacy backup rules");
 }
 
 const extractionRules = read("android/app/src/main/res/xml/data_extraction_rules.xml");
 requireText(extractionRules, "<cloud-backup>", "Android data extraction rules");
 requireText(extractionRules, "<device-transfer>", "Android data extraction rules");
-for (const domain of [
-  "root",
-  "file",
-  "database",
-  "sharedpref",
-  "external",
-  "device_root",
-  "device_file",
-  "device_database",
-  "device_sharedpref"
-]) {
+for (const domain of credentialDomains) {
   const marker = `<exclude domain="${domain}" path="."/>`;
   if (extractionRules.split(marker).length - 1 !== 2) {
     throw new Error(`Android data extraction rules must exclude ${domain} from cloud backup and device transfer`);
   }
+}
+for (const domain of deviceProtectedDomains) {
+  forbidText(extractionRules, `domain="${domain}"`, "Android 12+ data extraction rules");
 }
 
 console.log("Native iOS/Android release configuration verified.");
