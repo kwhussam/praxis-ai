@@ -64,10 +64,15 @@ describe("SP3-01 secure SDLC configuration", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const patch = readFileSync(expoPlistPatch, "utf8");
+    const expoPlist = require("@expo/plist") as { default: { parse(xml: string): unknown } };
 
     expect(packageJson.overrides["@xmldom/xmldom"]).toBe("^0.9.11");
     expect(packageLock.packages["node_modules/@xmldom/xmldom"].version).toBe("0.9.11");
-    expect(patch).toContain('parseFromString(xml, "text/xml")');
+    expect(patch).toContain('parseFromString(xml.trimStart(), "text/xml")');
+    expect(expoPlist.default.parse(`
+      <?xml version="1.0" encoding="UTF-8"?>
+      <plist version="1.0"><dict/></plist>
+    `)).toEqual({});
   });
 
   it("accepts only exact, active build-toolchain dependency exceptions", () => {

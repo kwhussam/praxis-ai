@@ -863,8 +863,9 @@ Tests**, 6 bewusst übersprungenen Tests und 2 Semantik-Snapshots grün. Die neu
 enthält 1.724 Komponenten und bestand den Strukturvertrag. Das registry-aktuelle Dependency-Gate
 akzeptiert exakt 13 einzeln dokumentierte Build-Toolchain-Advisories bis 13.09.2026 und blockiert
 neue, geänderte, direkte, abgelaufene oder stale Ausnahmen. Eine saubere `npm ci`-Installation wandte
-den Expo-Plist-Kompatibilitätspatch für `xmldom` 0.9.11 an; der anschließende iOS-/Android-Prebuild und
-die Prüfung der nativen Releasekonfiguration bestanden. Der Status bleibt bis zum GitHub-/Signing-
+den Expo-Plist-Kompatibilitätspatch für `xmldom` 0.9.11 an; ein frischer Node-22-Linux-Checkout
+bestand anschließend den iOS-/Android-Prebuild und die Prüfung der nativen Releasekonfiguration.
+Der Status bleibt bis zum GitHub-/Signing-
 Nachweis `verification`.
 
 ### 22.1 Nachbesserungen aus dem unabhängigen Sprint-1-Review

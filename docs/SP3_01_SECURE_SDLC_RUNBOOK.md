@@ -147,7 +147,8 @@ Lokal bestanden:
 - Registry-aktuelles Dependency-Gate: 13 einzeln dokumentierte, bis 13.09.2026 befristete
   Build-Toolchain-Ausnahmen; jeder neue oder veränderte High/Critical-Befund blockiert;
 - saubere `npm ci`-Installation mit reproduzierbar angewendetem `@expo/plist`-Kompatibilitätspatch
-  für `@xmldom/xmldom` 0.9.11 sowie anschließend erfolgreichem Expo-Prebuild für iOS und Android;
+  für `@xmldom/xmldom` 0.9.11; ein frischer Node-22-Linux-Checkout normalisierte den führenden
+  Template-Whitespace sicher und bestand anschließend den Expo-Prebuild für iOS und Android;
 - Regressionstests für Action-SHA-Pinning, alle kritischen Gates, Android/iOS-Release-Verträge,
   SARIF-Grenzwert und idempotente Android-Gradle-Transformation.
 
