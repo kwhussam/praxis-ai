@@ -152,14 +152,23 @@ Lokal bestanden:
 - Regressionstests für Action-SHA-Pinning, alle kritischen Gates, Android/iOS-Release-Verträge,
   SARIF-Grenzwert und idempotente Android-Gradle-Transformation.
 
+GitHub-Evidenz für Commit `a26b8cf`:
+
+- CI-Lauf [`31794686220`](https://github.com/kwhussam/praxis-ai/actions/runs/31794686220):
+  `quality` einschließlich frischem Expo-Prebuild, unsigniertem Android-Release-Compile,
+  Merge-Manifest-Prüfung und Gesamtverifikation sowie `rls-pgtap` vollständig grün;
+- Secure-SDLC-Lauf [`31794686209`](https://github.com/kwhussam/praxis-ai/actions/runs/31794686209):
+  Dependency-/SBOM-Gate und CodeQL-SAST-Gate vollständig grün; Dependency Review bei einem
+  direkten Push erwartungsgemäß übersprungen und weiterhin für Pull Requests verpflichtend.
+
 Vor Status `released` bleiben bewusst extern:
 
-1. Push und vollständig grüner GitHub-Lauf einschließlich CodeQL, Dependency Review und
-   registry-aktuellem npm Audit;
-2. Einrichtung/Review der beiden Produktions-Environments und Branch-/Tag-Regeln;
-3. ein echter signierter Android- und iOS-Testrelease, anschließend unabhängige Prüfung mit
+1. Einrichtung/Review der beiden Produktions-Environments und Branch-/Tag-Regeln;
+2. ein echter signierter Android- und iOS-Testrelease, anschließend unabhängige Prüfung mit
    `gh attestation verify` und Abgleich der Store-Signieridentitäten;
-4. benannte Owner für Patch-Triage und Vulnerability Inbox.
+3. benannte Owner für Patch-Triage und Vulnerability Inbox;
+4. koordinierter Expo-/React-Native-Upgrade oder erneute formale Risikofreigabe vor Ablauf der
+   Dependency-Ausnahmen am 13.09.2026.
 
 ## Primärquellen
 
