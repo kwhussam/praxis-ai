@@ -1,6 +1,6 @@
 # SP3-01 – Secure-SDLC- und Release-Supply-Chain-Baseline
 
-Stand: 2026-08-13
+Stand: 2026-08-14
 Status: `verification`
 
 ## Sicherheitsvertrag
@@ -15,7 +15,7 @@ im Repository, in einer Expo-Konfiguration oder in einem Buildartefakt.
 | Gate | Ausführung | Blockiert | Evidenz |
 |---|---|---|---|
 | Gitleaks | jeder Push/PR im bestehenden CI | jeden erkannten Secret-Fund | CI-Log |
-| npm Audit | Push, PR, wöchentlich und Release | bekannte Abhängigkeit mit Einstufung `high` oder `critical` | CI-Log |
+| npm Audit + Ausnahme-Gate | Push, PR, wöchentlich und Release | jede neue, veränderte, direkte, nicht als Build-Tooling belegte, abgelaufene oder nicht mehr benötigte Ausnahme | CI-Log + versionierte Ausnahmeentscheidung |
 | Dependency Review | jeder PR gegen `main` | neu eingeführte hohe oder kritische Runtime-/Dev-Abhängigkeit | PR-Check |
 | CodeQL `security-extended` | Push, PR und wöchentlich | Security-Severity ≥ 7.0 sowie nicht klassifizierte Error-Funde | Code-Scanning + SARIF-Gate |
 | CycloneDX 1.5 | Push, PR, wöchentlich und Release | fehlende/ungültige SBOM, leere Komponenten- oder Dependency-Liste | validierte JSON-SBOM, 90/365 Tage |
@@ -113,18 +113,41 @@ Zusätzlich sind Dependency Graph, Code Scanning, private Vulnerability Reports 
 
 Die Fristen in `SECURITY.md` sind Zielwerte ab reproduzierbarer Bestätigung: kritisch 24 Stunden
 Eindämmung/72 Stunden Fix, hoch 3/7 Tage, mittel 30 Tage und niedrig 90 Tage für die Korrektur.
-Eine Ausnahme für einen bestätigten hohen oder kritischen Befund darf nicht als CI-Allowlist im Code landen.
-Sie benötigt dokumentierten Owner, Begründung, Kompensationsmaßnahme, Ablaufdatum und Freigabe von
-Security und Product; bis dahin wird der Release gestoppt oder die betroffene Funktion abgeschaltet.
+Eine Ausnahme für einen bestätigten hohen oder kritischen Befund ist ausschließlich als ausführbare,
+versionierte Entscheidung in `security/dependency-allowlist.json` zulässig. Sie benötigt pro Advisory
+einen verantwortlichen Owner, exakte Paket-/Severity-/Range-/Versionsbindung, nachvollziehbare
+Abhängigkeitspfade, Begründung, Kompensationsmaßnahme, Remediation und Ablaufdatum. Security und Product
+geben die Änderung über den geschützten Reviewprozess frei.
+
+`gate-dependencies.mjs` ruft den registry-aktuellen Audit selbst auf und akzeptiert nur GHSA-genaue
+Ausnahmen mit Scope `build-toolchain`. Eine Ausnahme darf höchstens 31 Tage gelten. Neue Advisories,
+geänderte Metadaten oder installierte Versionen, direkte App-/Worker-Abhängigkeiten, Runtime-Scope,
+abgelaufene Einträge, ungültige Auditantworten und bereits behobene, aber nicht entfernte Einträge
+blockieren fail-closed. Die Allowlist ersetzt daher weder den High/Critical-Grenzwert noch die
+Dependency-Review-Prüfung für neue Pull Requests.
+
+### Befristete Expo-SDK-51-Ausnahme
+
+Der Registry-Audit vom 14.08.2026 enthält 13 blockierende Advisories in vier ausschließlich über die
+Expo-/React-Native-Buildkette erreichten Paketen: `tar` (acht, davon eines kritisch), `postcss` (zwei),
+`image-size` (zwei) und `turbo-stream` (eines). Keines dieser vier Pakete ist eine direkte PraxisShield-
+App- oder Worker-Abhängigkeit. Die Verarbeitung ist auf lockfile-fixierte, repository-kontrollierte
+Buildinputs und isolierte Runner begrenzt; PraxisShield betreibt insbesondere keinen Expo-/Remix-SSR-
+Server. Die Einzelentscheidungen laufen am **13.09.2026** ab. Bis dahin muss der koordinierte Expo-/
+React-Native-SDK-Upgradepfad die Pakete korrigieren oder jede verbleibende Ausnahme neu fachlich und
+technisch bewertet werden.
 
 ## Verifikation und offene Gates
 
 Lokal bestanden:
 
-- vollständiges `npm run verify` mit 435 bestandenen Tests, 6 bewusst übersprungenen Tests und
+- vollständiges `npm run verify` mit 439 bestandenen Tests, 6 bewusst übersprungenen Tests und
   2 Semantik-Snapshots;
-- CycloneDX-Erzeugung und strukturelle Prüfung mit 1.725 Komponenten;
-- Dependency-Audit aus dem vorhandenen Offline-Cache: keine bekannte Schwachstelle;
+- CycloneDX-Erzeugung und strukturelle Prüfung mit 1.724 Komponenten;
+- Registry-aktuelles Dependency-Gate: 13 einzeln dokumentierte, bis 13.09.2026 befristete
+  Build-Toolchain-Ausnahmen; jeder neue oder veränderte High/Critical-Befund blockiert;
+- saubere `npm ci`-Installation mit reproduzierbar angewendetem `@expo/plist`-Kompatibilitätspatch
+  für `@xmldom/xmldom` 0.9.11 sowie anschließend erfolgreichem Expo-Prebuild für iOS und Android;
 - Regressionstests für Action-SHA-Pinning, alle kritischen Gates, Android/iOS-Release-Verträge,
   SARIF-Grenzwert und idempotente Android-Gradle-Transformation.
 

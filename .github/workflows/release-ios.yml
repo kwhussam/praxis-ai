@@ -16,10 +16,6 @@ jobs:
     runs-on: macos-15
     environment: production-ios
     env:
-      IOS_KEYCHAIN_PATH: ${{ runner.temp }}/praxisshield-release.keychain-db
-      IOS_CERTIFICATE_PATH: ${{ runner.temp }}/praxisshield-distribution.p12
-      IOS_PROFILE_PATH: ${{ runner.temp }}/praxisshield.mobileprovision
-      IOS_PROFILE_PLIST_PATH: ${{ runner.temp }}/praxisshield-profile.plist
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
       IOS_CI_KEYCHAIN_PASSWORD: ${{ secrets.IOS_CI_KEYCHAIN_PASSWORD }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -30,6 +26,17 @@ jobs:
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
       EXPO_PUBLIC_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
     steps:
+      # The `runner` context is not available in job-level `env`, which made the
+      # whole workflow fail before the job started. Resolving the paths here keeps
+      # signing material in the auto-cleaned runner temp dir, never in the workspace.
+      - name: Resolve runner-scoped signing paths
+        run: |
+          {
+            echo "IOS_KEYCHAIN_PATH=$RUNNER_TEMP/praxisshield-release.keychain-db"
+            echo "IOS_CERTIFICATE_PATH=$RUNNER_TEMP/praxisshield-distribution.p12"
+            echo "IOS_PROFILE_PATH=$RUNNER_TEMP/praxisshield.mobileprovision"
+            echo "IOS_PROFILE_PLIST_PATH=$RUNNER_TEMP/praxisshield-profile.plist"
+          } >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0

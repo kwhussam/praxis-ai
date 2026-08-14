@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "policy": {
+    "scope": "build-toolchain",
+    "maximumExceptionDays": 31,
+    "decision": "Temporary owner-approved risk acceptance pending the coordinated Expo SDK upgrade"
+  },
+  "exceptions": [
+    {
+      "id": "GHSA-23hp-3jrh-7fpw",
+      "package": "tar",
+      "severity": "critical",
+      "url": "https://github.com/advisories/GHSA-23hp-3jrh-7fpw",
+      "affectedRange": "<=7.5.18",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-34x7-hfp2-rc4v",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-34x7-hfp2-rc4v",
+      "affectedRange": "<7.5.7",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-83g3-92jg-28cx",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-83g3-92jg-28cx",
+      "affectedRange": "<7.5.8",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-8qq5-rm4j-mr97",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-8qq5-rm4j-mr97",
+      "affectedRange": "<=7.5.2",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-8x88-c5mf-7j5w",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-8x88-c5mf-7j5w",
+      "affectedRange": "<=7.5.17",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-9ppj-qmqm-q256",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-9ppj-qmqm-q256",
+      "affectedRange": "<=7.5.10",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-qffp-2rhf-9h96",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-qffp-2rhf-9h96",
+      "affectedRange": "<=7.5.9",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-r6q2-hw4h-h46w",
+      "package": "tar",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-r6q2-hw4h-h46w",
+      "affectedRange": "<=7.5.3",
+      "scope": "build-toolchain",
+      "observedVersions": ["6.2.1"],
+      "dependencyPaths": [
+        "expo > @expo/cli > tar",
+        "expo > @expo/cli > cacache > tar"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
+      "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-5p2g-fcmc-qvqq",
+      "package": "image-size",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
+      "affectedRange": "<=2.0.2",
+      "scope": "build-toolchain",
+      "observedVersions": ["1.2.1"],
+      "dependencyPaths": [
+        "react-native > @react-native/community-cli-plugin > metro > image-size"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "React Native 0.74 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
+      "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-w3rx-r6r6-pgpr",
+      "package": "image-size",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
+      "affectedRange": "<=2.0.2",
+      "scope": "build-toolchain",
+      "observedVersions": ["1.2.1"],
+      "dependencyPaths": [
+        "react-native > @react-native/community-cli-plugin > metro > image-size"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "React Native 0.74 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
+      "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-6g55-p6wh-862q",
+      "package": "postcss",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
+      "affectedRange": "<=8.5.11",
+      "scope": "build-toolchain",
+      "observedVersions": ["8.4.49"],
+      "dependencyPaths": [
+        "expo > @expo/cli > @expo/metro-config > postcss"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
+      "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-r28c-9q8g-f849",
+      "package": "postcss",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
+      "affectedRange": "<=8.5.17",
+      "scope": "build-toolchain",
+      "observedVersions": ["8.4.49"],
+      "dependencyPaths": [
+        "expo > @expo/cli > @expo/metro-config > postcss"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "Expo SDK 51 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
+      "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-rxv8-25v2-qmq8",
+      "package": "turbo-stream",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-rxv8-25v2-qmq8",
+      "affectedRange": "<3.0.0",
+      "scope": "build-toolchain",
+      "observedVersions": ["2.4.1"],
+      "dependencyPaths": [
+        "expo-router > @expo/server > @remix-run/node > @remix-run/server-runtime > turbo-stream"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "The vulnerable single-fetch implementation is present through Expo Router server tooling; PraxisShield deploys Hono as its server and no Remix or Expo SSR runtime.",
+      "mitigation": "No production endpoint executes the affected server runtime, the mobile bundle does not host it, and CI uses only repository-controlled build inputs on isolated runners.",
+      "remediation": "Upgrade Expo Router with the coordinated Expo SDK set, verify that the server dependency is patched or removed, delete this exception, and regenerate evidence.",
+      "reviewedAt": "2026-08-14",
+      "expiresAt": "2026-09-13"
+    }
+  ]
+}

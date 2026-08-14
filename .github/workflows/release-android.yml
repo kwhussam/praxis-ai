@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-android
     env:
-      ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/praxisshield-release.jks
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -26,6 +25,11 @@ jobs:
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.PRODUCTION_SUPABASE_ANON_KEY }}
       EXPO_PUBLIC_API_BASE_URL: ${{ secrets.PRODUCTION_API_BASE_URL }}
     steps:
+      # The `runner` context is not available in job-level `env`, which made the
+      # whole workflow fail before the job started. Resolving the path here keeps
+      # signing material in the auto-cleaned runner temp dir, never in the workspace.
+      - name: Resolve runner-scoped signing paths
+        run: echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/praxisshield-release.jks" >> "$GITHUB_ENV"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
