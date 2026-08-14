@@ -20,6 +20,24 @@ const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
 const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.1.3.patch");
+const node24ActionPins: Record<string, { sha: string; release: string }> = {
+  "actions/checkout": {
+    sha: "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    release: "v7.0.1"
+  },
+  "actions/setup-node": {
+    sha: "820762786026740c76f36085b0efc47a31fe5020",
+    release: "v7.0.0"
+  },
+  "actions/upload-artifact": {
+    sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    release: "v7.0.1"
+  },
+  "gitleaks/gitleaks-action": {
+    sha: "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e",
+    release: "v3.0.0"
+  }
+};
 const dependencyGateFailureCases: Array<[
   string,
   (allowlist: ReturnType<typeof dependencyAllowlist>) => void
@@ -47,6 +65,31 @@ describe("SP3-01 secure SDLC configuration", () => {
     }
 
     expect(unpinned).toEqual([]);
+  });
+
+  it("pins every Node-20-deprecation migration to the reviewed Node 24 release", () => {
+    const workflows = readdirSync(workflowsDir).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
+    const seen = new Set<string>();
+
+    for (const workflow of workflows) {
+      const lines = readFileSync(join(workflowsDir, workflow), "utf8").split("\n");
+      for (const line of lines) {
+        const action = line.match(/^\s*-?\s*uses:\s*([^\s#]+)/)?.[1];
+        if (!action) continue;
+
+        const separator = action.lastIndexOf("@");
+        const name = action.slice(0, separator);
+        const ref = action.slice(separator + 1);
+        const expected = node24ActionPins[name];
+        if (!expected) continue;
+
+        seen.add(name);
+        expect(ref).toBe(expected.sha);
+        expect(line).toContain(`# ${expected.release}`);
+      }
+    }
+
+    expect([...seen].sort()).toEqual(Object.keys(node24ActionPins).sort());
   });
 
   it("keeps high/critical dependency, SBOM and SAST gates fail-closed", () => {

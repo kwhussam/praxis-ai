@@ -139,9 +139,14 @@ technisch bewertet werden.
 
 ## Verifikation und offene Gates
 
+Die befristete Bereinigung wird in
+[`SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md`](./SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md) gestuft umgesetzt.
+Phase 1 migriert die JavaScript-basierten Actions auf geprüfte Node-24-Releases; anschließend folgen
+die getrennte New-Architecture-Baseline, die SDK-Migration und das Entfernen aller Ausnahmen.
+
 Lokal bestanden:
 
-- vollständiges `npm run verify` mit 439 bestandenen Tests, 6 bewusst übersprungenen Tests und
+- vollständiges `npm run verify` mit 440 bestandenen Tests, 6 bewusst übersprungenen Tests und
   2 Semantik-Snapshots;
 - CycloneDX-Erzeugung und strukturelle Prüfung mit 1.724 Komponenten;
 - Registry-aktuelles Dependency-Gate: 13 einzeln dokumentierte, bis 13.09.2026 befristete
