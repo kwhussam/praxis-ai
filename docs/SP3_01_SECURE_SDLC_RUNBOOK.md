@@ -142,7 +142,9 @@ technisch bewertet werden.
 Die befristete Bereinigung wird in
 [`SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md`](./SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md) gestuft umgesetzt.
 Phase 1 migriert die JavaScript-basierten Actions auf geprüfte Node-24-Releases; anschließend folgen
-die getrennte New-Architecture-Baseline, die SDK-Migration und das Entfernen aller Ausnahmen.
+die getrennte New-Architecture-Baseline, die SDK-Migration und das Entfernen aller Ausnahmen. Der
+Feature-Branch-CI-Lauf `31814292278` bestand `quality` und `rls-pgtap` ohne Node-20-Annotation; der
+Secure-SDLC-Nachweis folgt mit dem Pull Request gegen `main`.
 
 Lokal bestanden:
 

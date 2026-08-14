@@ -24,7 +24,7 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 
 | Phase | Inhalt | Exit-Gate | Status |
 |---|---|---|---|
-| 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `in_progress` |
+| 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `verification` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `pending` |
 | 3 – Gestufte SDK-Migration | zunächst SDK 54 und New Architecture getrennt stabilisieren; danach SDK 56 / React Native 0.85 / React 19.2 migrieren; Config-Plugins und Native-Probe anpassen | `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `pending` |
 | 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, `@expo/plist`-Patch und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `pending` |
@@ -59,6 +59,15 @@ Ihre `action.yml` deklariert jeweils `node24`:
 Der SDLC-Konfigurationstest erzwingt zusätzlich zum allgemeinen SHA-Pinning für jede Verwendung
 dieser Actions genau den geprüften Node-24-Commit. Ein späteres Downgrade oder ein nur teilweise
 aktualisierter Workflow schlägt dadurch lokal und in CI fehl.
+
+Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 440 Tests bestanden; 6 Remote-/Gerätetests
+blieben wie zuvor bewusst übersprungen. GitHub-CI-Lauf
+[`31814292278`](https://github.com/kwhussam/praxis-ai/actions/runs/31814292278) bestand `quality`
+einschließlich Gitleaks, Clean-Prebuild, Android-Release-Compile und Gesamtverifikation sowie
+`rls-pgtap`. Es wurde keine Node-20-Annotation mehr erzeugt. Der vorbestehende NetInfo-Hinweis zur
+alten React-Native-Architektur bleibt sichtbar und gehört in Phase 2/3. Das letzte Phase-1-Gate ist
+der Secure-SDLC-Lauf, der auf diesem Feature-Branch erst durch einen Pull Request gegen `main`
+ausgelöst wird.
 
 ## Primärquellen
 
