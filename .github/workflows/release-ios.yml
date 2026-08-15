@@ -121,7 +121,7 @@ jobs:
             --platform ios \
             --signing-identity "$APPLE_SIGNING_CERT_SHA256"
       - name: Attest signed artifact and CycloneDX SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: build/release/ios/praxisshield-ios.ipa
           sbom-path: build/security/praxisshield.cdx.json

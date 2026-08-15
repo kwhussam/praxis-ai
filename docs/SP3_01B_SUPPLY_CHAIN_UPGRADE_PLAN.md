@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-08-14
+Stand: 2026-08-15
 
 Status: `in_progress`
 
@@ -47,20 +47,49 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 ## Phase 1 – geprüfte Action-Baseline
 
 Die folgenden Releases wurden über die offiziellen Repositories und ihre exakten Tag-Refs geprüft.
-Ihre `action.yml` deklariert jeweils `node24`:
+Ihre JavaScript-Entrypoints deklarieren `node24`; Supabase Setup CLI ist eine Composite Action und
+besitzt keine eigene JavaScript-Runtime:
 
-| Action | Release | Commit-SHA |
-|---|---:|---|
-| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
-| `actions/setup-node` | v7.0.0 | `820762786026740c76f36085b0efc47a31fe5020` |
-| `actions/upload-artifact` | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
-| `gitleaks/gitleaks-action` | v3.0.0 | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` |
+| Action | Release | Runtime | Commit-SHA |
+|---|---:|---:|---|
+| `actions/attest` | v4.2.2 | Node 24 | `1e69f48acb82d1966a394da916b4c1698aa569d6` |
+| `actions/checkout` | v7.0.1 | Node 24 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| `actions/dependency-review-action` | v5.0.0 | Node 24 | `a1d282b36b6f3519aa1f3fc636f609c47dddb294` |
+| `actions/setup-java` | v5.7.0 | Node 24 | `b6effb05e454b25005698d916606bdc6ffcbf961` |
+| `actions/setup-node` | v7.0.0 | Node 24 | `820762786026740c76f36085b0efc47a31fe5020` |
+| `actions/upload-artifact` | v7.0.1 | Node 24 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
+| `github/codeql-action/init` und `analyze` | v4.37.7 | Node 24 | `ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd` |
+| `gitleaks/gitleaks-action` | v3.0.0 | Node 24 | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` |
+| `supabase/setup-cli` | v3.0.0 | Composite | `46f7f98c7f948ad727d22c1e67fab04c223a0520` |
 
-Der SDLC-Konfigurationstest erzwingt zusätzlich zum allgemeinen SHA-Pinning für jede Verwendung
-dieser Actions genau den geprüften Node-24-Commit. Ein späteres Downgrade oder ein nur teilweise
-aktualisierter Workflow schlägt dadurch lokal und in CI fehl.
+Das versionierte Inventar `security/github-action-inventory.json` ist fail-closed mit allen
+Workflowdateien verbunden. Jede unbekannte neue Action, jeder nicht inventarisierte Unterpfad, ein
+abweichender SHA, Releasekommentar oder eine entfernte inventarisierte Action lässt den Test
+scheitern. Damit werden auch `setup-java`, `attest`, Dependency Review, CodeQL und Supabase erfasst;
+ein späteres Downgrade oder ein neu eingeführter Node-20-Runner kann nicht unbemerkt landen.
 
-Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 440 Tests bestanden; 6 Remote-/Gerätetests
+### Formale Breaking-Change-Prüfung v4 bis v7
+
+- `actions/checkout`: v5 hebt ausschließlich Runtime und Mindest-Runner auf Node 24/2.327.1. v6
+  speichert persistierte Git-Credentials sicherer unter `RUNNER_TEMP`. v7 blockiert standardmäßig
+  unsichere Fork-Checkouts aus `pull_request_target`/`workflow_run`; PraxisShield nutzt diese Trigger
+  nicht. Die verwendeten Inputs bleiben kompatibel.
+- `actions/setup-node`: v5 führt automatisches Caching bei vorhandenem `packageManager` ein. Im
+  normalen PR-CI wird es explizit mit `package-manager-cache: false` deaktiviert; die bereits zuvor
+  ausdrücklich gesetzten npm-Caches in Supply-Chain- und Releasejobs bleiben beabsichtigt. v6
+  begrenzt Auto-Caching auf npm. v7 migriert intern auf ESM, entfernt nur den ungenutzten Dummy-
+  `NODE_AUTH_TOKEN` und ergänzt Cache-Outputs; keiner dieser Punkte ändert die PraxisShield-Inputs.
+- `actions/upload-artifact`: v5/v6 migrieren die Runtime auf Node 24. v7 ergänzt optional direkte,
+  nicht archivierte Einzeldatei-Uploads und ESM. PraxisShield setzt `archive` nicht und behält damit
+  das Archiv-Standardverhalten. Die drei Uploads liegen in getrennten Workflows und verwenden
+  unterschiedliche Artefaktnamen; die v4+-Kollisionsregel ist nicht betroffen.
+- `actions/dependency-review-action`: v5 ändert die Runtime auf Node 24 und verlangt denselben
+  Mindest-Runner. `fail-on-severity` und `fail-on-scopes` bleiben unverändert unterstützt; die
+  PraxisShield-Policy wird daher ohne semantische Abschwächung übernommen.
+- Alle Jobs laufen auf GitHub-hosted Runnern und erfüllen damit die Mindestversion. Für
+  selbstgehostete Runner bleibt `2.327.1` ein hartes Aufnahme-Gate.
+
+Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 441 Tests bestanden; 6 Remote-/Gerätetests
 blieben wie zuvor bewusst übersprungen. GitHub-CI-Lauf
 [`31814292278`](https://github.com/kwhussam/praxis-ai/actions/runs/31814292278) bestand `quality`
 einschließlich Gitleaks, Clean-Prebuild, Android-Release-Compile und Gesamtverifikation sowie
@@ -78,3 +107,7 @@ ausgelöst wird.
 - Setup Node: <https://github.com/actions/setup-node/releases/tag/v7.0.0>
 - Upload Artifact: <https://github.com/actions/upload-artifact/releases/tag/v7.0.1>
 - Gitleaks Action: <https://github.com/gitleaks/gitleaks-action/releases/tag/v3.0.0>
+- Dependency Review: <https://github.com/actions/dependency-review-action/releases/tag/v5.0.0>
+- Checkout v5/v6/v7: <https://github.com/actions/checkout/releases>
+- Setup Node v5/v6/v7: <https://github.com/actions/setup-node/releases>
+- Upload Artifact v5/v6/v7: <https://github.com/actions/upload-artifact/releases>

@@ -37,7 +37,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: "17"
@@ -77,7 +77,7 @@ jobs:
             --platform android \
             --signing-identity "$ANDROID_SIGNING_CERT_SHA256"
       - name: Attest signed artifact and CycloneDX SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: android/app/build/outputs/bundle/release/app-release.aab
           sbom-path: build/security/praxisshield.cdx.json

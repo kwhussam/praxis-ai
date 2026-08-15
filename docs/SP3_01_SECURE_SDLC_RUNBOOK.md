@@ -144,11 +144,14 @@ Die befristete Bereinigung wird in
 Phase 1 migriert die JavaScript-basierten Actions auf geprüfte Node-24-Releases; anschließend folgen
 die getrennte New-Architecture-Baseline, die SDK-Migration und das Entfernen aller Ausnahmen. Der
 Feature-Branch-CI-Lauf `31814292278` bestand `quality` und `rls-pgtap` ohne Node-20-Annotation; der
-Secure-SDLC-Nachweis folgt mit dem Pull Request gegen `main`.
+Secure-SDLC-Nachweis folgt mit dem Pull Request gegen `main`. Das anschließende Review identifizierte
+Dependency Review v4.9.0 als letzte nur im PR-Pfad erreichbare Node-20-Action. Sie wurde vor dem Merge
+auf v5.0.0 gehoben; das vollständige Action-Inventar blockiert nun unbekannte Actions, abweichende
+Pins, Releasekommentare und nicht geprüfte Runtimes fail-closed.
 
 Lokal bestanden:
 
-- vollständiges `npm run verify` mit 440 bestandenen Tests, 6 bewusst übersprungenen Tests und
+- vollständiges `npm run verify` mit 441 bestandenen Tests, 6 bewusst übersprungenen Tests und
   2 Semantik-Snapshots;
 - CycloneDX-Erzeugung und strukturelle Prüfung mit 1.724 Komponenten;
 - Registry-aktuelles Dependency-Gate: 13 einzeln dokumentierte, bis 13.09.2026 befristete

@@ -20,23 +20,17 @@ const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
 const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.1.3.patch");
-const node24ActionPins: Record<string, { sha: string; release: string }> = {
-  "actions/checkout": {
-    sha: "3d3c42e5aac5ba805825da76410c181273ba90b1",
-    release: "v7.0.1"
-  },
-  "actions/setup-node": {
-    sha: "820762786026740c76f36085b0efc47a31fe5020",
-    release: "v7.0.0"
-  },
-  "actions/upload-artifact": {
-    sha: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-    release: "v7.0.1"
-  },
-  "gitleaks/gitleaks-action": {
-    sha: "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e",
-    release: "v3.0.0"
-  }
+const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
+const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
+  schemaVersion: number;
+  reviewedAt: string;
+  minimumRunnerVersion: string;
+  actions: Record<string, {
+    sha: string;
+    release: string;
+    runtime: "node24" | "composite";
+    source: string;
+  }>;
 };
 const dependencyGateFailureCases: Array<[
   string,
@@ -67,29 +61,52 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(unpinned).toEqual([]);
   });
 
-  it("pins every Node-20-deprecation migration to the reviewed Node 24 release", () => {
+  it("allows only fully inventoried Actions at their reviewed release and runtime", () => {
     const workflows = readdirSync(workflowsDir).filter((name) => name.endsWith(".yml") || name.endsWith(".yaml"));
     const seen = new Set<string>();
+    const unknown: string[] = [];
 
     for (const workflow of workflows) {
       const lines = readFileSync(join(workflowsDir, workflow), "utf8").split("\n");
-      for (const line of lines) {
+      lines.forEach((line, index) => {
         const action = line.match(/^\s*-?\s*uses:\s*([^\s#]+)/)?.[1];
-        if (!action) continue;
+        if (!action || action.startsWith("./")) return;
 
         const separator = action.lastIndexOf("@");
         const name = action.slice(0, separator);
         const ref = action.slice(separator + 1);
-        const expected = node24ActionPins[name];
-        if (!expected) continue;
+        const expected = actionInventory.actions[name];
+        if (!expected) {
+          unknown.push(`${workflow}:${index + 1}:${name}`);
+          return;
+        }
 
         seen.add(name);
         expect(ref).toBe(expected.sha);
         expect(line).toContain(`# ${expected.release}`);
-      }
+      });
     }
 
-    expect([...seen].sort()).toEqual(Object.keys(node24ActionPins).sort());
+    expect(unknown).toEqual([]);
+    expect([...seen].sort()).toEqual(Object.keys(actionInventory.actions).sort());
+  });
+
+  it("documents every JavaScript Action as Node 24 and every non-JS Action as composite", () => {
+    expect(actionInventory.schemaVersion).toBe(1);
+    expect(actionInventory.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(actionInventory.minimumRunnerVersion).toBe("2.327.1");
+
+    for (const [name, action] of Object.entries(actionInventory.actions)) {
+      expect(["node24", "composite"]).toContain(action.runtime);
+      expect(action.sha).toMatch(/^[0-9a-f]{40}$/);
+      const repository = name.split("/").slice(0, 2).join("/");
+      expect(action.source).toBe(`https://github.com/${repository}/releases/tag/${action.release}`);
+    }
+
+    const compositeActions = Object.entries(actionInventory.actions)
+      .filter(([, action]) => action.runtime === "composite")
+      .map(([name]) => name);
+    expect(compositeActions).toEqual(["supabase/setup-cli"]);
   });
 
   it("keeps high/critical dependency, SBOM and SAST gates fail-closed", () => {
