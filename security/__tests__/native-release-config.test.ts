@@ -12,6 +12,9 @@ const repoRoot = path.resolve(__dirname, "../..");
 const { hardenAndroidReleaseSigning } = require("../../plugins/with-secure-android-backup.js") as {
   hardenAndroidReleaseSigning(contents: string): string;
 };
+const { androidUsesCleartextTraffic } = require("../../plugins/with-secure-android-backup.js") as {
+  androidUsesCleartextTraffic(environment?: Record<string, string | undefined>): "true" | "false";
+};
 
 function read(relativePath: string) {
   return fs.readFileSync(path.resolve(repoRoot, relativePath), "utf8");
@@ -52,7 +55,7 @@ describe("SP2-06 native release configuration", () => {
     expect(plugin).toContain('application.$["android:allowBackup"] = "false"');
     expect(plugin).toContain('application.$["android:fullBackupContent"] = "@xml/backup_rules"');
     expect(plugin).toContain('application.$["android:dataExtractionRules"] = "@xml/data_extraction_rules"');
-    expect(plugin).toContain('application.$["android:usesCleartextTraffic"] = "false"');
+    expect(plugin).toContain('application.$["android:usesCleartextTraffic"] = androidUsesCleartextTraffic()');
     expect(plugin).toContain("Release signing is injected only by the protected CI/EAS credential provider.");
     expect(plugin).toContain("PraxisShield release signing contract v1");
     expect(plugin).toContain('System.getenv("ANDROID_KEYSTORE_PATH")');
@@ -73,6 +76,16 @@ describe("SP2-06 native release configuration", () => {
     for (const domain of ["device_root", "device_file", "device_database", "device_sharedpref"]) {
       expect(plugin).not.toContain(`domain="${domain}"`);
     }
+  });
+
+  it("keeps Android cleartext fail-closed outside an explicitly marked local E2E build", () => {
+    expect(androidUsesCleartextTraffic({})).toBe("false");
+    expect(androidUsesCleartextTraffic({ EXPO_PUBLIC_APP_ENV: "test" })).toBe("false");
+    expect(androidUsesCleartextTraffic({ PRAXISSHIELD_ALLOW_LOCAL_CLEARTEXT: "1" })).toBe("false");
+    expect(androidUsesCleartextTraffic({
+      EXPO_PUBLIC_APP_ENV: "test",
+      PRAXISSHIELD_ALLOW_LOCAL_CLEARTEXT: "1"
+    })).toBe("true");
   });
 
   it("creates an idempotent, fail-closed protected Android signing configuration", () => {

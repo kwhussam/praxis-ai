@@ -1,0 +1,257 @@
+declare const __dirname: string;
+export {};
+
+const { existsSync, readFileSync } = require("fs") as {
+  existsSync(filePath: string): boolean;
+  readFileSync(filePath: string, encoding: "utf8"): string;
+};
+const { resolve } = require("path") as { resolve(...parts: string[]): string };
+
+const repositoryRoot = resolve(__dirname, "../..");
+
+type BuildProperties = {
+  android: {
+    minSdkVersion: number;
+    compileSdkVersion: number;
+    targetSdkVersion: number;
+  };
+  ios: { deploymentTarget: string };
+};
+
+type AppPlugin = string | [string, BuildProperties | Record<string, unknown>];
+
+type AppConfig = {
+  newArchEnabled?: boolean;
+  android: { usesCleartextTraffic?: boolean };
+  plugins: AppPlugin[];
+};
+
+type PackageJson = {
+  dependencies: Record<string, string>;
+  engines: { node: string };
+  packageManager: string;
+};
+
+type PackageLock = {
+  packages: Record<string, { version?: string }>;
+};
+
+type MigrationStage = {
+  id: string;
+  newArchitecture: string;
+  purpose: string;
+};
+
+type MigrationRisk = {
+  id: string;
+  severity: string;
+  status: string;
+  reason: string;
+  packages: string[];
+};
+
+type CriticalContract = {
+  id: string;
+  platforms: string[];
+  tests: string[];
+};
+
+type UpgradeBaseline = {
+  schemaVersion: number;
+  capturedAt: string;
+  baseCommit: string;
+  current: {
+    expoSdk: string;
+    expo: string;
+    reactNative: string;
+    react: string;
+    newArchitecture: string;
+    node: string;
+    npm: string;
+    platforms: {
+      androidMinSdk: number;
+      androidCompileSdk: number;
+      androidTargetSdk: number;
+      iosDeploymentTarget: string;
+    };
+    expoDoctor: {
+      version: string;
+      passed: number;
+      total: number;
+      reactNativeDirectory: string;
+      expectedOpenFinding: string;
+    };
+  };
+  migration: {
+    stages: MigrationStage[];
+    recommendedFinalSdk: string;
+  };
+  directDependencies: Record<string, string>;
+  architectureSensitivePackages: Record<string, string[]>;
+  configPlugins: string[];
+  riskRegister: MigrationRisk[];
+  criticalContracts: CriticalContract[];
+  goldenCommands: string[];
+  sources: string[];
+};
+
+function readJson<T>(relativePath: string): T {
+  return JSON.parse(readFileSync(resolve(repositoryRoot, relativePath), "utf8")) as T;
+}
+
+const baseline = readJson<UpgradeBaseline>("security/mobile-upgrade-baseline.json");
+const packageJson = readJson<PackageJson>("package.json");
+const packageLock = readJson<PackageLock>("package-lock.json");
+const appConfig = readJson<{ expo: AppConfig }>("app.json").expo;
+
+describe("SP3-01B mobile upgrade baseline", () => {
+  it("pins every direct runtime dependency to its resolved lockfile version", () => {
+    expect(baseline.schemaVersion).toBe(1);
+    expect(baseline.capturedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(baseline.baseCommit).toMatch(/^[0-9a-f]{40}$/);
+
+    const directNames = Object.keys(packageJson.dependencies).sort();
+    expect(Object.keys(baseline.directDependencies).sort()).toEqual(directNames);
+
+    for (const name of directNames) {
+      expect(baseline.directDependencies[name]).toBe(packageLock.packages[`node_modules/${name}`]?.version);
+    }
+  });
+
+  it("keeps the current SDK, architecture and native platform floors explicit", () => {
+    expect(baseline.current).toMatchObject({
+      expoSdk: "51",
+      expo: packageLock.packages["node_modules/expo"].version,
+      reactNative: packageLock.packages["node_modules/react-native"].version,
+      react: packageLock.packages["node_modules/react"].version,
+      newArchitecture: "legacy_default",
+      node: packageJson.engines.node,
+      npm: packageJson.packageManager.replace("npm@", "")
+    });
+
+    const buildPropertiesPlugin = appConfig.plugins.find(
+      (plugin: unknown) => Array.isArray(plugin) && plugin[0] === "expo-build-properties"
+    );
+    const buildProperties = Array.isArray(buildPropertiesPlugin)
+      ? buildPropertiesPlugin[1] as BuildProperties
+      : undefined;
+    expect(buildProperties).toBeDefined();
+    if (!buildProperties) {
+      throw new Error("expo-build-properties configuration is missing");
+    }
+    expect(baseline.current.platforms).toEqual({
+      androidMinSdk: buildProperties.android.minSdkVersion,
+      androidCompileSdk: buildProperties.android.compileSdkVersion,
+      androidTargetSdk: buildProperties.android.targetSdkVersion,
+      iosDeploymentTarget: buildProperties.ios.deploymentTarget
+    });
+    expect(appConfig.newArchEnabled).toBe(undefined);
+  });
+
+  it("tracks every architecture-sensitive dependency exactly once", () => {
+    const groups = baseline.architectureSensitivePackages as Record<string, string[]>;
+    const tracked = Object.values(groups).flat();
+    expect(new Set(tracked).size).toBe(tracked.length);
+
+    const expected = Object.keys(packageJson.dependencies).filter((name) =>
+      name === "react" ||
+      name === "react-dom" ||
+      name === "moti" ||
+      name === "lucide-react-native" ||
+      name.startsWith("expo") ||
+      name.startsWith("@expo/") ||
+      name.startsWith("react-native") ||
+      name.startsWith("@react-native") ||
+      name.startsWith("@react-navigation/")
+    );
+    expect([...tracked].sort()).toEqual(expected.sort());
+  });
+
+  it("uses an incremental, architecture-isolating path to the current target SDK", () => {
+    const stages = baseline.migration.stages;
+    expect(stages.map((stage) => stage.id)).toEqual([
+      "sdk52",
+      "sdk53",
+      "sdk54_legacy",
+      "sdk54_new_arch",
+      "sdk55",
+      "sdk56",
+      "sdk57"
+    ]);
+    expect(stages.find((stage) => stage.id === "sdk54_legacy")?.newArchitecture).toBe("explicitly_disabled");
+    expect(stages.find((stage) => stage.id === "sdk54_new_arch")?.newArchitecture).toBe("enabled");
+    expect(stages.find((stage) => stage.id === "sdk55")?.newArchitecture).toBe("required");
+    expect(stages.find((stage) => stage.id === "sdk56")?.purpose).toContain("no production release");
+    expect(baseline.migration.recommendedFinalSdk).toBe("57");
+  });
+
+  it("keeps all native config plugins and local-cleartext behavior explicit", () => {
+    const configuredPlugins = appConfig.plugins.map((plugin: string | [string, unknown]) =>
+      typeof plugin === "string" ? plugin : plugin[0]
+    );
+    expect(baseline.configPlugins).toEqual(configuredPlugins);
+    expect(configuredPlugins).toContain("expo-font");
+    expect(existsSync(resolve(repositoryRoot, "app.config.js"))).toBe(false);
+    expect(appConfig.android.usesCleartextTraffic).toBe(undefined);
+
+    for (const plugin of configuredPlugins.filter((name: string) => name.startsWith("./"))) {
+      expect(existsSync(resolve(repositoryRoot, `${plugin}.js`))).toBe(true);
+    }
+  });
+
+  it("binds every migration risk to installed packages and a non-empty decision state", () => {
+    const ids = new Set<string>();
+    for (const risk of baseline.riskRegister) {
+      expect(ids.has(risk.id)).toBe(false);
+      ids.add(risk.id);
+      expect(["medium", "high", "critical"]).toContain(risk.severity);
+      expect(risk.status).toMatch(/^[a-z0-9_]+$/);
+      expect(risk.reason.length).toBeGreaterThan(30);
+      for (const packageName of risk.packages) {
+        expect(baseline.directDependencies[packageName]).toBeDefined();
+      }
+    }
+    expect(ids).toEqual(new Set([
+      "custom_network_probe_bridge",
+      "wifi_collection",
+      "encrypted_local_state",
+      "file_and_pdf_lifecycle",
+      "router_navigation_split",
+      "animation_runtime",
+      "icon_migration",
+      "minimum_platform_bump"
+    ]));
+  });
+
+  it("keeps every golden security contract attached to executable tests", () => {
+    const contractIds = new Set<string>();
+    for (const contract of baseline.criticalContracts) {
+      expect(contractIds.has(contract.id)).toBe(false);
+      contractIds.add(contract.id);
+      expect(contract.platforms.length).toBeGreaterThan(0);
+      expect(contract.tests.length).toBeGreaterThan(0);
+      for (const testPath of contract.tests) {
+        expect(existsSync(resolve(repositoryRoot, testPath))).toBe(true);
+      }
+    }
+    expect(contractIds.size).toBe(5);
+    expect(baseline.goldenCommands).toContain("npm run verify");
+    expect(baseline.goldenCommands).toContain("npx expo prebuild --clean --no-install");
+    expect(baseline.goldenCommands.some((command: string) => command.includes("assembleRelease"))).toBe(true);
+    expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
+  });
+
+  it("documents the single known doctor blocker without suppressing directory checks", () => {
+    expect(baseline.current.expoDoctor).toEqual({
+      version: "1.20.2",
+      passed: 17,
+      total: 18,
+      reactNativeDirectory: "passed",
+      expectedOpenFinding: "sdk51_requires_xcode_at_most_16_2_but_local_xcode_is_16_4"
+    });
+    expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
+    for (const source of baseline.sources) {
+      expect(source).toMatch(/^https:\/\/(docs\.expo\.dev|expo\.dev|reactnative\.dev)\//);
+    }
+  });
+});
