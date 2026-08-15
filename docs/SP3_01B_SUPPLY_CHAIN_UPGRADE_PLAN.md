@@ -24,9 +24,9 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 
 | Phase | Inhalt | Exit-Gate | Status |
 |---|---|---|---|
-| 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `verification` |
-| 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `pending` |
-| 3 – Gestufte SDK-Migration | zunächst SDK 54 und New Architecture getrennt stabilisieren; danach SDK 56 / React Native 0.85 / React 19.2 migrieren; Config-Plugins und Native-Probe anpassen | `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `pending` |
+| 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
+| 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `in_progress` |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `pending` |
 | 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, `@expo/plist`-Patch und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `pending` |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
@@ -35,10 +35,13 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 - Jede SDK-Stufe erhält einen eigenen Commit und muss vor der nächsten Stufe vollständig grün sein.
 - Native Verzeichnisse werden ausschließlich aus den eingecheckten Config-Plugins reproduziert und
   im Clean-Prebuild gegen die Releaseverträge geprüft.
-- Die New Architecture wird auf SDK 54 separat aktiviert und getestet. Erst danach erfolgt der
-  Sprung auf SDK 56, weil SDK 55 und neuer die Legacy Architecture nicht mehr unterstützen.
-- Das Ziel SDK 56 setzt mindestens Android 7, iOS 16.4 und Xcode 26.4 voraus. Diese bewusste
+- Expo SDKs werden gemäß offizieller Expo-Empfehlung einzeln migriert. Die New Architecture wird
+  auf SDK 54 separat aktiviert und getestet. Erst danach folgen SDK 55 und höher, weil dort die
+  Legacy Architecture nicht mehr unterstützt wird.
+- Das Ziel SDK 57 setzt mindestens Android 7, iOS 16.4, Xcode 26.4 und Node 22.13 voraus. Diese bewusste
   Sicherheits-/Kompatibilitätsgrenze wird vor Phase 3 gegen die unterstützte Gerätematrix geprüft.
+- SDK 56 ist nur eine technische Übergangsstufe und wird nicht produktiv freigegeben: Expo
+  dokumentiert eine Hermes-v1-/Reanimated-Speicherregression und empfiehlt betroffenen Apps SDK 57.
 - Keine Ausnahme wird pauschal verlängert. Behobene Advisories müssen aus der Allowlist entfernt
   werden; verbleibende Einträge benötigen wieder eine einzelne, zeitlich begrenzte Owner-Entscheidung.
 - Ein erfolgreiches Kompilieren genügt nicht: Verschlüsselung, SecureStore/Keychain/Keystore,
@@ -93,14 +96,22 @@ Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 441 Tests bestanden; 6 Re
 blieben wie zuvor bewusst übersprungen. GitHub-CI-Lauf
 [`31814292278`](https://github.com/kwhussam/praxis-ai/actions/runs/31814292278) bestand `quality`
 einschließlich Gitleaks, Clean-Prebuild, Android-Release-Compile und Gesamtverifikation sowie
-`rls-pgtap`. Es wurde keine Node-20-Annotation mehr erzeugt. Der vorbestehende NetInfo-Hinweis zur
-alten React-Native-Architektur bleibt sichtbar und gehört in Phase 2/3. Das letzte Phase-1-Gate ist
-der Secure-SDLC-Lauf, der auf diesem Feature-Branch erst durch einen Pull Request gegen `main`
-ausgelöst wird.
+`rls-pgtap`. Es wurde keine Node-20-Annotation mehr erzeugt. Phase 1 ist mit PR
+[`#22`](https://github.com/kwhussam/praxis-ai/pull/22) abgeschlossen: CI-Lauf
+[`31877006993`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006993) bestand `quality`
+einschließlich Android-Release-Compile und Gesamtverifikation sowie `rls-pgtap`; Secure-SDLC-Lauf
+[`31877006987`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006987) bestand im zweiten
+Versuch Dependency Review v5, Dependency-/SBOM-Gate und CodeQL. Der zunächst fehlgeschlagene
+Dependency Review war kein Codefehler; nach Aktivierung des GitHub Dependency Graph lief er grün.
+
+Die normative Phase-2-Baseline steht in
+[`SP3_01B_UPGRADE_BASELINE.md`](./SP3_01B_UPGRADE_BASELINE.md); ihre maschinenprüfbare Fassung ist
+`security/mobile-upgrade-baseline.json`.
 
 ## Primärquellen
 
 - Expo SDK 56: <https://expo.dev/changelog/sdk-56>
+- Expo SDK 57 / aktuelle Versionsmatrix: <https://docs.expo.dev/versions/latest/>
 - Expo New Architecture: <https://docs.expo.dev/guides/new-architecture/>
 - Expo Native Upgrade Helper: <https://docs.expo.dev/bare/upgrade/>
 - Checkout: <https://github.com/actions/checkout/releases/tag/v7.0.1>

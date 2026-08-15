@@ -46,6 +46,7 @@
     "plugins": [
       "expo-router",
       "expo-notifications",
+      "expo-font",
       "./plugins/with-ios-metro-localhost-fallback",
       "./plugins/with-network-security-probe",
       "./plugins/with-secure-android-backup",
@@ -56,6 +57,7 @@
             "deploymentTarget": "15.1"
           },
           "android": {
+            "minSdkVersion": 23,
             "compileSdkVersion": 35,
             "targetSdkVersion": 35
           }

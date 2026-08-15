@@ -39,6 +39,12 @@ const EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
 </data-extraction-rules>
 `;
 
+function androidUsesCleartextTraffic(environment = process.env) {
+  const localE2eRequested = environment.EXPO_PUBLIC_APP_ENV === "test";
+  const explicitLocalOverride = environment.PRAXISSHIELD_ALLOW_LOCAL_CLEARTEXT === "1";
+  return localE2eRequested && explicitLocalOverride ? "true" : "false";
+}
+
 function hardenAndroidReleaseSigning(contents) {
   const signingContract = "PraxisShield release signing contract v1";
   if (contents.includes(signingContract)) return contents;
@@ -110,7 +116,7 @@ module.exports = function withSecureAndroidBackup(config) {
     application.$["android:allowBackup"] = "false";
     application.$["android:fullBackupContent"] = "@xml/backup_rules";
     application.$["android:dataExtractionRules"] = "@xml/data_extraction_rules";
-    application.$["android:usesCleartextTraffic"] = "false";
+    application.$["android:usesCleartextTraffic"] = androidUsesCleartextTraffic();
     const permissions = modConfig.modResults.manifest["uses-permission"] ?? [];
     const nearbyWifi = permissions.find(
       (permission) => permission.$["android:name"] === "android.permission.NEARBY_WIFI_DEVICES"
@@ -140,3 +146,4 @@ module.exports = function withSecureAndroidBackup(config) {
 };
 
 module.exports.hardenAndroidReleaseSigning = hardenAndroidReleaseSigning;
+module.exports.androidUsesCleartextTraffic = androidUsesCleartextTraffic;
