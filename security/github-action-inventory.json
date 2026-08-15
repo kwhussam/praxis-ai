@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-15",
+  "minimumRunnerVersion": "2.327.1",
+  "actions": {
+    "actions/attest": {
+      "sha": "1e69f48acb82d1966a394da916b4c1698aa569d6",
+      "release": "v4.2.2",
+      "runtime": "node24",
+      "source": "https://github.com/actions/attest/releases/tag/v4.2.2"
+    },
+    "actions/checkout": {
+      "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "release": "v7.0.1",
+      "runtime": "node24",
+      "source": "https://github.com/actions/checkout/releases/tag/v7.0.1"
+    },
+    "actions/dependency-review-action": {
+      "sha": "a1d282b36b6f3519aa1f3fc636f609c47dddb294",
+      "release": "v5.0.0",
+      "runtime": "node24",
+      "source": "https://github.com/actions/dependency-review-action/releases/tag/v5.0.0"
+    },
+    "actions/setup-java": {
+      "sha": "b6effb05e454b25005698d916606bdc6ffcbf961",
+      "release": "v5.7.0",
+      "runtime": "node24",
+      "source": "https://github.com/actions/setup-java/releases/tag/v5.7.0"
+    },
+    "actions/setup-node": {
+      "sha": "820762786026740c76f36085b0efc47a31fe5020",
+      "release": "v7.0.0",
+      "runtime": "node24",
+      "source": "https://github.com/actions/setup-node/releases/tag/v7.0.0"
+    },
+    "actions/upload-artifact": {
+      "sha": "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "release": "v7.0.1",
+      "runtime": "node24",
+      "source": "https://github.com/actions/upload-artifact/releases/tag/v7.0.1"
+    },
+    "github/codeql-action/analyze": {
+      "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+      "release": "v4.37.7",
+      "runtime": "node24",
+      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.7"
+    },
+    "github/codeql-action/init": {
+      "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
+      "release": "v4.37.7",
+      "runtime": "node24",
+      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.7"
+    },
+    "gitleaks/gitleaks-action": {
+      "sha": "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e",
+      "release": "v3.0.0",
+      "runtime": "node24",
+      "source": "https://github.com/gitleaks/gitleaks-action/releases/tag/v3.0.0"
+    },
+    "supabase/setup-cli": {
+      "sha": "46f7f98c7f948ad727d22c1e67fab04c223a0520",
+      "release": "v3.0.0",
+      "runtime": "composite",
+      "source": "https://github.com/supabase/setup-cli/releases/tag/v3.0.0"
+    }
+  }
+}
