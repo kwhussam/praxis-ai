@@ -25,8 +25,8 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 | Phase | Inhalt | Exit-Gate | Status |
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
-| 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `in_progress` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `pending` |
+| 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52 |
 | 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, `@expo/plist`-Patch und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `pending` |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
@@ -107,6 +107,19 @@ Dependency Review war kein Codefehler; nach Aktivierung des GitHub Dependency Gr
 Die normative Phase-2-Baseline steht in
 [`SP3_01B_UPGRADE_BASELINE.md`](./SP3_01B_UPGRADE_BASELINE.md); ihre maschinenprüfbare Fassung ist
 `security/mobile-upgrade-baseline.json`.
+
+## Phase 3 – SDK-52-Zwischenstand
+
+Der erste isolierte Migrationsschritt steht auf Expo 52.0.49, React Native 0.77.3 und React 18.3.1.
+Android 7/API 24 ist die freigegebene Mindestversion; die New Architecture bleibt ausdrücklich
+deaktiviert. Expo Doctor (18/18), Clean Prebuild, Native-Config, 451 lokale Tests und ein
+unsignierter iOS-Release-Build auf Xcode 16.4 sind grün. Der reale Release-Build deckte die zuvor
+fehlende direkte `expo-asset`-Abhängigkeit auf; sie ist nun versioniert und nativ eingebunden.
+
+Das Dependency-Gate ist ebenfalls grün und konnte eine behobene `turbo-stream`-Ausnahme entfernen
+(12 statt 13 verbleibende, ausschließlich befristete Build-Toolchain-Ausnahmen). Vor Freigabe der
+Stufe fehlen noch der Android-Release-Compile in CI, die vollständige GitHub-CI und die vorgesehenen
+Geräte-Smokes. Erst danach beginnt der getrennte SDK-53-Commit.
 
 ## Primärquellen
 

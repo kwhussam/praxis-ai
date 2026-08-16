@@ -19,7 +19,8 @@ const repositoryRoot = resolve(__dirname, "../..");
 const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
-const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.1.3.patch");
+const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.2.2.patch");
+const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+2.2.3.patch");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
 const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
   schemaVersion: number;
@@ -120,7 +121,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("if-no-files-found: error");
   });
 
-  it("keeps the patched xmldom release compatible with Expo SDK 51 prebuild", () => {
+  it("keeps the patched xmldom release compatible with Expo SDK 52 prebuild", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const patch = readFileSync(expoPlistPatch, "utf8");
@@ -133,6 +134,18 @@ describe("SP3-01 secure SDLC configuration", () => {
       <?xml version="1.0" encoding="UTF-8"?>
       <plist version="1.0"><dict/></plist>
     `)).toEqual({});
+  });
+
+  it("keeps the SDK 52 Android permission lookup fail-closed when the manifest has no permission list", () => {
+    const patch = readFileSync(expoModulesCorePatch, "utf8");
+    const installedSource = readFileSync(join(
+      repositoryRoot,
+      "node_modules/expo-modules-core/android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt"
+    ), "utf8");
+
+    expect(patch).toContain("requestedPermissions?.contains(permission) == true");
+    expect(installedSource).toContain("requestedPermissions?.contains(permission) == true");
+    expect(installedSource).not.toContain("requestedPermissions!!.contains(permission)");
   });
 
   it("accepts only exact, active build-toolchain dependency exceptions", () => {

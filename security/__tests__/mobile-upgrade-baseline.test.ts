@@ -30,6 +30,7 @@ type PackageJson = {
   dependencies: Record<string, string>;
   engines: { node: string };
   packageManager: string;
+  expo: { install: { exclude: string[] } };
 };
 
 type PackageLock = {
@@ -79,7 +80,7 @@ type UpgradeBaseline = {
       passed: number;
       total: number;
       reactNativeDirectory: string;
-      expectedOpenFinding: string;
+      expectedOpenFinding: string | null;
     };
   };
   migration: {
@@ -120,11 +121,11 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "51",
+      expoSdk: "52",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
-      newArchitecture: "legacy_default",
+      newArchitecture: "explicitly_disabled",
       node: packageJson.engines.node,
       npm: packageJson.packageManager.replace("npm@", "")
     });
@@ -145,7 +146,14 @@ describe("SP3-01B mobile upgrade baseline", () => {
       androidTargetSdk: buildProperties.android.targetSdkVersion,
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
-    expect(appConfig.newArchEnabled).toBe(undefined);
+    expect(appConfig.newArchEnabled).toBe(false);
+    expect(packageJson.expo.install.exclude).toEqual([
+      "react-native@~0.76.6",
+      "react-native-reanimated@~3.16.1",
+      "react-native-gesture-handler@~2.20.0",
+      "react-native-screens@~4.4.0",
+      "react-native-safe-area-context@~4.12.0"
+    ]);
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {
@@ -241,13 +249,13 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("documents the single known doctor blocker without suppressing directory checks", () => {
+  it("documents a fully green doctor result without suppressing directory checks", () => {
     expect(baseline.current.expoDoctor).toEqual({
       version: "1.20.2",
-      passed: 17,
+      passed: 18,
       total: 18,
       reactNativeDirectory: "passed",
-      expectedOpenFinding: "sdk51_requires_xcode_at_most_16_2_but_local_xcode_is_16_4"
+      expectedOpenFinding: null
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {

@@ -19,7 +19,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -38,7 +38,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -57,7 +57,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -76,7 +76,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -95,7 +95,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -114,7 +114,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -133,7 +133,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -152,7 +152,7 @@
         "expo > @expo/cli > cacache > tar"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
+      "reason": "Expo SDK 52 pins the affected archive library through its local CLI and cache tooling; a compatible patched version requires the coordinated Expo SDK upgrade.",
       "mitigation": "The package is not a direct application or Worker dependency. CI installs only the committed lockfile and processes trusted project/build inputs on ephemeral runners.",
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
@@ -170,7 +170,7 @@
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.74 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "reason": "React Native 0.77 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
       "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
       "reviewedAt": "2026-08-14",
@@ -188,7 +188,7 @@
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.74 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "reason": "React Native 0.77 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
       "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
       "reviewedAt": "2026-08-14",
@@ -206,7 +206,7 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "reason": "Expo SDK 52 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
       "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
       "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
       "reviewedAt": "2026-08-14",
@@ -224,27 +224,9 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 51 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "reason": "Expo SDK 52 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
       "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
       "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
-      "reviewedAt": "2026-08-14",
-      "expiresAt": "2026-09-13"
-    },
-    {
-      "id": "GHSA-rxv8-25v2-qmq8",
-      "package": "turbo-stream",
-      "severity": "high",
-      "url": "https://github.com/advisories/GHSA-rxv8-25v2-qmq8",
-      "affectedRange": "<3.0.0",
-      "scope": "build-toolchain",
-      "observedVersions": ["2.4.1"],
-      "dependencyPaths": [
-        "expo-router > @expo/server > @remix-run/node > @remix-run/server-runtime > turbo-stream"
-      ],
-      "owner": "PraxisShield CTO / Product Owner",
-      "reason": "The vulnerable single-fetch implementation is present through Expo Router server tooling; PraxisShield deploys Hono as its server and no Remix or Expo SSR runtime.",
-      "mitigation": "No production endpoint executes the affected server runtime, the mobile bundle does not host it, and CI uses only repository-controlled build inputs on isolated runners.",
-      "remediation": "Upgrade Expo Router with the coordinated Expo SDK set, verify that the server dependency is patched or removed, delete this exception, and regenerate evidence.",
       "reviewedAt": "2026-08-14",
       "expiresAt": "2026-09-13"
     }

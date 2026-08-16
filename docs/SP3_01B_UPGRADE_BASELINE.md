@@ -1,6 +1,6 @@
-# SP3-01B Phase 2 – Mobile Upgrade Baseline
+# SP3-01B – Mobile Upgrade Baseline
 
-Stand: 2026-08-15
+Stand: 2026-08-16
 Status: `in_progress`
 
 ## Ziel
@@ -10,31 +10,37 @@ Baseline bindet jeden direkten Laufzeitbaustein, jedes Config-Plugin und die sic
 Produktverträge an einen reproduzierbaren Ausgangsstand. Die maschinenlesbare Quelle ist
 `security/mobile-upgrade-baseline.json`; ihr Regressionstest läuft in `npm run verify`.
 
-## Belegter Ausgangsstand
+## Belegter SDK-52-Zwischenstand
 
 | Bereich | Baseline |
 |---|---|
-| Expo / React Native / React | SDK 51.0.39 / RN 0.74.5 / React 18.2.0 |
-| Architektur | Legacy Architecture; kein stilles Aktivieren während eines SDK-Schritts |
-| Android | min API 23, compile/target API 35 |
+| Expo / React Native / React | SDK 52.0.49 / RN 0.77.3 / React 18.3.1 |
+| Architektur | Legacy Architecture explizit mit `newArchEnabled: false`; kein stilles Aktivieren |
+| Android | min API 24, compile/target API 35 |
 | iOS | Deployment Target 15.1 |
 | Toolchain | Node 22.x, npm 10.9.2 |
-| Expo Doctor 1.20.2 | 17/18 Prüfungen grün; React-Native-Directory-Prüfung grün |
-| Offener Doctor-Befund | SDK 51 unterstützt offiziell höchstens Xcode 16.2; lokal ist Xcode 16.4 installiert |
+| Expo Doctor 1.20.2 | 18/18 Prüfungen grün; React-Native-Directory-Prüfung grün |
+| Offener Doctor-Befund | keiner |
 
-Vor Erfassung der Baseline wurden drei echte Projektfehler geschlossen:
+Die zuvor dokumentierte SDK-51-Baseline wurde vor der Migration vollständig grün belegt. Im ersten
+isolierten Migrationsschritt wurden zusätzlich folgende Punkte umgesetzt:
 
-1. `expo-font` ist jetzt direkte Abhängigkeit und Config-Plugin, wie von `@expo/vector-icons`
-   gefordert. Damit droht außerhalb von Expo Go kein fehlendes natives Peer-Modul.
-2. NetInfo und Safe Area Context sind exakt auf die von SDK 51 erwarteten Versionen fixiert.
-3. Das nicht schemafähige Feld `android.usesCleartextTraffic` wurde aus der dynamischen Expo-Config
-   entfernt. Lokaler Android-E2E-Klartext ist nun nur bei der doppelten Bedingung
-   `EXPO_PUBLIC_APP_ENV=test` plus `PRAXISSHIELD_ALLOW_LOCAL_CLEARTEXT=1` möglich. Jeder andere Build
-   bleibt fail-closed bei `false`; das Release-Manifest-Gate prüft dies weiterhin.
+1. Expo SDK 52 nutzt die offiziell unterstützte React-Native-0.77-Variante, damit Xcode 16.3+
+   unterstützt wird; Expo Go ist für diese Kombination ausdrücklich kein Prüfgate, Dev Builds sind
+   maßgeblich.
+2. Android 7/API 24 ist als freigegebene Mindestversion konfiguriert. Das iOS-Zwischenziel bleibt
+   15.1; iOS 16.4 ist für das finale SDK-57-Ziel freigegeben.
+3. Die New Architecture bleibt für diese Stufe explizit deaktiviert. Ihre Aktivierung erfolgt erst
+   im getrennten SDK-54-Commit, damit Architektur- und SDK-Regressionen nicht vermischt werden.
+4. React Navigation 7 verwendet `tabBarButtonTestID`; die bestehenden stabilen E2E-Identifier
+   bleiben unverändert. Die Expo-51-Patches für Dev Menu und Splash Screen entfallen, die weiterhin
+   nötigen plist- und Android-Permission-Härtungen sind versionsgenau erneuert.
+5. `expo-asset` ist direkte SDK-52-Abhängigkeit und Config-Plugin. Ohne sie bestand der TypeScript-
+   und Jest-Pfad, aber der echte iOS-Release-Bundler brach fail-closed ab.
 
-Der verbleibende Xcode-Befund wird nicht unterdrückt. Er wird durch den ersten SDK-Schritt behoben;
-bis dahin gelten die bereits vorhandenen iOS-Buildbelege, und jeder neue iOS-Nachweis nennt die
-abweichende Toolchain ausdrücklich.
+Der frühere Xcode-Befund ist durch React Native 0.77 geschlossen und wird nicht durch eine
+Doctor-Ausnahme unterdrückt. Die fünf von Expo für RN 0.77 benannten Paketabweichungen stehen
+explizit in `expo.install.exclude`; der Regressionstest fixiert diese eng begrenzte Liste.
 
 ## Revidierte Zielentscheidung
 
@@ -88,25 +94,30 @@ Die exakten Testpfade und Befehle stehen versioniert in der JSON-Baseline. Ein e
 Plugin, Test-Gate oder eine Versionsänderung ohne gleichzeitige Baselineentscheidung lässt den
 Regressionstest fehlschlagen.
 
-## Offene Entscheidungen vor Phase 3
+## Entscheidungen und verbleibende externe Gates
 
-1. Product Owner bestätigt Android 7/API 24 als neue Mindestversion ab SDK 52.
-2. Product Owner bestätigt iOS 16.4 als Mindestversion für das finale SDK 57.
+1. Product Owner hat Android 7/API 24 als neue Mindestversion ab SDK 52 bestätigt.
+2. Product Owner hat iOS 16.4 als Mindestversion für das finale SDK 57 bestätigt.
 3. Mobile/Security entscheiden nach dem SDK-54-New-Arch-Smoke, ob die eigene Network Probe über
    Interop verbleiben darf oder vor SDK 55 als typed TurboModule neu gebaut wird.
 4. Ein physisches Android-Gerät und ein physisches iOS-Gerät werden für die Golden-Smokes benannt.
 5. Xcode 26.4 wird vor dem SDK-56/57-iOS-Gate bereitgestellt; Node erfüllt ab SDK 57 mindestens
    22.13.
 
-## Verifikation dieses Baseline-Commits
+## Verifikation des SDK-52-Commits
 
-- `npm run verify`: 51 Suites und 450 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
-- `npm run security:dependencies`: grün; 13 bereits genehmigte, zeitlich begrenzte
-  Build-Toolchain-Ausnahmen, keine neue High-/Critical-Abhängigkeit.
+- `npm run verify`: 51 Suites und 451 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
+- `npm run security:dependencies`: grün; 12 bereits genehmigte, zeitlich begrenzte
+  Build-Toolchain-Ausnahmen, keine neue High-/Critical-Abhängigkeit. Die behobene
+  `turbo-stream`-Ausnahme wurde fail-closed als veraltet erkannt und entfernt.
+- Expo Doctor 1.20.2: 18/18 Prüfungen einschließlich React Native Directory grün; keine
+  unterdrückte Prüfung und kein offener Toolchain-Befund.
 - Expo Public Config: schemafähig; `expo-font`, Plattformgrenzen und sämtliche lokalen Plugins
-  werden korrekt aufgelöst.
+  sowie das für Release-Bundles erforderliche `expo-asset` werden korrekt aufgelöst.
 - Clean Prebuild und `npm run verify:native-config`: iOS-/Android-Projekte reproduzierbar und alle
   Native-Sicherheitsverträge grün.
+- Unsignierter iOS-Release-Build auf Xcode 16.4: `BUILD SUCCEEDED`, einschließlich React Native
+  0.77.3, Hermes, ExpoAsset und aller nativen Netzwerkmodule.
 - Der lokale Android-Release-Compile konnte nicht gestartet werden, weil auf dem Host kein JDK
   installiert ist. Er bleibt deshalb ein zwingendes CI-Gate nach dem Push und darf nicht als lokal
   bestanden gewertet werden.
@@ -117,6 +128,7 @@ Regressionstest fehlschlagen.
 - <https://docs.expo.dev/guides/new-architecture/>
 - <https://docs.expo.dev/versions/latest/>
 - <https://expo.dev/changelog/2024-11-12-sdk-52>
+- <https://expo.dev/changelog/2025-01-21-react-native-0.77>
 - <https://expo.dev/changelog/xcode-16-3-patches>
 - <https://expo.dev/changelog/sdk-54>
 - <https://expo.dev/changelog/sdk-56>

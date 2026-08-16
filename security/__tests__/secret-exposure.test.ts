@@ -1,4 +1,5 @@
 declare const __dirname: string;
+export {};
 
 type DirEntry = {
   name: string;
