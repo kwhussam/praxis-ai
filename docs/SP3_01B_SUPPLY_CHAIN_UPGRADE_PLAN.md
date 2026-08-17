@@ -119,7 +119,10 @@ fehlende direkte `expo-asset`-Abhängigkeit auf; sie ist nun versioniert und nat
 Das Dependency-Gate ist ebenfalls grün und konnte eine behobene `turbo-stream`-Ausnahme entfernen
 (12 statt 13 verbleibende, ausschließlich befristete Build-Toolchain-Ausnahmen). Vor Freigabe der
 Stufe fehlen noch der Android-Release-Compile in CI, die vollständige GitHub-CI und die vorgesehenen
-Geräte-Smokes. Erst danach beginnt der getrennte SDK-53-Commit.
+Geräte-Smokes. Der erste PR-Lauf hat dabei die mit React Native 0.77/Paper inkompatible Expo-
+Standardversion `react-native-svg` 15.8.0 fail-closed erkannt; 15.12.1 ist als letzte kompatible
+Linie vor der RN-0.78-Mindestgrenze gepinnt und durch einen Vendor-Code-Regressionstest abgesichert.
+Erst nach grünem Folgelauf beginnt der getrennte SDK-53-Commit.
 
 ## Primärquellen
 

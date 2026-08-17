@@ -37,6 +37,11 @@ isolierten Migrationsschritt wurden zusätzlich folgende Punkte umgesetzt:
    nötigen plist- und Android-Permission-Härtungen sind versionsgenau erneuert.
 5. `expo-asset` ist direkte SDK-52-Abhängigkeit und Config-Plugin. Ohne sie bestand der TypeScript-
    und Jest-Pfad, aber der echte iOS-Release-Bundler brach fail-closed ab.
+6. Der erste Android-Release-Build in PR #26 deckte auf, dass Expos SDK-52-Standardversion
+   `react-native-svg` 15.8.0 unter React Native 0.77/Paper noch die entfernte
+   `BaseViewManagerInterface` referenziert. Die Abhängigkeit ist deshalb exakt auf 15.12.1
+   angehoben; 15.13.0+ bleibt ausgeschlossen, weil diese Linie React Native 0.78+ voraussetzt.
+   Ein Regressionstest prüft zusätzlich den tatsächlich installierten Paper-Delegate.
 
 Der frühere Xcode-Befund ist durch React Native 0.77 geschlossen und wird nicht durch eine
 Doctor-Ausnahme unterdrückt. Die fünf von Expo für RN 0.77 benannten Paketabweichungen stehen
@@ -121,6 +126,9 @@ Regressionstest fehlschlagen.
 - Der lokale Android-Release-Compile konnte nicht gestartet werden, weil auf dem Host kein JDK
   installiert ist. Er bleibt deshalb ein zwingendes CI-Gate nach dem Push und darf nicht als lokal
   bestanden gewertet werden.
+- Der erste CI-Lauf von PR #26 scheiterte erwartungsgemäß an diesem Gate und identifizierte die
+  inkompatible `react-native-svg`-Paper-Implementierung. Die korrigierte Version 15.12.1 muss den
+  vollständigen Android-Release-Compile im Folgelauf bestehen; der Befund wird nicht unterdrückt.
 
 ## Primärquellen
 
@@ -134,3 +142,5 @@ Regressionstest fehlschlagen.
 - <https://expo.dev/changelog/sdk-56>
 - <https://reactnative.dev/blog/2024/10/23/release-0.76-new-architecture>
 - <https://reactnative.dev/blog/2026/04/07/react-native-0.85>
+- <https://github.com/software-mansion/react-native-svg/issues/2814>
+- <https://github.com/software-mansion/react-native-svg#supported-react-native-versions>

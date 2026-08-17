@@ -156,6 +156,24 @@ describe("SP3-01B mobile upgrade baseline", () => {
     ]);
   });
 
+  it("keeps the RN 0.77 Paper renderer on the compatible react-native-svg line", () => {
+    const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
+    const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
+    expect(reactNativeVersion).toBe("0.77.3");
+    expect(svgVersion).toBe("15.12.1");
+    expect(packageJson.dependencies["react-native-svg"]).toBe(svgVersion);
+
+    const paperDelegate = readFileSync(
+      resolve(
+        repositoryRoot,
+        "node_modules/react-native-svg/android/src/paper/java/com/facebook/react/viewmanagers/RNSVGTextManagerDelegate.java"
+      ),
+      "utf8"
+    );
+    expect(paperDelegate).not.toContain("BaseViewManagerInterface");
+    expect(paperDelegate).toContain("extends BaseViewManager<");
+  });
+
   it("tracks every architecture-sensitive dependency exactly once", () => {
     const groups = baseline.architectureSensitivePackages as Record<string, string[]>;
     const tracked = Object.values(groups).flat();
