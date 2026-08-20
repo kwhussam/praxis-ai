@@ -67,11 +67,11 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
 1. Die GitHub-Gates für Pull Request #26 abwarten, insbesondere
    Android-Release-Compile, Secure SDLC und CodeQL.
-2. Pull Request #26 erst nach grünen Pflichtchecks und abschließendem Review mergen;
-   der Merge benötigt eine gesonderte Freigabe.
-3. Anschließend die noch offenen physischen iOS-/Android-Geräte-Smokes aus
-   SP2-06/P0-09 sowie den Android-PDF-Cleanup-Smoke durchführen.
-4. Erst nach dieser Release-Entscheidung mit dem getrennten SDK-53-Commit beginnen.
+2. Die noch offenen physischen iOS-/Android-Geräte-Smokes aus SP2-06/P0-09
+   einschließlich Android-PDF-Cleanup vor der Merge-Freigabe durchführen.
+3. Pull Request #26 erst nach grünen Pflichtchecks, bestandener Gerätematrix und
+   abschließendem Review mergen; der Merge benötigt eine gesonderte Freigabe.
+4. Erst danach mit dem getrennten SDK-53-Commit beginnen.
 
 ## Bewusste Grenzen
 
