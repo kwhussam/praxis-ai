@@ -80,6 +80,22 @@ appId: ai.praxisshield.app
                 start: "50%,75%"
                 end: "50%,25%"
                 duration: 350
+- runFlow:
+    when:
+      visible: Continue
+    commands:
+      - tapOn:
+          text: Continue
+      - waitForAnimationToEnd:
+          timeout: 30000
+- runFlow:
+    when:
+      visible: Reload
+    commands:
+      - tapOn:
+          point: "94%,7%"
+      - waitForAnimationToEnd:
+          timeout: 30000
 - extendedWaitUntil:
     visible:
       id: auth-email

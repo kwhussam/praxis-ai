@@ -1,7 +1,7 @@
 # SP3-01B – Mobile Upgrade Baseline
 
-Stand: 2026-08-16
-Status: `in_progress`
+Stand: 2026-08-20
+Status: `verification`
 
 ## Ziel
 
@@ -42,10 +42,16 @@ isolierten Migrationsschritt wurden zusätzlich folgende Punkte umgesetzt:
    `BaseViewManagerInterface` referenziert. Die Abhängigkeit ist deshalb exakt auf 15.12.1
    angehoben; 15.13.0+ bleibt ausgeschlossen, weil diese Linie React Native 0.78+ voraussetzt.
    Ein Regressionstest prüft zusätzlich den tatsächlich installierten Paper-Delegate.
+7. Der echte iOS-Smoke deckte eine zweite Architekturgrenze auf: `react-native-screens` 4.8.0
+   unterstützt RN 0.77 nur mit Fabric vollständig. Für die bewusst beibehaltene Paper-
+   Architektur ist 4.9 die erste kompatible Linie. Version 4.9.2 enthält den Upstream-Fix für
+   die falsche Elternsuche des `RNSScreenContentWrapper`; ein Regressionstest bindet sowohl
+   die Versionslinie als auch den tatsächlich installierten nativen Fix.
 
 Der frühere Xcode-Befund ist durch React Native 0.77 geschlossen und wird nicht durch eine
-Doctor-Ausnahme unterdrückt. Die fünf von Expo für RN 0.77 benannten Paketabweichungen stehen
-explizit in `expo.install.exclude`; der Regressionstest fixiert diese eng begrenzte Liste.
+Doctor-Ausnahme unterdrückt. Die fünf von Expo für RN 0.77 benannten Paketabweichungen sowie die
+oben begründete `react-native-svg`-Paper-Korrektur stehen explizit in `expo.install.exclude`; der
+Regressionstest fixiert diese eng begrenzte Liste.
 
 ## Revidierte Zielentscheidung
 
@@ -111,7 +117,7 @@ Regressionstest fehlschlagen.
 
 ## Verifikation des SDK-52-Commits
 
-- `npm run verify`: 51 Suites und 451 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
+- `npm run verify`: 52 Suites und 464 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
 - `npm run security:dependencies`: grün; 12 bereits genehmigte, zeitlich begrenzte
   Build-Toolchain-Ausnahmen, keine neue High-/Critical-Abhängigkeit. Die behobene
   `turbo-stream`-Ausnahme wurde fail-closed als veraltet erkannt und entfernt.
@@ -121,14 +127,16 @@ Regressionstest fehlschlagen.
   sowie das für Release-Bundles erforderliche `expo-asset` werden korrekt aufgelöst.
 - Clean Prebuild und `npm run verify:native-config`: iOS-/Android-Projekte reproduzierbar und alle
   Native-Sicherheitsverträge grün.
-- Unsignierter iOS-Release-Build auf Xcode 16.4: `BUILD SUCCEEDED`, einschließlich React Native
-  0.77.3, Hermes, ExpoAsset und aller nativen Netzwerkmodule.
-- Der lokale Android-Release-Compile konnte nicht gestartet werden, weil auf dem Host kein JDK
-  installiert ist. Er bleibt deshalb ein zwingendes CI-Gate nach dem Push und darf nicht als lokal
-  bestanden gewertet werden.
-- Der erste CI-Lauf von PR #26 scheiterte erwartungsgemäß an diesem Gate und identifizierte die
-  inkompatible `react-native-svg`-Paper-Implementierung. Die korrigierte Version 15.12.1 muss den
-  vollständigen Android-Release-Compile im Folgelauf bestehen; der Befund wird nicht unterdrückt.
+- Frischer nativer iOS-Simulator-Build: `BUILD SUCCEEDED`, einschließlich React Native 0.77.3,
+  `react-native-screens` 4.9.2, Hermes, ExpoAsset und aller nativen Netzwerkmodule.
+- Die gezielte iOS-Regressionsmatrix `01-registration`, `04-onboarding` und
+  `12-invitation-auth-handoff` ist 3/3 grün. Die vollständige Matrix besitzt 15/15 gemeinsam
+  validierte JUnit-Reports, null Fehler; der frühere `RNSScreenContentWrapper`-Absturz trat nicht
+  erneut auf.
+- Der native PDF-Export ist grün; nach dem Share-Dialog verblieb keine Klartext-PDF im iOS-Cache.
+- Der Android-Release-Compile bleibt ein zwingendes GitHub-Gate nach dem Push. Der lokale
+  iOS-Simulatornachweis und statische Paper-Regressionstests ersetzen weder dieses Gate noch einen
+  physischen Android-Gerätesmoke.
 
 ## Primärquellen
 
@@ -144,3 +152,5 @@ Regressionstest fehlschlagen.
 - <https://reactnative.dev/blog/2026/04/07/react-native-0.85>
 - <https://github.com/software-mansion/react-native-svg/issues/2814>
 - <https://github.com/software-mansion/react-native-svg#supported-react-native-versions>
+- <https://github.com/software-mansion/react-native-screens/releases/tag/4.9.0>
+- <https://github.com/software-mansion/react-native-screens#supported-react-native-version>

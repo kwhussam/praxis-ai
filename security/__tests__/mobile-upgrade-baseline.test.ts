@@ -152,7 +152,8 @@ describe("SP3-01B mobile upgrade baseline", () => {
       "react-native-reanimated@~3.16.1",
       "react-native-gesture-handler@~2.20.0",
       "react-native-screens@~4.4.0",
-      "react-native-safe-area-context@~4.12.0"
+      "react-native-safe-area-context@~4.12.0",
+      "react-native-svg@15.8.0"
     ]);
   });
 
@@ -172,6 +173,41 @@ describe("SP3-01B mobile upgrade baseline", () => {
     );
     expect(paperDelegate).not.toContain("BaseViewManagerInterface");
     expect(paperDelegate).toContain("extends BaseViewManager<");
+  });
+
+  it("keeps RN 0.77 Paper on the screens line with the content-wrapper parent fix", () => {
+    const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
+    const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
+    expect(reactNativeVersion).toBe("0.77.3");
+    expect(screensVersion).toMatch(/^4\.9\./);
+    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.9.0");
+
+    const contentWrapper = readFileSync(
+      resolve(repositoryRoot, "node_modules/react-native-screens/ios/RNSScreenContentWrapper.mm"),
+      "utf8"
+    );
+    expect(contentWrapper).toContain("findFirstScreenViewAncestor");
+    expect(contentWrapper).toContain("currentView = currentView.reactSuperview");
+    expect(contentWrapper).toMatch(
+      /#ifdef RCT_NEW_ARCH_ENABLED\s+RCTLogWarn\(@"Failed to find parent screen controller/
+    );
+  });
+
+  it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
+    const bootstrap = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/bootstrap.yaml"),
+      "utf8"
+    );
+    const scrollRecovery = bootstrap.lastIndexOf("- repeat:");
+    const continueRecovery = bootstrap.lastIndexOf("visible: Continue");
+    const reloadRecovery = bootstrap.lastIndexOf("visible: Reload");
+    const finalAuthAssertion = bootstrap.lastIndexOf("- extendedWaitUntil:");
+
+    expect(scrollRecovery).toBeGreaterThan(-1);
+    expect(continueRecovery).toBeGreaterThan(scrollRecovery);
+    expect(reloadRecovery).toBeGreaterThan(continueRecovery);
+    expect(finalAuthAssertion).toBeGreaterThan(reloadRecovery);
+    expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {
