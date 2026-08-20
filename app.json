@@ -6,6 +6,7 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.praxisshield.app",
@@ -57,12 +58,13 @@
             "deploymentTarget": "15.1"
           },
           "android": {
-            "minSdkVersion": 23,
+            "minSdkVersion": 24,
             "compileSdkVersion": 35,
             "targetSdkVersion": 35
           }
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

@@ -18,18 +18,20 @@ appId: ai.praxisshield.app
 - tapOn:
     text: Continue
     optional: true
+- runFlow:
+    when:
+      visible: "This is the developer menu.*"
+    commands:
+      - tapOn:
+          point: "50%,34%"
+- runFlow:
+    when:
+      visible: "Reload"
+    commands:
+      - tapOn:
+          point: "94%,7%"
 - waitForAnimationToEnd:
     timeout: 30000
-- tapOn:
-    point: "94%,43%"
-- waitForAnimationToEnd:
-    timeout: 30000
-- tapOn:
-    point: "94%,43%"
-- waitForAnimationToEnd:
-    timeout: 30000
-- tapOn:
-    point: "94%,43%"
 - waitForAnimationToEnd:
     timeout: 30000
 - runFlow:
@@ -50,18 +52,20 @@ appId: ai.praxisshield.app
       - tapOn:
           text: Continue
           optional: true
+      - runFlow:
+          when:
+            visible: "This is the developer menu.*"
+          commands:
+            - tapOn:
+                point: "50%,34%"
+      - runFlow:
+          when:
+            visible: "Reload"
+          commands:
+            - tapOn:
+                point: "94%,7%"
       - waitForAnimationToEnd:
           timeout: 30000
-      - tapOn:
-          point: "94%,43%"
-      - waitForAnimationToEnd:
-          timeout: 30000
-      - tapOn:
-          point: "94%,43%"
-      - waitForAnimationToEnd:
-          timeout: 30000
-      - tapOn:
-          point: "94%,43%"
       - waitForAnimationToEnd:
           timeout: 30000
 - repeat:
@@ -76,6 +80,22 @@ appId: ai.praxisshield.app
                 start: "50%,75%"
                 end: "50%,25%"
                 duration: 350
+- runFlow:
+    when:
+      visible: Continue
+    commands:
+      - tapOn:
+          text: Continue
+      - waitForAnimationToEnd:
+          timeout: 30000
+- runFlow:
+    when:
+      visible: Reload
+    commands:
+      - tapOn:
+          point: "94%,7%"
+      - waitForAnimationToEnd:
+          timeout: 30000
 - extendedWaitUntil:
     visible:
       id: auth-email

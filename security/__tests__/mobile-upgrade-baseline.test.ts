@@ -30,6 +30,7 @@ type PackageJson = {
   dependencies: Record<string, string>;
   engines: { node: string };
   packageManager: string;
+  expo: { install: { exclude: string[] } };
 };
 
 type PackageLock = {
@@ -79,7 +80,7 @@ type UpgradeBaseline = {
       passed: number;
       total: number;
       reactNativeDirectory: string;
-      expectedOpenFinding: string;
+      expectedOpenFinding: string | null;
     };
   };
   migration: {
@@ -120,11 +121,11 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "51",
+      expoSdk: "52",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
-      newArchitecture: "legacy_default",
+      newArchitecture: "explicitly_disabled",
       node: packageJson.engines.node,
       npm: packageJson.packageManager.replace("npm@", "")
     });
@@ -145,7 +146,89 @@ describe("SP3-01B mobile upgrade baseline", () => {
       androidTargetSdk: buildProperties.android.targetSdkVersion,
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
-    expect(appConfig.newArchEnabled).toBe(undefined);
+    expect(appConfig.newArchEnabled).toBe(false);
+    expect(packageJson.expo.install.exclude).toEqual([
+      "react-native@~0.76.6",
+      "react-native-reanimated@~3.16.1",
+      "react-native-gesture-handler@~2.20.0",
+      "react-native-screens@~4.4.0",
+      "react-native-safe-area-context@~4.12.0",
+      "react-native-svg@15.8.0"
+    ]);
+  });
+
+  it("keeps the RN 0.77 Paper renderer on the compatible react-native-svg line", () => {
+    const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
+    const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
+    expect(reactNativeVersion).toBe("0.77.3");
+    expect(svgVersion).toBe("15.12.1");
+    expect(packageJson.dependencies["react-native-svg"]).toBe(svgVersion);
+
+    const paperDelegate = readFileSync(
+      resolve(
+        repositoryRoot,
+        "node_modules/react-native-svg/android/src/paper/java/com/facebook/react/viewmanagers/RNSVGTextManagerDelegate.java"
+      ),
+      "utf8"
+    );
+    expect(paperDelegate).not.toContain("BaseViewManagerInterface");
+    expect(paperDelegate).toContain("extends BaseViewManager<");
+  });
+
+  it("keeps RN 0.77 Paper on the screens line with the content-wrapper parent fix", () => {
+    const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
+    const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
+    expect(reactNativeVersion).toBe("0.77.3");
+    expect(screensVersion).toMatch(/^4\.9\./);
+    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.9.0");
+
+    const contentWrapper = readFileSync(
+      resolve(repositoryRoot, "node_modules/react-native-screens/ios/RNSScreenContentWrapper.mm"),
+      "utf8"
+    );
+    expect(contentWrapper).toContain("findFirstScreenViewAncestor");
+    expect(contentWrapper).toContain("currentView = currentView.reactSuperview");
+    expect(contentWrapper).toMatch(
+      /#ifdef RCT_NEW_ARCH_ENABLED\s+RCTLogWarn\(@"Failed to find parent screen controller/
+    );
+  });
+
+  it("uses Expo Router 4's guarded internal splash startup path instead of the removed SDK 51 patch", () => {
+    const routerSplash = readFileSync(
+      resolve(repositoryRoot, "node_modules/expo-router/build/utils/splash.js"),
+      "utf8"
+    );
+    const internalStart = routerSplash.indexOf("async function _internal_preventAutoHideAsync()");
+    const internalEnd = routerSplash.indexOf(
+      "exports._internal_preventAutoHideAsync",
+      internalStart
+    );
+    const internalStartup = routerSplash.slice(internalStart, internalEnd);
+
+    expect(internalStart).toBeGreaterThan(-1);
+    expect(internalEnd).toBeGreaterThan(internalStart);
+    expect(routerSplash).toContain("requireOptionalNativeModule)('ExpoSplashScreen')");
+    expect(internalStartup).toContain("if (!SplashModule)");
+    expect(internalStartup).toContain("SplashModule.internalPreventAutoHideAsync()");
+    expect(internalStartup).not.toContain("SplashModule.preventAutoHideAsync()");
+    expect(existsSync(resolve(repositoryRoot, "patches/expo-splash-screen+0.27.7.patch"))).toBe(false);
+  });
+
+  it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
+    const bootstrap = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/bootstrap.yaml"),
+      "utf8"
+    );
+    const scrollRecovery = bootstrap.lastIndexOf("- repeat:");
+    const continueRecovery = bootstrap.lastIndexOf("visible: Continue");
+    const reloadRecovery = bootstrap.lastIndexOf("visible: Reload");
+    const finalAuthAssertion = bootstrap.lastIndexOf("- extendedWaitUntil:");
+
+    expect(scrollRecovery).toBeGreaterThan(-1);
+    expect(continueRecovery).toBeGreaterThan(scrollRecovery);
+    expect(reloadRecovery).toBeGreaterThan(continueRecovery);
+    expect(finalAuthAssertion).toBeGreaterThan(reloadRecovery);
+    expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {
@@ -241,13 +324,13 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("documents the single known doctor blocker without suppressing directory checks", () => {
+  it("documents a fully green doctor result without suppressing directory checks", () => {
     expect(baseline.current.expoDoctor).toEqual({
       version: "1.20.2",
-      passed: 17,
+      passed: 18,
       total: 18,
       reactNativeDirectory: "passed",
-      expectedOpenFinding: "sdk51_requires_xcode_at_most_16_2_but_local_xcode_is_16_4"
+      expectedOpenFinding: null
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {

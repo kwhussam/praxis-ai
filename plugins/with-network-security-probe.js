@@ -33,12 +33,22 @@ module.exports = function withNetworkSecurityProbe(config) {
         fs.copyFileSync(path.join(sourceDir, fileName), path.join(targetDir, fileName));
       }
 
+      // React must stay out of the Swift bridging-header PCH on RN 0.77. The
+      // Objective-C bridge owns the React import and exposes the same block ABI.
       const bridgingHeader = path.join(targetDir, `${projectName}-Bridging-Header.h`);
       const reactImport = "#import <React/RCTBridgeModule.h>";
-      const header = fs.existsSync(bridgingHeader)
-        ? fs.readFileSync(bridgingHeader, "utf8")
-        : "// Generated bridging header for the PraxisShield native network probe.\n";
-      if (!header.includes(reactImport)) fs.writeFileSync(bridgingHeader, `${header.trimEnd()}\n${reactImport}\n`);
+      let header;
+      try {
+        header = fs.readFileSync(bridgingHeader, "utf8");
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        header = "// Generated bridging header for the PraxisShield native network probe.\n";
+      }
+      const withoutReactImport = header
+        .split("\n")
+        .filter((line) => line.trim() !== reactImport)
+        .join("\n");
+      fs.writeFileSync(bridgingHeader, `${withoutReactImport.trimEnd()}\n`);
       return modConfig;
     }
   ]);

@@ -4,7 +4,8 @@ export {};
 const { execFileSync } = require("child_process") as {
   execFileSync(file: string, args: string[], options: Record<string, unknown>): string;
 };
-const { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs") as {
+const { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs") as {
+  existsSync(path: string): boolean;
   mkdtempSync(prefix: string): string;
   mkdirSync(path: string, options: { recursive: boolean }): void;
   readdirSync(path: string): string[];
@@ -19,7 +20,9 @@ const repositoryRoot = resolve(__dirname, "../..");
 const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
-const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.1.3.patch");
+const dependencyAllowlistPath = join(repositoryRoot, "security/dependency-allowlist.json");
+const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.2.2.patch");
+const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+2.2.3.patch");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
 const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
   schemaVersion: number;
@@ -120,7 +123,37 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("if-no-files-found: error");
   });
 
-  it("keeps the patched xmldom release compatible with Expo SDK 51 prebuild", () => {
+  it("binds every temporary dependency exception to the staged SDK remediation deadline", () => {
+    const allowlist = JSON.parse(readFileSync(dependencyAllowlistPath, "utf8")) as {
+      policy: {
+        decision: string;
+        remediationPlan: string;
+        nextStage: string;
+        targetDate: string;
+        hardExpiry: string;
+      };
+      exceptions: Array<{ expiresAt: string }>;
+    };
+
+    expect(allowlist.policy.decision).toContain("SDK 52 alone is not expected");
+    expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
+    expect(allowlist.policy.nextStage).toBe("sdk53");
+    expect(allowlist.policy.targetDate).toBe("2026-09-07");
+    expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
+    expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
+    expect(allowlist.exceptions.every(({ expiresAt }) => expiresAt === allowlist.policy.hardExpiry)).toBe(true);
+    expect(allowlist.policy.targetDate < allowlist.policy.hardExpiry).toBe(true);
+  });
+
+  it("runs feature-branch CI once through the pull-request event", () => {
+    const workflow = readFileSync(join(workflowsDir, "ci.yml"), "utf8");
+
+    expect(workflow).not.toContain("on: [push, pull_request]");
+    expect(workflow).toContain("push:\n    branches: [main]");
+    expect(workflow).toContain("pull_request:\n    branches: [main]");
+  });
+
+  it("keeps the patched xmldom release compatible with Expo SDK 52 prebuild", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const patch = readFileSync(expoPlistPatch, "utf8");
@@ -133,6 +166,18 @@ describe("SP3-01 secure SDLC configuration", () => {
       <?xml version="1.0" encoding="UTF-8"?>
       <plist version="1.0"><dict/></plist>
     `)).toEqual({});
+  });
+
+  it("keeps the SDK 52 Android permission lookup fail-closed when the manifest has no permission list", () => {
+    const patch = readFileSync(expoModulesCorePatch, "utf8");
+    const installedSource = readFileSync(join(
+      repositoryRoot,
+      "node_modules/expo-modules-core/android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt"
+    ), "utf8");
+
+    expect(patch).toContain("requestedPermissions?.contains(permission) == true");
+    expect(installedSource).toContain("requestedPermissions?.contains(permission) == true");
+    expect(installedSource).not.toContain("requestedPermissions!!.contains(permission)");
   });
 
   it("accepts only exact, active build-toolchain dependency exceptions", () => {

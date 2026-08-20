@@ -7,7 +7,7 @@ SUITE="${2:-all}"
 RUNTIME_ENV="$ROOT_DIR/.e2e/runtime.env"
 METRO_PID_FILE="$ROOT_DIR/.e2e/metro.pid"
 METRO_LOG="$ROOT_DIR/.e2e/metro.log"
-RESULT_FILE="$ROOT_DIR/.maestro/artifacts/results.xml"
+RESULT_DIR="$ROOT_DIR/.maestro/artifacts/junit"
 
 export MAESTRO_DRIVER_STARTUP_TIMEOUT="${MAESTRO_DRIVER_STARTUP_TIMEOUT:-180000}"
 
@@ -28,9 +28,9 @@ set -a
 source "$RUNTIME_ENV"
 set +a
 
-if [[ "$SUITE" == "pdf" ]]; then
-  node scripts/e2e/seed-canonical-report.mjs
-fi
+# Flow 15 is part of both suites and requires the same canonical manifest/report
+# fixture. Seed it for the full smoke as well as the focused PDF smoke.
+node scripts/e2e/seed-canonical-report.mjs
 
 if [[ "$PLATFORM" == "ios" ]]; then
   if ! xcrun simctl list devices booted | grep -q "(Booted)"; then
@@ -74,26 +74,56 @@ curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packag
   exit 1
 }
 
-mkdir -p "$(dirname "$RESULT_FILE")"
-rm -f "$RESULT_FILE"
-
 cd "$ROOT_DIR/.maestro"
-MAESTRO_TARGET="."
+MAESTRO_CONFIG="$ROOT_DIR/.maestro/smoke-config.yaml"
+shopt -s nullglob
+MAESTRO_TARGETS=(flows/*.yaml)
 if [[ "$SUITE" == "pdf" ]]; then
-  MAESTRO_TARGET="flows/15-pdf-export.yaml"
+  MAESTRO_TARGETS=(flows/15-pdf-export.yaml)
 fi
-bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
-  --format=JUNIT \
-  --output="$RESULT_FILE" \
-  --platform="$PLATFORM" \
-  -e "SUPABASE_URL=$SUPABASE_URL" \
-  -e "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
-  -e "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
-  -e "WORKER_URL=http://127.0.0.1:8787" \
-  -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
-  -e "DEV_CLIENT_URL=$DEV_CLIENT_URL" \
-  -e "SCREENSHOT_VARIANT=${PLATFORM}-smoke" \
-  "$MAESTRO_TARGET"
+
+if [[ "${#MAESTRO_TARGETS[@]}" -eq 0 ]]; then
+  echo "No Maestro flows found for suite $SUITE." >&2
+  exit 1
+fi
+
+mkdir -p "$RESULT_DIR"
+RESULT_FILES=()
+MAESTRO_COMMAND_FAILED=false
+
+# Maestro's multi-file execution planner can resolve a valid workspace to zero
+# flows on the pinned CLI version. Execute the sorted, explicit files one by one:
+# this is deterministic, serial and still records every failure before gating.
+for MAESTRO_TARGET in "${MAESTRO_TARGETS[@]}"; do
+  FLOW_NAME="$(basename "$MAESTRO_TARGET" .yaml)"
+  RESULT_FILE="$RESULT_DIR/$FLOW_NAME.xml"
+  rm -f "$RESULT_FILE"
+  RESULT_FILES+=("$RESULT_FILE")
+
+  if ! bash "$ROOT_DIR/scripts/e2e/maestro.sh" test \
+    --config="$MAESTRO_CONFIG" \
+    --format=JUNIT \
+    --output="$RESULT_FILE" \
+    --platform="$PLATFORM" \
+    -e "SUPABASE_URL=$SUPABASE_URL" \
+    -e "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" \
+    -e "SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY" \
+    -e "WORKER_URL=http://127.0.0.1:8787" \
+    -e "TEST_PASSWORD=$TEST_PRACTICE_A_PASSWORD" \
+    -e "DEV_CLIENT_URL=$DEV_CLIENT_URL" \
+    -e "SCREENSHOT_VARIANT=${PLATFORM}-smoke" \
+    "$MAESTRO_TARGET"; then
+    MAESTRO_COMMAND_FAILED=true
+  fi
+done
+
+# Maestro exit codes are not sufficient when workspace continue-on-failure is
+# used elsewhere. The complete set of fail-closed JUnit reports is authoritative.
+node "$ROOT_DIR/scripts/e2e/assert-maestro-results.mjs" "${RESULT_FILES[@]}"
+if [[ "$MAESTRO_COMMAND_FAILED" == "true" ]]; then
+  echo "At least one Maestro command failed despite a successful JUnit gate." >&2
+  exit 1
+fi
 
 if [[ "$SUITE" == "pdf" && "$PLATFORM" == "ios" ]]; then
   APP_DATA_CONTAINER="$(xcrun simctl get_app_container booted ai.praxisshield.app data)"

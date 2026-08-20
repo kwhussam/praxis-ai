@@ -50,6 +50,46 @@ wait_for_healthy_container() {
   return 1
 }
 
+wait_for_http() {
+  local url="$1"
+  local attempts="${2:-30}"
+
+  for _ in $(seq 1 "$attempts"); do
+    if curl --fail --silent --max-time 2 "$url" >/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  return 1
+}
+
+wait_for_auth_gateway() {
+  local url="$1"
+  local attempts="${2:-30}"
+  local consecutive_bad_gateway=0
+  local http_code
+
+  for _ in $(seq 1 "$attempts"); do
+    http_code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "$url" || true)"
+    if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+      return 0
+    fi
+
+    if [[ "$http_code" == "502" ]]; then
+      ((consecutive_bad_gateway += 1))
+      if ((consecutive_bad_gateway >= 3)); then
+        return 2
+      fi
+    else
+      consecutive_bad_gateway=0
+    fi
+    sleep 2
+  done
+
+  return 1
+}
+
 migrations_match_repository() {
   local container="$1"
 
@@ -133,6 +173,31 @@ LOCAL_DATA_ENCRYPTION_KEY="00000000000000000000000000000000000000000000000000000
 if [[ -z "$LOCAL_SUPABASE_ANON_KEY" || -z "$LOCAL_SUPABASE_SERVICE_ROLE_KEY" ]]; then
   echo "Supabase status did not expose local anon/service-role keys." >&2
   exit 1
+fi
+
+# A database reset may recreate GoTrue while a long-running local Kong keeps
+# the old upstream address. Recover that local-only DNS state before validating
+# seeded users; otherwise the auth endpoint returns 502 although both containers
+# report healthy.
+AUTH_HEALTH_URL="$LOCAL_SUPABASE_URL/auth/v1/health"
+AUTH_GATEWAY_RESULT=0
+wait_for_auth_gateway "$AUTH_HEALTH_URL" 30 || AUTH_GATEWAY_RESULT=$?
+if [[ "$AUTH_GATEWAY_RESULT" -ne 0 ]]; then
+  KONG_CONTAINER="$(container_id supabase_kong_)"
+  if [[ -z "$KONG_CONTAINER" ]]; then
+    echo "Supabase auth gateway is unavailable and the Kong container was not found." >&2
+    exit 1
+  fi
+  if [[ "$AUTH_GATEWAY_RESULT" -eq 2 ]]; then
+    echo "Supabase auth gateway repeatedly returned 502; restarting Kong to refresh its upstream DNS." >&2
+  else
+    echo "Supabase auth gateway stayed unavailable after the normal cold-start window; restarting Kong once." >&2
+  fi
+  docker restart "$KONG_CONTAINER" >/dev/null
+  if ! wait_for_http "$AUTH_HEALTH_URL" 30; then
+    echo "Supabase auth gateway did not recover after the Kong restart." >&2
+    exit 1
+  fi
 fi
 
 {
