@@ -1,6 +1,13 @@
 import Foundation
 import Network
 
+// React's promise block aliases are only reachable through a Swift bridging
+// header importing <React/RCTBridgeModule.h>. React Native 0.77 cannot compile
+// that PCH because RCTDeprecation has no loadable module map. These aliases use
+// the same Objective-C block ABI while keeping React isolated in the ObjC bridge.
+typealias PromiseResolveBlock = (Any?) -> Void
+typealias PromiseRejectBlock = (String?, String?, Error?) -> Void
+
 @objc(PraxisShieldNetworkProbe)
 class PraxisShieldNetworkProbe: NSObject {
   private let queue = DispatchQueue(label: "ai.praxisshield.network-probe", qos: .utility)
@@ -11,7 +18,7 @@ class PraxisShieldNetworkProbe: NSObject {
   }
 
   @objc(getWifiSecurityDetails:rejecter:)
-  func getWifiSecurityDetails(resolve: RCTPromiseResolveBlock, reject: RCTPromiseRejectBlock) {
+  func getWifiSecurityDetails(resolve: PromiseResolveBlock, reject: PromiseRejectBlock) {
     resolve([
       "protocol": "UNKNOWN",
       "authMode": "unknown",
@@ -30,8 +37,8 @@ class PraxisShieldNetworkProbe: NSObject {
   @objc(probeTcpPorts:resolver:rejecter:)
   func probeTcpPorts(
     request: NSDictionary,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: RCTPromiseRejectBlock
+    resolve: @escaping PromiseResolveBlock,
+    reject: PromiseRejectBlock
   ) {
     guard let host = request["host"] as? String, !host.isEmpty else {
       resolve([])
@@ -64,8 +71,8 @@ class PraxisShieldNetworkProbe: NSObject {
   @objc(probeSsdp:resolver:rejecter:)
   func probeSsdp(
     request: NSDictionary,
-    resolve: @escaping RCTPromiseResolveBlock,
-    reject: RCTPromiseRejectBlock
+    resolve: @escaping PromiseResolveBlock,
+    reject: PromiseRejectBlock
   ) {
     let timeoutMs = (request["timeoutMs"] as? NSNumber)?.intValue ?? 1600
     guard let port = NWEndpoint.Port(rawValue: 1900) else {

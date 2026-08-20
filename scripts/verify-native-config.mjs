@@ -32,11 +32,20 @@ for (const fileName of ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkPr
   requireText(iosProject, `${fileName} in Sources`, "iOS Xcode project");
   requireText(read(`ios/PraxisShieldAI/${fileName}`), "PraxisShieldNetworkProbe", `iOS ${fileName}`);
 }
-requireText(
-  read("ios/PraxisShieldAI/PraxisShieldAI-Bridging-Header.h"),
-  "#import <React/RCTBridgeModule.h>",
-  "iOS bridging header"
-);
+const iosBridgingHeader = read("ios/PraxisShieldAI/PraxisShieldAI-Bridging-Header.h");
+forbidText(iosBridgingHeader, "#import <React/RCTBridgeModule.h>", "iOS bridging header");
+
+const iosSwiftProbe = read("ios/PraxisShieldAI/PraxisShieldNetworkProbe.swift");
+requireText(iosSwiftProbe, "typealias PromiseResolveBlock = (Any?) -> Void", "iOS Swift probe");
+requireText(iosSwiftProbe, "typealias PromiseRejectBlock = (String?, String?, Error?) -> Void", "iOS Swift probe");
+forbidText(iosSwiftProbe, "RCTPromiseResolveBlock", "iOS Swift probe");
+forbidText(iosSwiftProbe, "RCTPromiseRejectBlock", "iOS Swift probe");
+
+const iosObjcBridge = read("ios/PraxisShieldAI/PraxisShieldNetworkProbeBridge.m");
+requireText(iosObjcBridge, "#import <React/RCTBridgeModule.h>", "iOS Objective-C bridge");
+requireText(iosObjcBridge, "RCT_EXTERN_MODULE(PraxisShieldNetworkProbe", "iOS Objective-C bridge");
+requireText(iosObjcBridge, "RCTPromiseResolveBlock", "iOS Objective-C bridge");
+requireText(iosObjcBridge, "RCTPromiseRejectBlock", "iOS Objective-C bridge");
 
 const androidManifest = read("android/app/src/main/AndroidManifest.xml");
 requireText(androidManifest, 'android:allowBackup="false"', "Android release manifest");

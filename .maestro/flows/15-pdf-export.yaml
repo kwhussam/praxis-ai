@@ -19,18 +19,18 @@ tags:
     timeout: 30000
 - tapOn:
     id: report-history-a2400000-0000-4000-8000-000000000001
-- swipe:
-    start: "50%,72%"
-    end: "50%,38%"
-    duration: 350
-- swipe:
-    start: "50%,72%"
-    end: "50%,38%"
-    duration: 350
-- swipe:
-    start: "50%,72%"
-    end: "50%,38%"
-    duration: 350
+- repeat:
+    times: 8
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              id: report-detail-export-pdf
+          commands:
+            - swipe:
+                start: "50%,72%"
+                end: "50%,32%"
+                duration: 350
 - extendedWaitUntil:
     visible:
       id: report-detail-export-pdf
