@@ -65,8 +65,8 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
 ## Nächster Schritt
 
-1. Den verifizierten Stand auf Pull Request #26 pushen und die GitHub-Gates,
-   insbesondere Android-Release-Compile, Secure SDLC und CodeQL, abwarten.
+1. Die GitHub-Gates für Pull Request #26 abwarten, insbesondere
+   Android-Release-Compile, Secure SDLC und CodeQL.
 2. Pull Request #26 erst nach grünen Pflichtchecks und abschließendem Review mergen;
    der Merge benötigt eine gesonderte Freigabe.
 3. Anschließend die noch offenen physischen iOS-/Android-Geräte-Smokes aus
