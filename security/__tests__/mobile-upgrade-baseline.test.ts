@@ -193,6 +193,27 @@ describe("SP3-01B mobile upgrade baseline", () => {
     );
   });
 
+  it("uses Expo Router 4's guarded internal splash startup path instead of the removed SDK 51 patch", () => {
+    const routerSplash = readFileSync(
+      resolve(repositoryRoot, "node_modules/expo-router/build/utils/splash.js"),
+      "utf8"
+    );
+    const internalStart = routerSplash.indexOf("async function _internal_preventAutoHideAsync()");
+    const internalEnd = routerSplash.indexOf(
+      "exports._internal_preventAutoHideAsync",
+      internalStart
+    );
+    const internalStartup = routerSplash.slice(internalStart, internalEnd);
+
+    expect(internalStart).toBeGreaterThan(-1);
+    expect(internalEnd).toBeGreaterThan(internalStart);
+    expect(routerSplash).toContain("requireOptionalNativeModule)('ExpoSplashScreen')");
+    expect(internalStartup).toContain("if (!SplashModule)");
+    expect(internalStartup).toContain("SplashModule.internalPreventAutoHideAsync()");
+    expect(internalStartup).not.toContain("SplashModule.preventAutoHideAsync()");
+    expect(existsSync(resolve(repositoryRoot, "patches/expo-splash-screen+0.27.7.patch"))).toBe(false);
+  });
+
   it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
     const bootstrap = readFileSync(
       resolve(repositoryRoot, ".maestro/subflows/bootstrap.yaml"),

@@ -3,7 +3,7 @@ flows:
   - "flows/*.yaml"
 testOutputDir: artifacts
 executionOrder:
-  continueOnFailure: true
+  continueOnFailure: false
   flowsOrder:
     - 01-registration
     - 02-login

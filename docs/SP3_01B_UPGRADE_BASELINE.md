@@ -33,8 +33,10 @@ isolierten Migrationsschritt wurden zusätzlich folgende Punkte umgesetzt:
 3. Die New Architecture bleibt für diese Stufe explizit deaktiviert. Ihre Aktivierung erfolgt erst
    im getrennten SDK-54-Commit, damit Architektur- und SDK-Regressionen nicht vermischt werden.
 4. React Navigation 7 verwendet `tabBarButtonTestID`; die bestehenden stabilen E2E-Identifier
-   bleiben unverändert. Die Expo-51-Patches für Dev Menu und Splash Screen entfallen, die weiterhin
-   nötigen plist- und Android-Permission-Härtungen sind versionsgenau erneuert.
+   bleiben unverändert. Expo Router 4 ersetzt den früher gepatchten Splash-Startpfad durch eine
+   optionale Native-Module-Auflösung und `internalPreventAutoHideAsync`; ein Vendor-Code-Test bindet
+   diese Ablösung fail-closed. Der Expo-51-Splash-Patch ist deshalb nicht mehr anwendbar. Die
+   weiterhin nötigen plist- und Android-Permission-Härtungen sind versionsgenau erneuert.
 5. `expo-asset` ist direkte SDK-52-Abhängigkeit und Config-Plugin. Ohne sie bestand der TypeScript-
    und Jest-Pfad, aber der echte iOS-Release-Bundler brach fail-closed ab.
 6. Der erste Android-Release-Build in PR #26 deckte auf, dass Expos SDK-52-Standardversion
@@ -52,6 +54,11 @@ Der frühere Xcode-Befund ist durch React Native 0.77 geschlossen und wird nicht
 Doctor-Ausnahme unterdrückt. Die fünf von Expo für RN 0.77 benannten Paketabweichungen sowie die
 oben begründete `react-native-svg`-Paper-Korrektur stehen explizit in `expo.install.exclude`; der
 Regressionstest fixiert diese eng begrenzte Liste.
+
+Die zwölf verbleibenden High-/Critical-Ausnahmen sind ausdrücklich kein durch SDK 52 erledigter
+Rückstand. Ihre maschinenlesbare Policy verweist auf den gestuften SDK-53-bis-57-Plan mit Zieltermin
+07.09.2026 und unverändertem Hard-Expiry 13.09.2026. Jede auf einer Zwischenstufe behobene Ausnahme
+muss unmittelbar entfernt werden; das Gate akzeptiert keine pauschale Verlängerung.
 
 ## Revidierte Zielentscheidung
 
@@ -119,7 +126,7 @@ Regressionstest fehlschlagen.
 
 ## Verifikation des SDK-52-Commits
 
-- `npm run verify`: 52 Suites und 465 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
+- `npm run verify`: 52 Suites und 467 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
 - `npm run security:dependencies`: grün; 12 bereits genehmigte, zeitlich begrenzte
   Build-Toolchain-Ausnahmen, keine neue High-/Critical-Abhängigkeit. Die behobene
   `turbo-stream`-Ausnahme wurde fail-closed als veraltet erkannt und entfernt.

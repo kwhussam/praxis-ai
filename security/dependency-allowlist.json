@@ -3,7 +3,11 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "Temporary owner-approved risk acceptance pending the coordinated Expo SDK upgrade"
+    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 52-to-57 migration; SDK 52 alone is not expected to remove every transitive build-toolchain advisory",
+    "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
+    "nextStage": "sdk53",
+    "targetDate": "2026-09-07",
+    "hardExpiry": "2026-09-13"
   },
   "exceptions": [
     {

@@ -57,8 +57,11 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
   validiert; kein Produktfehler wurde übersprungen.
 - PDF-Export: nativer Öffnen-/Teilen-Pfad grün und anschließend keine
   `PraxisShield-Bericht-*.pdf`-Klartextdatei im iOS-Cache vorhanden.
-- `npm run verify`: 52 Suites und 465 Tests grün; 6 bekannte Remote-Tests
+- `npm run verify`: 52 Suites und 467 Tests grün; 6 bekannte Remote-Tests
   explizit übersprungen.
+- Claude-Folgereview: Maestro-Standardkonfiguration ist explizit fail-closed; der lokale
+  Auth-Healthcheck unterscheidet normale Kaltstarts von wiederholtem Kong-502; Splash-Ablösung
+  und Dependency-Remediation sind durch Regressionstests gebunden.
 - Dependency-Gate: grün; 12 genehmigte, zeitlich begrenzte Ausnahmen ausschließlich
   für die Build-Toolchain, keine neue Laufzeit-Ausnahme.
 - Expo Doctor 1.20.2: 18/18 Prüfungen grün.

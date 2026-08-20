@@ -4,7 +4,8 @@ export {};
 const { execFileSync } = require("child_process") as {
   execFileSync(file: string, args: string[], options: Record<string, unknown>): string;
 };
-const { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs") as {
+const { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } = require("fs") as {
+  existsSync(path: string): boolean;
   mkdtempSync(prefix: string): string;
   mkdirSync(path: string, options: { recursive: boolean }): void;
   readdirSync(path: string): string[];
@@ -19,6 +20,7 @@ const repositoryRoot = resolve(__dirname, "../..");
 const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
+const dependencyAllowlistPath = join(repositoryRoot, "security/dependency-allowlist.json");
 const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.2.2.patch");
 const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+2.2.3.patch");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
@@ -119,6 +121,28 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("queries: security-extended");
     expect(workflow).toContain("security:sarif:gate");
     expect(workflow).toContain("if-no-files-found: error");
+  });
+
+  it("binds every temporary dependency exception to the staged SDK remediation deadline", () => {
+    const allowlist = JSON.parse(readFileSync(dependencyAllowlistPath, "utf8")) as {
+      policy: {
+        decision: string;
+        remediationPlan: string;
+        nextStage: string;
+        targetDate: string;
+        hardExpiry: string;
+      };
+      exceptions: Array<{ expiresAt: string }>;
+    };
+
+    expect(allowlist.policy.decision).toContain("SDK 52 alone is not expected");
+    expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
+    expect(allowlist.policy.nextStage).toBe("sdk53");
+    expect(allowlist.policy.targetDate).toBe("2026-09-07");
+    expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
+    expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
+    expect(allowlist.exceptions.every(({ expiresAt }) => expiresAt === allowlist.policy.hardExpiry)).toBe(true);
+    expect(allowlist.policy.targetDate < allowlist.policy.hardExpiry).toBe(true);
   });
 
   it("runs feature-branch CI once through the pull-request event", () => {

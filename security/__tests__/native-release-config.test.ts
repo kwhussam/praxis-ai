@@ -154,7 +154,8 @@ describe("SP2-06 native release configuration", () => {
     expect(smokeRunner).not.toContain('if [[ "$SUITE" == "pdf" ]]; then\n  node scripts/e2e/seed-canonical-report.mjs');
     expect(maestroConfig).toContain('flows:\n  - "flows/*.yaml"');
     expect(maestroConfig).toContain("flowsOrder:");
-    expect(maestroConfig).toContain("continueOnFailure: true");
+    expect(maestroConfig).toContain("continueOnFailure: false");
+    expect(maestroConfig).not.toContain("continueOnFailure: true");
     expect(smokeConfig).not.toContain("executionOrder:");
   });
 
@@ -162,9 +163,13 @@ describe("SP2-06 native release configuration", () => {
     const environmentRunner = read("scripts/e2e/env-up.sh");
 
     expect(environmentRunner).toContain('AUTH_HEALTH_URL="$LOCAL_SUPABASE_URL/auth/v1/health"');
+    expect(environmentRunner).toContain('wait_for_auth_gateway "$AUTH_HEALTH_URL" 30');
+    expect(environmentRunner).toContain('if [[ "$http_code" == "502" ]]');
+    expect(environmentRunner).toContain("consecutive_bad_gateway >= 3");
+    expect(environmentRunner).not.toContain('wait_for_http "$AUTH_HEALTH_URL" 5');
     expect(environmentRunner).toContain('KONG_CONTAINER="$(container_id supabase_kong_)"');
     expect(environmentRunner).toContain('docker restart "$KONG_CONTAINER"');
-    expect(environmentRunner.indexOf('wait_for_http "$AUTH_HEALTH_URL"')).toBeLessThan(
+    expect(environmentRunner.indexOf('wait_for_auth_gateway "$AUTH_HEALTH_URL"')).toBeLessThan(
       environmentRunner.indexOf("node scripts/e2e/verify-seed.mjs")
     );
   });
