@@ -37,9 +37,13 @@ module.exports = function withNetworkSecurityProbe(config) {
       // Objective-C bridge owns the React import and exposes the same block ABI.
       const bridgingHeader = path.join(targetDir, `${projectName}-Bridging-Header.h`);
       const reactImport = "#import <React/RCTBridgeModule.h>";
-      const header = fs.existsSync(bridgingHeader)
-        ? fs.readFileSync(bridgingHeader, "utf8")
-        : "// Generated bridging header for the PraxisShield native network probe.\n";
+      let header;
+      try {
+        header = fs.readFileSync(bridgingHeader, "utf8");
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+        header = "// Generated bridging header for the PraxisShield native network probe.\n";
+      }
       const withoutReactImport = header
         .split("\n")
         .filter((line) => line.trim() !== reactImport)

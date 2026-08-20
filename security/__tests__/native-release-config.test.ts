@@ -125,6 +125,8 @@ describe("SP2-06 native release configuration", () => {
     expect(plugin).toContain('"PraxisShieldNetworkProbeBridge.m"');
     expect(plugin).toContain("project.addSourceFile(projectPath, {}, groupKey)");
     expect(plugin).toContain("line.trim() !== reactImport");
+    expect(plugin).not.toContain("fs.existsSync(bridgingHeader)");
+    expect(plugin).toContain('error?.code !== "ENOENT"');
     expect(swiftProbe).toContain("class PraxisShieldNetworkProbe");
     expect(swiftProbe).toContain("typealias PromiseResolveBlock = (Any?) -> Void");
     expect(swiftProbe).toContain("typealias PromiseRejectBlock = (String?, String?, Error?) -> Void");
