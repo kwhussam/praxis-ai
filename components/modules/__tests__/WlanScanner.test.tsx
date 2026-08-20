@@ -186,13 +186,15 @@ describe("WlanScanner", () => {
     expect(allText(screen.root)).toContain("Auf diesem Gerät nicht unterstützt: WLAN-Sicherheitsprotokoll, sichtbare WLAN-Netze, native Geräteerkennung, mDNS-Diensterkennung");
     expect(allText(screen.root)).toContain("Prüfabdeckung der unterstützten Sensoren: 100% (1/1)");
 
-    const firstErrorCall = consoleError.mock.calls[0];
-    expect(firstErrorCall[0]).toBe("WLAN scan sync threw an unexpected error");
-    expect(firstErrorCall[1]).toMatchObject({
+    const syncErrorCall = consoleError.mock.calls.find(
+      (call) => call[0] === "WLAN scan sync threw an unexpected error"
+    );
+    expect(syncErrorCall).toBeDefined();
+    expect(syncErrorCall![1]).toMatchObject({
       networkName: "Praxis-WLAN",
       practiceId: "11111111-1111-4111-8111-111111111111"
     });
-    expect(firstErrorCall[1].error).toBeDefined();
+    expect(syncErrorCall![1].error).toBeDefined();
 
     consoleError.mockRestore();
   });

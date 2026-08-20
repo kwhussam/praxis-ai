@@ -45,7 +45,7 @@ export default function QuestionnaireScreen() {
   const [draftReady, setDraftReady] = useState(false);
   const [currentSectionId, setCurrentSectionId] = useState<string>();
   const [showSummary, setShowSummary] = useState(false);
-  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const submittedRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const headingRef = useRef<Text>(null);

@@ -3,13 +3,13 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 52-to-57 migration; SDK 52 alone is not expected to remove every transitive build-toolchain advisory",
+    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 53-to-57 migration; SDK 53 removes the tar findings but not every transitive Metro build-toolchain advisory",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
-    "nextStage": "sdk53",
+    "nextStage": "sdk54_legacy",
     "targetDate": "2026-09-07",
     "hardExpiry": "2026-09-13"
   },
-  "exceptions": [
+  "resolvedInSdk53": [
     {
       "id": "GHSA-23hp-3jrh-7fpw",
       "package": "tar",
@@ -161,7 +161,9 @@
       "remediation": "Upgrade Expo and React Native as one tested SDK set, remove this exception immediately when npm audit no longer reports it, and regenerate the release evidence.",
       "reviewedAt": "2026-08-14",
       "expiresAt": "2026-09-13"
-    },
+    }
+  ],
+  "exceptions": [
     {
       "id": "GHSA-5p2g-fcmc-qvqq",
       "package": "image-size",
@@ -174,10 +176,10 @@
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.77 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "reason": "React Native 0.79 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
       "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
-      "reviewedAt": "2026-08-14",
+      "reviewedAt": "2026-08-20",
       "expiresAt": "2026-09-13"
     },
     {
@@ -192,10 +194,10 @@
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.77 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "reason": "React Native 0.79 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
       "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
-      "reviewedAt": "2026-08-14",
+      "reviewedAt": "2026-08-20",
       "expiresAt": "2026-09-13"
     },
     {
@@ -210,10 +212,10 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 52 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "reason": "Expo SDK 53 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
       "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
       "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
-      "reviewedAt": "2026-08-14",
+      "reviewedAt": "2026-08-20",
       "expiresAt": "2026-09-13"
     },
     {
@@ -228,10 +230,10 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 52 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
+      "reason": "Expo SDK 53 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
       "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
       "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
-      "reviewedAt": "2026-08-14",
+      "reviewedAt": "2026-08-20",
       "expiresAt": "2026-09-13"
     }
   ]

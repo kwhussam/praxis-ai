@@ -73,10 +73,13 @@ jest.mock("@/lib/security/external", () => ({
 import CheckStartScreen from "../index";
 
 describe("CheckStartScreen", () => {
-  it("startet bei deaktiviertem Flag keinen externen Check", () => {
+  it("startet bei deaktiviertem Flag keinen externen Check", async () => {
     mockPushedRoutes = [];
     mockSelectedProfiles = [];
-    const tree = renderer.create(<CheckStartScreen />);
+    let tree!: ReturnType<typeof renderer.create>;
+    await act(async () => {
+      tree = renderer.create(<CheckStartScreen />);
+    });
     const text = allText(tree.root);
 
     expect(text).toContain("3. Externer Check");
@@ -88,11 +91,11 @@ describe("CheckStartScreen", () => {
     const healthProfile = tree.root.findByProps<{ testID: string; onPress: () => void }>({
       testID: "check-profile-health"
     });
-    act(() => healthProfile.props.onPress());
+    await act(async () => healthProfile.props.onPress());
     expect(mockSelectedProfiles).toEqual(["health"]);
 
     const startButton = tree.root.findByProps<{ label: string; onPress: () => void }>({ label: "Check starten" });
-    act(() => startButton.props.onPress());
+    await act(async () => startButton.props.onPress());
 
     expect(mockPushedRoutes).toEqual(["/(tabs)/check/questionnaire"]);
     expect(mockRunExternalCheck).not.toHaveBeenCalled();

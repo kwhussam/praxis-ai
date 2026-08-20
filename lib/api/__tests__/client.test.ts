@@ -71,3 +71,4 @@ describe("apiRequest timeout (TS-02)", () => {
     });
   });
 });
+declare function afterEach(fn: () => void): void;

@@ -10,6 +10,62 @@ Baseline bindet jeden direkten Laufzeitbaustein, jedes Config-Plugin und die sic
 Produktverträge an einen reproduzierbaren Ausgangsstand. Die maschinenlesbare Quelle ist
 `security/mobile-upgrade-baseline.json`; ihr Regressionstest läuft in `npm run verify`.
 
+## Belegter SDK-53-Zwischenstand
+
+| Bereich | Baseline |
+|---|---|
+| Expo / React Native / React | SDK 53.0.27 / RN 0.79.6 / React 19.0.4 |
+| Architektur | Legacy Architecture explizit mit `newArchEnabled: false`; kein stilles Aktivieren |
+| Android | min API 24, compile/target API 35 |
+| iOS | Deployment Target 15.1 |
+| Toolchain | Node 22.x, npm 10.9.2 |
+| Expo Doctor 1.20.2 | 18/18 Prüfungen grün; React-Native-Directory-Prüfung grün |
+| Aktive Dependency-Ausnahmen | 4, ausschließlich befristete transitive Buildwerkzeuge |
+
+SDK 53 bringt React Native 0.79, React 19 und standardmäßig aktivierte Metro Package Exports. Für
+PraxisShield wurden daraus folgende explizite Entscheidungen und Reparaturen abgeleitet:
+
+1. React und React DOM sind nicht auf der Expo-Standardversion 19.0.0 stehen geblieben, sondern auf
+   19.0.4 aktualisiert. `react-server-dom-webpack` ist ebenfalls auf 19.0.4 überschrieben; Expo
+   Router 5.1.11 und `jest-expo` 53.0.14 binden die aktuelle Hersteller-Sicherheitslinie.
+2. Die New Architecture bleibt auf dieser Zwischenstufe ausdrücklich deaktiviert. SDK- und
+   Architekturwechsel erhalten getrennte Fehlerdomänen; die erste Architekturentscheidung folgt
+   im SDK-54-Arbeitspaket.
+3. Beide Produktionsbundle-Exporte sind mit aktiven Metro Package Exports und Supabase grün. Der
+   von Expo dokumentierte Kompatibilitäts-Schalter `unstable_enablePackageExports: false` wird daher
+   nicht vorsorglich gesetzt und kann die Modulauflösung nicht global abschwächen.
+4. Das React-Native-0.79-Template ist auf iOS Swift-first. Die in der bisherigen Plugin-
+   Implementierung verwendete `IOSConfig.Swift`-Hilfs-API existiert nicht mehr; das lokale
+   Network-Probe-Plugin arbeitet nun direkt mit dem generierten Swift-Bridging-Vertrag.
+5. Die weiterhin benötigten Härtungen für `@expo/plist` und `expo-modules-core` wurden auf 0.3.5
+   beziehungsweise 2.5.0 neu erzeugt. `patch-package` prüft ihre Zielversion weiterhin fail-closed.
+6. Acht `tar`-Advisories aus der Expo-51/52-Buildkette sind im SDK-53-Graph nicht mehr vorhanden
+   und deshalb aus der aktiven Allowlist entfernt. Vier einzelne `image-size`-/`postcss`-Ausnahmen
+   bleiben mit Owner, Ablaufdatum und ausschließlich `build-toolchain` als zulässigem Scope.
+7. React 19 führt asynchrones Test-Renderer-Verhalten und strengere Typen ein. Die betroffenen
+   Tests wurden auf echte `act`-Phasen umgestellt; Assertions, Mandantengrenzen und Security-Fakten
+   bleiben unverändert. Die Deprecation des React Test Renderers wird als separater technischer
+   Rückstand geführt.
+
+### Verifikation des SDK-53-Commits
+
+- Reproduzierbares `npm ci` einschließlich beider Vendor-Patches: bestanden.
+- `npm run verify`: 52 Suites und 468 Tests grün; 6 bekannte Remote-/Gerätetests explizit
+  übersprungen.
+- `npm run security:dependencies`: grün; 4 genehmigte Build-Toolchain-Ausnahmen und keine
+  allowlistbare Laufzeit-Ausnahme.
+- CycloneDX-SBOM: 1.122 Dependency-Komponenten erzeugt und validiert.
+- Expo Doctor 1.20.2: 18/18 Prüfungen grün.
+- Clean Prebuild und `npm run verify:native-config`: bestanden.
+- Produktionsbundle-Export für iOS und Android mit Metro Package Exports: bestanden.
+- Lokaler arm64-iOS-Release-Simulator-Build ohne Codesignierung: bestanden, einschließlich Pods,
+  Hermes, App-Linking und eingebettetem Produktionsbundle.
+- Der lokale Android-Release-Compile erreichte die native Auflösung, konnte aber wegen wiederholter
+  Timeouts zu `dl.google.com/android/repository` nicht abgeschlossen werden. Das ist kein grünes
+  Gate und wird nach dem Push durch den obligatorischen GitHub-CI-Release-Compile entschieden.
+- Physische iOS-/Android-Smokes bleiben durch Product-Owner-Entscheidung auf das
+  Produktionsfreigabe-Gate verschoben. Sie sind weder bestanden noch entfallen.
+
 ## Belegter SDK-52-Zwischenstand
 
 | Bereich | Baseline |

@@ -1,5 +1,6 @@
 declare const __dirname: string;
 declare const beforeEach: (callback: () => void) => void;
+declare const afterEach: (callback: () => void) => void;
 export {};
 
 const { execFileSync } = require("child_process") as {

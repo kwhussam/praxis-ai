@@ -20,10 +20,17 @@ declare const jest: {
 var mockLoadDashboardData = jest.fn();
 var mockWindowDimensions = { fontScale: 1, height: 1334, scale: 2, width: 750 };
 
-function renderDashboard(client: QueryClient): ReactTestRenderer {
-  return renderer.create(
-    React.createElement(QueryClientProvider, { client }, React.createElement(DashboardScreen, { queryGcTime: Infinity }))
-  );
+async function renderDashboard(client: QueryClient): Promise<ReactTestRenderer> {
+  let tree!: ReactTestRenderer;
+  await act(async () => {
+    tree = renderer.create(
+      React.createElement(QueryClientProvider, { client }, React.createElement(DashboardScreen, { queryGcTime: Infinity }))
+    );
+  });
+  await act(async () => {
+    await flushQuery();
+  });
+  return tree;
 }
 
 function unmountRenderer(tree: ReactTestRenderer): void {
@@ -138,14 +145,9 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(emptyDashboard());
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
 
-    await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
-    });
-
-    const text = allText(tree!.root);
+    const text = allText(tree.root);
     expect(text.includes("Noch keine Prüfdaten vorhanden.")).toBe(true);
     expect(text.includes("Starten Sie den Fragebogen oder WLAN-Scan.")).toBe(true);
     expect(text.includes("Mo")).toBe(false);
@@ -153,7 +155,7 @@ describe("DashboardScreen", () => {
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
 
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -162,14 +164,9 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
 
-    await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
-    });
-
-    const text = allText(tree!.root);
+    const text = allText(tree.root);
     expect(text.includes("PracticeGuidanceCard Maßnahme eins | Maßnahme zwei | Maßnahme drei")).toBe(true);
     expect(text.includes("50 % Evidenzabdeckung")).toBe(true);
     expect(text.includes("keine vollständige Entwarnung")).toBe(true);
@@ -182,7 +179,7 @@ describe("DashboardScreen", () => {
     expect(text.includes("Vorläufige Einschätzung")).toBe(false);
 
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -232,18 +229,13 @@ describe("DashboardScreen", () => {
     );
     mockLoadDashboardData.mockResolvedValue(data);
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
 
     await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
+      press(technicalTab(tree.root));
     });
 
-    await act(async () => {
-      press(technicalTab(tree!.root));
-    });
-
-    const text = allText(tree!.root);
+    const text = allText(tree.root);
     expect(text.includes("Fragebogen-Teilwert: 83")).toBe(true);
     expect(text.includes("Fragebogen-Teilwert: 99")).toBe(false);
     expect(text.includes("Fragebogen-Teilwert: 12")).toBe(false);
@@ -254,7 +246,7 @@ describe("DashboardScreen", () => {
     expect(text.includes(" M:99")).toBe(false);
 
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -263,27 +255,22 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
 
-    await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
-    });
-
-    const practice = tree!.root.findByProps({ testID: "dashboard-view-practice" });
-    const technical = technicalTab(tree!.root);
+    const practice = tree.root.findByProps({ testID: "dashboard-view-practice" });
+    const technical = technicalTab(tree.root);
     expect(testProps(practice).accessibilityRole).toBe("tab");
     expect(testProps(practice).accessibilityState).toEqual({ selected: true });
     expect(testProps(technical).accessibilityState).toEqual({ selected: false });
-    expect(findAllByTestId(tree!.root, "dashboard-technical-metrics").length).toBe(0);
+    expect(findAllByTestId(tree.root, "dashboard-technical-metrics").length).toBe(0);
 
     await act(async () => {
       press(technical);
     });
 
-    expect(testProps(tree!.root.findByProps({ testID: "dashboard-view-practice" })).accessibilityState).toEqual({ selected: false });
-    expect(testProps(technicalTab(tree!.root)).accessibilityState).toEqual({ selected: true });
-    const text = allText(tree!.root);
+    expect(testProps(tree.root.findByProps({ testID: "dashboard-view-practice" })).accessibilityState).toEqual({ selected: false });
+    expect(testProps(technicalTab(tree.root)).accessibilityState).toEqual({ selected: true });
+    const text = allText(tree.root);
     expect(text.includes("Fragebogen-Teilwert: 83")).toBe(true);
     expect(text.includes("Evidenzabdeckung")).toBe(true);
     expect(text.includes("Evidenzvertrauen")).toBe(true);
@@ -292,7 +279,7 @@ describe("DashboardScreen", () => {
     expect(text.includes("History:")).toBe(true);
 
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -302,30 +289,25 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
 
-    await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
-    });
-
-    const switchStyles = testProps(tree!.root.findByProps({ accessibilityLabel: "Dashboard-Ansicht" })).style as Array<
+    const switchStyles = testProps(tree.root.findByProps({ accessibilityLabel: "Dashboard-Ansicht" })).style as Array<
       Record<string, unknown> | null
     >;
     expect(switchStyles.some((style) => style?.flexDirection === "column")).toBe(true);
 
     await act(async () => {
-      press(technicalTab(tree!.root));
+      press(technicalTab(tree.root));
     });
 
-    const metricStyles = testProps(tree!.root.findByProps({ accessibilityLabel: "Fragebogen-Teilwert: 83/100" })).style as Array<
+    const metricStyles = testProps(tree.root.findByProps({ accessibilityLabel: "Fragebogen-Teilwert: 83/100" })).style as Array<
       Record<string, unknown> | null
     >;
     expect(metricStyles.some((style) => style?.flexBasis === "100%")).toBe(true);
 
     mockWindowDimensions = { fontScale: 1, height: 1334, scale: 2, width: 750 };
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -334,22 +316,17 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
-    let tree: ReactTestRenderer;
+    const tree = await renderDashboard(client);
+
+    expect(dashboardSemanticSnapshot(tree.root)).toMatchSnapshot();
 
     await act(async () => {
-      tree = renderDashboard(client);
-      await flushQuery();
+      press(technicalTab(tree.root));
     });
-
-    expect(dashboardSemanticSnapshot(tree!.root)).toMatchSnapshot();
-
-    await act(async () => {
-      press(technicalTab(tree!.root));
-    });
-    expect(dashboardSemanticSnapshot(tree!.root)).toMatchSnapshot();
+    expect(dashboardSemanticSnapshot(tree.root)).toMatchSnapshot();
 
     await act(async () => {
-      unmountRenderer(tree!);
+      unmountRenderer(tree);
       client.clear();
     });
   });
@@ -360,19 +337,15 @@ describe("DashboardScreen", () => {
     mockLoadDashboardData.mockClear();
     mockLoadDashboardData.mockResolvedValue(questionnaireDashboard(83));
     const client = newQueryClient();
-    let second: ReactTestRenderer;
-
+    const first = await renderDashboard(client);
     await act(async () => {
-      const first = renderDashboard(client);
-      await flushQuery();
       unmountRenderer(first);
-      second = renderDashboard(client);
-      await flushQuery();
     });
+    const second = await renderDashboard(client);
 
     expect(mockLoadDashboardData.mock.calls.length).toBe(1);
     await act(async () => {
-      unmountRenderer(second!);
+      unmountRenderer(second);
       client.clear();
     });
   });
