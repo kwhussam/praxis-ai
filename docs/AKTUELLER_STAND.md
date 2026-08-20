@@ -57,7 +57,7 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
   validiert; kein Produktfehler wurde übersprungen.
 - PDF-Export: nativer Öffnen-/Teilen-Pfad grün und anschließend keine
   `PraxisShield-Bericht-*.pdf`-Klartextdatei im iOS-Cache vorhanden.
-- `npm run verify`: 52 Suites und 464 Tests grün; 6 bekannte Remote-Tests
+- `npm run verify`: 52 Suites und 465 Tests grün; 6 bekannte Remote-Tests
   explizit übersprungen.
 - Dependency-Gate: grün; 12 genehmigte, zeitlich begrenzte Ausnahmen ausschließlich
   für die Build-Toolchain, keine neue Laufzeit-Ausnahme.
@@ -67,11 +67,12 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
 1. Die GitHub-Gates für Pull Request #26 abwarten, insbesondere
    Android-Release-Compile, Secure SDLC und CodeQL.
-2. Die noch offenen physischen iOS-/Android-Geräte-Smokes aus SP2-06/P0-09
-   einschließlich Android-PDF-Cleanup vor der Merge-Freigabe durchführen.
-3. Pull Request #26 erst nach grünen Pflichtchecks, bestandener Gerätematrix und
-   abschließendem Review mergen; der Merge benötigt eine gesonderte Freigabe.
-4. Erst danach mit dem getrennten SDK-53-Commit beginnen.
+2. Pull Request #26 nach grünen Pflichtchecks und abschließendem Review mergen;
+   der Merge benötigt eine gesonderte Freigabe.
+3. Danach mit dem getrennten SDK-53-Commit beginnen.
+4. Die physischen iOS-/Android-Geräte-Smokes aus SP2-06/P0-09 einschließlich
+   Android-PDF-Cleanup bleiben verpflichtende Gates vor einer Produktionsfreigabe,
+   blockieren nach Product-Owner-Entscheidung aber nicht mehr diesen Merge.
 
 ## Bewusste Grenzen
 
@@ -79,5 +80,7 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
   dadurch nicht ersetzt.
 - Der lokale Android-Release-Compile wird weiterhin durch CI belegt; ein physisches
   Android-Gerät ist durch Emulator oder CI nicht ersetzt.
+- Die physische Gerätematrix ist ausdrücklich verschoben, nicht als bestanden oder
+  entfallen markiert; ohne sie darf keine Produktionsfreigabe erfolgen.
 - Die parallele UI-Redesign-Arbeit bleibt getrennt und ist nicht Bestandteil dieses
   Pull Requests.

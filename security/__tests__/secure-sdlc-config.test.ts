@@ -121,6 +121,14 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("if-no-files-found: error");
   });
 
+  it("runs feature-branch CI once through the pull-request event", () => {
+    const workflow = readFileSync(join(workflowsDir, "ci.yml"), "utf8");
+
+    expect(workflow).not.toContain("on: [push, pull_request]");
+    expect(workflow).toContain("push:\n    branches: [main]");
+    expect(workflow).toContain("pull_request:\n    branches: [main]");
+  });
+
   it("keeps the patched xmldom release compatible with Expo SDK 52 prebuild", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));

@@ -111,13 +111,15 @@ Regressionstest fehlschlagen.
 2. Product Owner hat iOS 16.4 als Mindestversion für das finale SDK 57 bestätigt.
 3. Mobile/Security entscheiden nach dem SDK-54-New-Arch-Smoke, ob die eigene Network Probe über
    Interop verbleiben darf oder vor SDK 55 als typed TurboModule neu gebaut wird.
-4. Ein physisches Android-Gerät und ein physisches iOS-Gerät werden für die Golden-Smokes benannt.
+4. Die physischen Android-/iOS-Golden-Smokes sind durch Product-Owner-Entscheidung auf das
+   Produktionsfreigabe-Gate verschoben. Sie blockieren den SDK-52-PR-Merge nicht, bleiben aber vor
+   jedem produktiven Release zwingend und dürfen bis dahin nicht als bestanden markiert werden.
 5. Xcode 26.4 wird vor dem SDK-56/57-iOS-Gate bereitgestellt; Node erfüllt ab SDK 57 mindestens
    22.13.
 
 ## Verifikation des SDK-52-Commits
 
-- `npm run verify`: 52 Suites und 464 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
+- `npm run verify`: 52 Suites und 465 Tests grün; 6 bekannte Remote-Tests explizit übersprungen.
 - `npm run security:dependencies`: grün; 12 bereits genehmigte, zeitlich begrenzte
   Build-Toolchain-Ausnahmen, keine neue High-/Critical-Abhängigkeit. Die behobene
   `turbo-stream`-Ausnahme wurde fail-closed als veraltet erkannt und entfernt.
