@@ -1,6 +1,6 @@
 # SP3-01B – Mobile Upgrade Baseline
 
-Stand: 2026-08-20
+Stand: 2026-08-21
 Status: `verification`
 
 ## Ziel
@@ -9,6 +9,75 @@ Die SDK-Migration darf nicht allein durch einen erfolgreichen Compile als bestan
 Baseline bindet jeden direkten Laufzeitbaustein, jedes Config-Plugin und die sicherheitskritischen
 Produktverträge an einen reproduzierbaren Ausgangsstand. Die maschinenlesbare Quelle ist
 `security/mobile-upgrade-baseline.json`; ihr Regressionstest läuft in `npm run verify`.
+
+## Belegter SDK-53-Zwischenstand
+
+| Bereich | Baseline |
+|---|---|
+| Expo / React Native / React | SDK 53.0.27 / RN 0.79.6 / React 19.0.0 |
+| Architektur | Legacy Architecture explizit mit `newArchEnabled: false`; kein stilles Aktivieren |
+| Android | min API 24, compile/target API 35 |
+| iOS | Deployment Target 15.1 |
+| Toolchain | Node 22.x, npm 10.9.2 |
+| Expo Doctor 1.20.2 | 18/18 Prüfungen grün; React-Native-Directory-Prüfung grün |
+| iOS-Simulator-Smoke | iPhone 16 Plus / iOS 18.6: 15/15 serielle Flows, 0 Fehler |
+| Aktive Dependency-Ausnahmen | 4, ausschließlich befristete transitive Buildwerkzeuge |
+
+SDK 53 bringt React Native 0.79, React 19 und standardmäßig aktivierte Metro Package Exports. Für
+PraxisShield wurden daraus folgende explizite Entscheidungen und Reparaturen abgeleitet:
+
+1. React und React DOM bleiben auf Expos SDK-53-Pin 19.0.0. Die React-Primärquelle stellt klar,
+   dass diese Pakete nicht von den React-Server-Component-CVEs betroffen sind und React Native
+   nicht unnötig von seinem abgestimmten React-Pin abweichen soll. Keines der betroffenen
+   `react-server-dom-*`-Pakete ist im Clientgraph installiert; ein Regressionstest blockiert ihr
+   späteres Auftauchen. Expo Router 5.1.11 und `jest-expo` 53.0.14 binden die zugehörige
+   SDK-53-Sicherheitslinie ohne einen prophylaktischen Paket-Override.
+2. Die New Architecture bleibt auf dieser Zwischenstufe ausdrücklich deaktiviert. SDK- und
+   Architekturwechsel erhalten getrennte Fehlerdomänen; die erste Architekturentscheidung folgt
+   im SDK-54-Arbeitspaket.
+3. Beide Produktionsbundle-Exporte sind mit aktiven Metro Package Exports und Supabase grün. Der
+   von Expo dokumentierte Kompatibilitäts-Schalter `unstable_enablePackageExports: false` wird daher
+   nicht vorsorglich gesetzt und kann die Modulauflösung nicht global abschwächen.
+4. Das React-Native-0.79-Template ist auf iOS Swift-first. Die in der bisherigen Plugin-
+   Implementierung verwendete `IOSConfig.Swift`-Hilfs-API existiert nicht mehr; das lokale
+   Network-Probe-Plugin arbeitet nun direkt mit dem generierten Swift-Bridging-Vertrag.
+5. Die weiterhin benötigten Härtungen für `@expo/plist` und `expo-modules-core` wurden auf 0.3.5
+   beziehungsweise 2.5.0 neu erzeugt. Expo plist 0.3.5 fordert weiterhin `xmldom ^0.8.8`; der
+   sichere Override 0.9.11 bricht dessen alten `parseFromString(xml)`-Aufruf reproduzierbar wegen
+   des fehlenden MIME-Types. Der Patch setzt `text/xml`, normalisiert führenden Whitespace und wird
+   durch einen echten Parse-Regressionstest sowie Clean Prebuild belegt. `patch-package` prüft die
+   Zielversion weiterhin fail-closed.
+6. Acht `tar`-Advisories aus der Expo-51/52-Buildkette sind im SDK-53-Graph nicht mehr vorhanden
+   und deshalb aus der aktiven Allowlist entfernt. Vier einzelne `image-size`-/`postcss`-Ausnahmen
+   bleiben mit Owner, Ablaufdatum und ausschließlich `build-toolchain` als zulässigem Scope.
+7. React 19 führt asynchrones Test-Renderer-Verhalten und strengere Typen ein. Die betroffenen
+   Tests wurden auf echte `act`-Phasen umgestellt; Assertions, Mandantengrenzen und Security-Fakten
+   bleiben unverändert. Die Deprecation des React Test Renderers wird als separater technischer
+   Rückstand geführt.
+
+### Verifikation des SDK-53-Commits
+
+- Reproduzierbares `npm ci` einschließlich beider Vendor-Patches: bestanden.
+- `npm run verify`: 52 Suites und 469 Tests grün; 6 bekannte Remote-/Gerätetests explizit
+  übersprungen.
+- `npm run security:dependencies`: grün; 4 genehmigte Build-Toolchain-Ausnahmen und keine
+  allowlistbare Laufzeit-Ausnahme.
+- CycloneDX-SBOM: 1.225 Dependency-Komponenten mit Node 22/npm 10 erzeugt und validiert.
+- Expo Doctor 1.20.2: 18/18 Prüfungen grün.
+- Clean Prebuild und `npm run verify:native-config`: bestanden.
+- Produktionsbundle-Export für iOS und Android mit Metro Package Exports: bestanden.
+- Lokaler arm64-iOS-Release-Simulator-Build ohne Codesignierung: bestanden, einschließlich Pods,
+  Hermes, App-Linking und eingebettetem Produktionsbundle.
+- Serieller iOS-Simulator-Smoke auf iPhone 16 Plus / iOS 18.6: 15/15 Flows, 0 Fehler. Die Matrix
+  belegt App-Start, Auth, Router-5-Navigation, Onboarding, Fragebogen, WLAN, Report-Fehlerbehandlung,
+  Datenschutzrollen, Passwort-Reset, Einladung, verschlüsselte Inventarpersistenz, responsives
+  Dashboard und PDF-Export. Der gemeinsame Bootstrap setzt vor jedem Flow `praxisshield:///`,
+  damit ein vorheriger Deep-Link keine Route in den nächsten Flow überträgt.
+- Der lokale Android-Release-Compile erreichte die native Auflösung, konnte aber wegen wiederholter
+  Timeouts zu `dl.google.com/android/repository` nicht abgeschlossen werden. Das ist kein grünes
+  Gate und wird nach dem Push durch den obligatorischen GitHub-CI-Release-Compile entschieden.
+- Physische iOS-/Android-Smokes bleiben durch Product-Owner-Entscheidung auf das
+  Produktionsfreigabe-Gate verschoben. Sie sind weder bestanden noch entfallen.
 
 ## Belegter SDK-52-Zwischenstand
 
@@ -152,6 +221,9 @@ Regressionstest fehlschlagen.
 - <https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/>
 - <https://docs.expo.dev/guides/new-architecture/>
 - <https://docs.expo.dev/versions/latest/>
+- <https://expo.dev/changelog/sdk-53>
+- <https://expo.dev/changelog/mitigating-critical-security-vulnerability-in-react-server-components>
+- <https://react.dev/blog/2025/12/11/denial-of-service-and-source-code-exposure-in-react-server-components>
 - <https://expo.dev/changelog/2024-11-12-sdk-52>
 - <https://expo.dev/changelog/2025-01-21-react-native-0.77>
 - <https://expo.dev/changelog/xcode-16-3-patches>

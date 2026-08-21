@@ -68,6 +68,16 @@ appId: ai.praxisshield.app
           timeout: 30000
       - waitForAnimationToEnd:
           timeout: 30000
+# Expo Router 5 preserves the current deep-link route across a development-
+# client reload. Reset every flow to the app root so a preceding reset-password
+# or invitation flow cannot leak its route into the next serial smoke.
+- retry:
+    maxRetries: 3
+    commands:
+      - openLink:
+          link: "praxisshield:///"
+- waitForAnimationToEnd:
+    timeout: 30000
 - repeat:
     times: 6
     commands:

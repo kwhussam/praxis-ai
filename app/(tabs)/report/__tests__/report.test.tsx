@@ -147,8 +147,11 @@ describe("ReportsScreen", () => {
     mockReportHistory = [];
   });
 
-  it("zeigt fuer eine echte Praxis ohne Bericht den Empty-State statt des Sample-Berichts", () => {
-    const tree = renderer.create(<ReportsScreen />);
+  it("zeigt fuer eine echte Praxis ohne Bericht den Empty-State statt des Sample-Berichts", async () => {
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = renderer.create(<ReportsScreen />);
+    });
     const text = allText(tree.root);
 
     expect(text).toContain("Noch kein Bericht vorhanden");

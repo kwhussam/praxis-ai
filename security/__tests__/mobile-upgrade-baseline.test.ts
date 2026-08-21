@@ -30,6 +30,7 @@ type PackageJson = {
   dependencies: Record<string, string>;
   engines: { node: string };
   packageManager: string;
+  overrides: Record<string, string>;
   expo: { install: { exclude: string[] } };
 };
 
@@ -121,7 +122,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "52",
+      expoSdk: "53",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
@@ -147,22 +148,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
     expect(appConfig.newArchEnabled).toBe(false);
-    expect(packageJson.expo.install.exclude).toEqual([
-      "react-native@~0.76.6",
-      "react-native-reanimated@~3.16.1",
-      "react-native-gesture-handler@~2.20.0",
-      "react-native-screens@~4.4.0",
-      "react-native-safe-area-context@~4.12.0",
-      "react-native-svg@15.8.0"
-    ]);
+    expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
-  it("keeps the RN 0.77 Paper renderer on the compatible react-native-svg line", () => {
+  it("keeps the SDK 53 legacy renderer on its verified react-native-svg line", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
-    expect(reactNativeVersion).toBe("0.77.3");
-    expect(svgVersion).toBe("15.12.1");
-    expect(packageJson.dependencies["react-native-svg"]).toBe(svgVersion);
+    expect(reactNativeVersion).toBe("0.79.6");
+    expect(svgVersion).toBe("15.11.2");
+    expect(packageJson.dependencies["react-native-svg"]).toBe("15.11.2");
 
     const paperDelegate = readFileSync(
       resolve(
@@ -175,12 +169,12 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(paperDelegate).toContain("extends BaseViewManager<");
   });
 
-  it("keeps RN 0.77 Paper on the screens line with the content-wrapper parent fix", () => {
+  it("keeps RN 0.79 legacy mode on the screens line with the content-wrapper parent fix", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
-    expect(reactNativeVersion).toBe("0.77.3");
-    expect(screensVersion).toMatch(/^4\.9\./);
-    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.9.0");
+    expect(reactNativeVersion).toBe("0.79.6");
+    expect(screensVersion).toBe("4.11.1");
+    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.11.1");
 
     const contentWrapper = readFileSync(
       resolve(repositoryRoot, "node_modules/react-native-screens/ios/RNSScreenContentWrapper.mm"),
@@ -193,25 +187,34 @@ describe("SP3-01B mobile upgrade baseline", () => {
     );
   });
 
-  it("uses Expo Router 4's guarded internal splash startup path instead of the removed SDK 51 patch", () => {
+  it("uses Expo Router 5's guarded internal splash startup path instead of a local splash patch", () => {
     const routerSplash = readFileSync(
       resolve(repositoryRoot, "node_modules/expo-router/build/utils/splash.js"),
       "utf8"
     );
     const internalStart = routerSplash.indexOf("async function _internal_preventAutoHideAsync()");
-    const internalEnd = routerSplash.indexOf(
-      "exports._internal_preventAutoHideAsync",
-      internalStart
-    );
+    const internalEnd = routerSplash.indexOf("async function _internal_maybeHideAsync()", internalStart);
     const internalStartup = routerSplash.slice(internalStart, internalEnd);
 
     expect(internalStart).toBeGreaterThan(-1);
     expect(internalEnd).toBeGreaterThan(internalStart);
     expect(routerSplash).toContain("requireOptionalNativeModule)('ExpoSplashScreen')");
-    expect(internalStartup).toContain("if (!SplashModule)");
+    expect(internalStartup).toContain("if (!SplashModule ||");
+    expect(internalStartup).toContain("!SplashModule.internalPreventAutoHideAsync");
     expect(internalStartup).toContain("SplashModule.internalPreventAutoHideAsync()");
     expect(internalStartup).not.toContain("SplashModule.preventAutoHideAsync()");
     expect(existsSync(resolve(repositoryRoot, "patches/expo-splash-screen+0.27.7.patch"))).toBe(false);
+  });
+
+  it("keeps Expo's React pin and does not install an affected server-component package", () => {
+    expect(packageLock.packages["node_modules/react"].version).toBe("19.0.0");
+    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.0.0");
+    expect(packageJson.overrides["react-server-dom-webpack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("5.1.11");
+    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("53.0.14");
   });
 
   it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
@@ -219,16 +222,39 @@ describe("SP3-01B mobile upgrade baseline", () => {
       resolve(repositoryRoot, ".maestro/subflows/bootstrap.yaml"),
       "utf8"
     );
+    const rootRouteReset = bootstrap.lastIndexOf('link: "praxisshield:///"');
     const scrollRecovery = bootstrap.lastIndexOf("- repeat:");
     const continueRecovery = bootstrap.lastIndexOf("visible: Continue");
     const reloadRecovery = bootstrap.lastIndexOf("visible: Reload");
     const finalAuthAssertion = bootstrap.lastIndexOf("- extendedWaitUntil:");
 
-    expect(scrollRecovery).toBeGreaterThan(-1);
+    expect(rootRouteReset).toBeGreaterThan(-1);
+    expect(scrollRecovery).toBeGreaterThan(rootRouteReset);
     expect(continueRecovery).toBeGreaterThan(scrollRecovery);
     expect(reloadRecovery).toBeGreaterThan(continueRecovery);
     expect(finalAuthAssertion).toBeGreaterThan(reloadRecovery);
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
+  });
+
+  it("keeps SDK-53 auth smokes independent of iOS keyboard submit behavior", () => {
+    const registration = readFileSync(
+      resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
+      "utf8"
+    );
+    const login = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/login.yaml"),
+      "utf8"
+    );
+    const onboardingLogin = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/login-to-onboarding.yaml"),
+      "utf8"
+    );
+
+    expect(registration).toMatch(/- hideKeyboard\s+- tapOn:\s+id: auth-submit/);
+    for (const flow of [login, onboardingLogin]) {
+      expect(flow).toContain("- pressKey: Enter");
+      expect(flow).toMatch(/visible:\s+id: auth-submit\s+commands:\s+- tapOn:\s+id: auth-submit/);
+    }
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {

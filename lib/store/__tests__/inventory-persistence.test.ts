@@ -1,5 +1,6 @@
 declare const jest: { mock(moduleName: string, factory: () => unknown): void };
 declare function beforeEach(fn: () => void): void;
+declare function afterEach(fn: () => void): void;
 
 jest.mock("expo-crypto", () => ({
   getRandomBytesAsync: async (length: number) => new Uint8Array(length)

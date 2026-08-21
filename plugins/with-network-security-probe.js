@@ -1,16 +1,16 @@
 const fs = require("fs");
 const path = require("path");
-const { IOSConfig, withDangerousMod, withXcodeProject } = require("@expo/config-plugins");
+const { withDangerousMod, withXcodeProject } = require("@expo/config-plugins");
 
 const IOS_PROBE_FILES = ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"];
 
 module.exports = function withNetworkSecurityProbe(config) {
   config = withXcodeProject(config, (modConfig) => {
     const projectName = modConfig.modRequest.projectName;
-    const project = IOSConfig.Swift.ensureSwiftBridgingHeaderSetup({
-      projectRoot: modConfig.modRequest.projectRoot,
-      project: modConfig.modResults
-    });
+    // SDK 53's native template is Swift-first and already designates the app
+    // bridging header. Config Plugins 10 therefore removed IOSConfig.Swift;
+    // the dangerous mod below creates the declared header fail-closed.
+    const project = modConfig.modResults;
     const groupKey = project.findPBXGroupKey({ name: projectName });
     if (!groupKey) throw new Error(`Could not find iOS source group ${projectName}`);
 
@@ -33,7 +33,7 @@ module.exports = function withNetworkSecurityProbe(config) {
         fs.copyFileSync(path.join(sourceDir, fileName), path.join(targetDir, fileName));
       }
 
-      // React must stay out of the Swift bridging-header PCH on RN 0.77. The
+      // React must stay out of the Swift bridging-header PCH on RN 0.79. The
       // Objective-C bridge owns the React import and exposes the same block ABI.
       const bridgingHeader = path.join(targetDir, `${projectName}-Bridging-Header.h`);
       const reactImport = "#import <React/RCTBridgeModule.h>";

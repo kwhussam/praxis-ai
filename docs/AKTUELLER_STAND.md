@@ -1,89 +1,84 @@
 # PraxisShield – aktueller Umsetzungsstand
 
-Stand: 20. August 2026
+Stand: 21. August 2026
 
-Aktiver Arbeitszweig: `codex/sp3-01b-sdk52`
+Aktiver Stand: `main` nach Merge von `codex/sp3-01b-sdk53`
 
-Pull Request: #26
+Pull Request: #29 (abgeschlossen)
 
 Diese Datei ist das kurze operative Übergabeprotokoll zum ausführlichen
 `UMSETZUNGSPLAN_2026.md`. Sie beantwortet bei jedem Arbeitspaket drei Fragen:
 Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
-## Aktuelles Arbeitspaket: SP3-01B – Expo-SDK-52-Verifikation
+## Abgeschlossenes Arbeitspaket: SP3-01B – Expo-SDK-53-Migration
 
 ### Umgesetzt
 
-- `react-native-screens` ist auf die kleinste für React Native 0.77 mit der
-  bewusst beibehaltenen Paper-Architektur geeignete Linie `~4.9.0` angehoben;
-  der Lockfile-Stand ist 4.9.2. Damit ist die fehlerhafte Elternsuche des
-  `RNSScreenContentWrapper` aus 4.8.0 geschlossen.
-- Ein Regressionstest bindet Paketversion, Package-Spec und den tatsächlich
-  installierten nativen Paper-Fix. Ein stilles Downgrade auf die inkompatible
-  4.8-Linie fällt dadurch in `npm run verify` auf.
-- Der Expo-Dev-Client-Bootstrap behandelt jetzt auch das einmalige, verspätet
-  erscheinende First-Run-Developer-Menu. Dieses Testinfrastrukturproblem wird
-  nicht mehr mit einem Produkt- oder Navigationfehler verwechselt.
-- Die absichtlich korrigierte `react-native-svg`-Paper-Version ist auch im
-  Expo-Doctor-Vertrag vollständig dokumentiert; Expo Doctor bleibt ohne
-  pauschale Prüfungsunterdrückung grün.
-- Der iOS-Network-Probe hält die React-Native-Bridge vollständig in Objective-C.
-  Swift verwendet eigene Promise-Closure-Typen und benötigt dadurch keinen
-  React-Import im Bridging Header mehr.
-- Clean Prebuild und der native iOS-Build prüfen diesen Vertrag fail-closed.
-- Der Maestro-Smoke führt alle Flow-Dateien explizit und seriell aus. Ein fehlender,
-  leerer, abgebrochener oder inkonsistenter JUnit-Bericht lässt den Lauf scheitern;
-  ein irreführender Erfolg mit null ausgeführten Flows ist damit ausgeschlossen.
-- Die normale Maestro-Projektkonfiguration bleibt für manuelle/Cloud-Läufe erhalten;
-  der lokale Smoke besitzt eine getrennte Minimal-Konfiguration.
-- Der PDF-Flow erzeugt auch im vollständigen Smoke seine kanonische Testevidenz,
-  scrollt robust zum Export und prüft weiterhin das Löschen der Klartext-Cachedatei.
-- Der Privacy-Owner-Flow erzeugt seine Wegwerfpraxis über die autorisierten
-  Backoffice-RPCs, überträgt die Eigentümerschaft und testet danach die echte
-  Löschroute. Direkte Service-Role-Tabellenschreibrechte werden nicht vorausgesetzt.
-- Nach einem lokalen Datenbankreset wird ein veralteter Kong/GoTrue-Upstream erkannt
-  und kontrolliert neu verbunden, bevor Seed-Benutzer geprüft werden.
+- Expo ist auf 53.0.27, React Native auf 0.79.6 und React/React DOM auf Expos unterstützten
+  SDK-53-Pin 19.0.0 migriert. Keines der von den React-Server-Component-CVEs betroffenen
+  `react-server-dom-*`-Pakete ist installiert; ein Regressionstest blockiert deren späteres
+  Auftauchen. Expo Router 5.1.11 und `jest-expo` 53.0.14 enthalten die zugehörigen
+  Herstellerkorrekturen.
+- Die Legacy Architecture bleibt als bewusste Zwischenstufe mit `newArchEnabled: false`
+  aktiviert. Die New Architecture wird erst im getrennten SDK-54-Arbeitspaket bewertet.
+- Die beiden weiterhin erforderlichen Vendor-Patches wurden versionsgenau für
+  `@expo/plist` 0.3.5 und `expo-modules-core` 2.5.0 erneuert. `@expo/plist` fordert weiterhin
+  `xmldom ^0.8.8`; der sichere Override 0.9.11 benötigt zwingend MIME-Type und Whitespace-
+  Normalisierung. Ein Regressionstest führt genau diesen Parsepfad aus, und ein Versionswechsel
+  lässt `postinstall` weiterhin fail-closed scheitern.
+- Das lokale iOS-Network-Probe-Plugin ist an das Swift-first-Template von React Native 0.79
+  angepasst. Die in SDK 53 entfernte `IOSConfig.Swift`-Hilfs-API wird nicht mehr verwendet;
+  Bridging Header und Probe bleiben reproduzierbar über den Clean Prebuild eingebunden.
+- React-19-Typänderungen und das asynchrone Verhalten des Test Renderers sind in den betroffenen
+  Tests explizit abgebildet. Produktlogik oder Security-Fakten wurden dafür nicht abgeschwächt.
+- Metro Package Exports bleiben im SDK-53-Standard aktiv. Sowohl iOS als auch Android konnten
+  damit einschließlich Supabase als Produktionsbundle exportiert werden; ein globaler
+  Kompatibilitäts-Downgrade war nicht nötig.
+- Acht durch die neue Expo-Buildkette behobene `tar`-Advisories sind aus den aktiven Ausnahmen
+  entfernt und als SDK-53-Remediation historisch dokumentiert. Nur vier befristete
+  Build-Toolchain-Ausnahmen bleiben aktiv.
+- Der serielle Maestro-Bootstrap setzt unter Expo Router 5 vor jedem Flow die App-Route explizit
+  zurück. Auth-Flows besitzen zusätzlich einen bedingten Submit-Fallback, falls iOS `Enter` nur
+  zum Schließen der Tastatur verwendet. Damit können Deep Links und Eingabeverhalten eines Flows
+  keine Folgetests mehr verfälschen.
 
 ### Verifiziert
 
-- Clean Expo Prebuild und Native-Konfigurationsprüfung: bestanden.
-- Frischer nativer iOS-18.6-Simulator-Build mit `react-native-screens` 4.9.2:
-  bestanden, installiert und ohne den früheren `RNSScreenContentWrapper`-Crash.
-- Gezielte Regressionsmatrix `01-registration`, `04-onboarding` und
-  `12-invitation-auth-handoff`: 3/3 Flows grün.
-- Vollständige iOS-Matrix: 15/15 JUnit-Reports grün, 0 Fehler. Nach einem rein
-  lokalen Datenträger-/Docker-Ausfall nach Flow 12 wurden nur die noch fehlenden
-  Flows 13–15 fortgesetzt und anschließend alle 15 Reports gemeinsam fail-closed
-  validiert; kein Produktfehler wurde übersprungen.
-- PDF-Export: nativer Öffnen-/Teilen-Pfad grün und anschließend keine
-  `PraxisShield-Bericht-*.pdf`-Klartextdatei im iOS-Cache vorhanden.
-- `npm run verify`: 52 Suites und 467 Tests grün; 6 bekannte Remote-Tests
-  explizit übersprungen.
-- Claude-Folgereview: Maestro-Standardkonfiguration ist explizit fail-closed; der lokale
-  Auth-Healthcheck unterscheidet normale Kaltstarts von wiederholtem Kong-502; Splash-Ablösung
-  und Dependency-Remediation sind durch Regressionstests gebunden.
-- Dependency-Gate: grün; 12 genehmigte, zeitlich begrenzte Ausnahmen ausschließlich
-  für die Build-Toolchain, keine neue Laufzeit-Ausnahme.
+- Reproduzierbares `npm ci` einschließlich beider versionsgebundener Patches: bestanden.
+- `npm run verify`: 52 Suites und 469 Tests grün; 6 bekannte Remote-/Gerätetests explizit
+  übersprungen.
 - Expo Doctor 1.20.2: 18/18 Prüfungen grün.
+- Clean Expo Prebuild und `npm run verify:native-config`: bestanden.
+- Produktionsbundle-Export für iOS und Android: bestanden.
+- Dependency-Gate: grün; vier genehmigte, zeitlich begrenzte Ausnahmen ausschließlich für die
+  Build-Toolchain, keine Laufzeit-Ausnahme.
+- CycloneDX-SBOM: 1.225 Dependency-Komponenten mit Node 22/npm 10 erzeugt und validiert.
+- Lokaler arm64-iOS-Release-Simulator-Build ohne Codesignierung: bestanden, einschließlich Pods,
+  Hermes, App-Linking und eingebettetem Produktionsbundle.
+- Serieller iOS-Simulator-Smoke auf iPhone 16 Plus / iOS 18.6: 15/15 Flows grün, 0 Fehler. Er
+  umfasst Registrierung, Login, Onboarding, Fragebogen, WLAN, Report-Fehlerpfad,
+  Datenschutzrollen, Passwort-Reset, Einladung, verschlüsselte Inventarpersistenz, responsives
+  Dashboard und kanonischen PDF-Export.
 
 ## Nächster Schritt
 
-1. Die GitHub-Gates für Pull Request #26 abwarten, insbesondere
-   Android-Release-Compile, Secure SDLC und CodeQL.
-2. Pull Request #26 nach grünen Pflichtchecks und abschließendem Review mergen;
-   der Merge benötigt eine gesonderte Freigabe.
-3. Danach mit dem getrennten SDK-53-Commit beginnen.
-4. Die physischen iOS-/Android-Geräte-Smokes aus SP2-06/P0-09 einschließlich
-   Android-PDF-Cleanup bleiben verpflichtende Gates vor einer Produktionsfreigabe,
-   blockieren nach Product-Owner-Entscheidung aber nicht mehr diesen Merge.
+1. Von aktuellem `main` den neuen Arbeitszweig `codex/sp3-01b-sdk54-legacy` erstellen.
+2. Expo SDK 54 zunächst weiterhin mit `newArchEnabled: false` migrieren. Dabei den vollständigen
+   Paketgraphen, beide Vendor-Patches, Clean Prebuild, native Konfiguration, iOS-/Android-Bundles,
+   Android Release Compile, iOS Simulator Build sowie den seriellen Maestro-Smoke erneut
+   fail-closed verifizieren.
+3. Die SDK-54-Legacy-Baseline in einem eigenen Pull Request reviewen und mergen. Erst danach die
+   React-Native-New-Architecture in einem getrennten Branch aktivieren und hinsichtlich nativer
+   Probes, Verschlüsselung, SQLite, Router, Performance und Geräte-Smokes bewerten.
 
 ## Bewusste Grenzen
 
-- Der aktuelle Native-Nachweis stammt aus einem iOS-Simulator; reale Geräte sind
-  dadurch nicht ersetzt.
-- Der lokale Android-Release-Compile wird weiterhin durch CI belegt; ein physisches
-  Android-Gerät ist durch Emulator oder CI nicht ersetzt.
-- Die physische Gerätematrix ist ausdrücklich verschoben, nicht als bestanden oder
-  entfallen markiert; ohne sie darf keine Produktionsfreigabe erfolgen.
-- Die parallele UI-Redesign-Arbeit bleibt getrennt und ist nicht Bestandteil dieses
-  Pull Requests.
+- Der lokale Android-Release-Compile konnte wegen wiederholter Timeouts zu
+  `dl.google.com/android/repository` nicht abgeschlossen werden. Das ist kein beobachteter
+  Compilefehler, aber auch kein bestandener Nachweis; GitHub-CI bleibt dafür fail-closed.
+- Die physischen iOS-/Android-Geräte-Smokes sind nach Product-Owner-Entscheidung verschoben, nicht
+  bestanden oder entfallen. Sie bleiben vor einer Produktionsfreigabe verpflichtend.
+- `react-test-renderer` ist unter React 19 als veraltet markiert. Die vorhandenen Tests bleiben
+  wirksam; ihre spätere Migration auf eine langfristig unterstützte Render-Teststrategie ist
+  technischer Rückstand, kein SDK-53-Releaseblocker.
+- Die parallele UI-Redesign-Arbeit bleibt getrennt und ist nicht Bestandteil dieses Commits.

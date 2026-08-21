@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-08-15
+Stand: 2026-08-21
 
 Status: `in_progress`
 
@@ -26,7 +26,7 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52 |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 53 lokal verifiziert, CI ausstehend |
 | 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, `@expo/plist`-Patch und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `pending` |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
@@ -123,13 +123,44 @@ blockieren den SDK-52-Merge nicht. Der erste PR-Lauf hat dabei die mit React Nat
 inkompatible Expo-
 Standardversion `react-native-svg` 15.8.0 fail-closed erkannt; 15.12.1 ist als letzte kompatible
 Linie vor der RN-0.78-Mindestgrenze gepinnt und durch einen Vendor-Code-Regressionstest abgesichert.
-Erst nach grünem Folgelauf beginnt der getrennte SDK-53-Commit.
+Der Folgelauf und Merge von PR #26 waren grün; SDK 52 ist damit abgeschlossen.
+
+## Phase 3 – SDK-53-Zwischenstand
+
+Der zweite isolierte Migrationsschritt steht auf Expo 53.0.27, React Native 0.79.6 und Expos
+abgestimmter React-/React-DOM-Linie 19.0.0. Die Legacy Architecture bleibt bewusst
+explizit deaktiviert; ihre Ablösung wird nicht mit diesem SDK-Sprung vermischt. Expo Router 5.1.11,
+`jest-expo` 53.0.14 und der maschinengeprüfte Ausschluss aller `react-server-dom-*`-Pakete binden
+die aktuelle RSC-Sicherheitslinie ohne Abweichung des React-Native-Laufzeitpaares oder
+prophylaktischen Paket-Override.
+
+Clean Prebuild, Native-Config, Expo Doctor 18/18, 469 lokale Tests sowie iOS- und
+Android-Produktionsbundle sind grün. Das Swift-first-Template von React Native 0.79 erforderte eine
+gezielte Anpassung des Network-Probe-Config-Plugins; die iOS-Brücke bleibt anschließend
+reproduzierbar. Metro Package Exports konnten trotz der von Expo für SDK 53 dokumentierten
+Kompatibilitätsrisiken im Standardmodus bleiben, weil beide echten Bundles einschließlich Supabase
+erfolgreich erzeugt wurden.
+
+Der serielle iOS-Simulator-Smoke auf iPhone 16 Plus / iOS 18.6 ist mit 15/15 Flows und 0 Fehlern
+grün. Der Lauf deckt insbesondere die durch React 19 und Expo Router 5 berührten Start-, Auth-,
+Onboarding-, Fragebogen- und Navigationspfade ab. Zwei SDK-53-spezifische Harness-Grenzen wurden
+dabei geschlossen: Router-Deep-Links werden vor jedem Flow auf die App-Wurzel zurückgesetzt und
+Auth-Subflows behandeln `Enter` mit einem nur bei weiterhin sichtbarem Submit-Button ausgeführten
+Fallback. Damit bleiben die Flows seriell voneinander isoliert und fail-closed.
+
+Das Dependency-Gate konnte acht `tar`-Advisories als durch SDK 53 behoben entfernen. Vier
+befristete Ausnahmen ausschließlich für transitive Buildwerkzeuge bleiben aktiv; Laufzeitpakete
+können weiterhin nicht allowlisted werden. Der lokale Android-Release-Compile ist nicht als
+bestanden markiert, weil Googles Android-Repository wiederholt in Timeouts lief. Dieser Beweis
+bleibt zwingendes GitHub-CI-Gate. Physische Gerätesmokes bleiben unverändert vor der
+Produktionsfreigabe verpflichtend.
 
 ## Primärquellen
 
 - Expo SDK 56: <https://expo.dev/changelog/sdk-56>
 - Expo SDK 57 / aktuelle Versionsmatrix: <https://docs.expo.dev/versions/latest/>
 - Expo New Architecture: <https://docs.expo.dev/guides/new-architecture/>
+- Expo SDK 53: <https://expo.dev/changelog/sdk-53>
 - Expo Native Upgrade Helper: <https://docs.expo.dev/bare/upgrade/>
 - Checkout: <https://github.com/actions/checkout/releases/tag/v7.0.1>
 - Setup Node: <https://github.com/actions/setup-node/releases/tag/v7.0.0>
