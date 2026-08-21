@@ -60,6 +60,16 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
   Datenschutzrollen, Passwort-Reset, Einladung, verschlüsselte Inventarpersistenz, responsives
   Dashboard und kanonischen PDF-Export.
 
+### Nachlauf: Dependency-Automation
+
+- Expo, React, React Native, React Test Renderer und weitere architekturgekoppelte Native-Pakete
+  sind von unbeaufsichtigten Dependabot-Versions-PRs ausgeschlossen. Diese Pakete dürfen nur noch
+  im versionierten SDK-Migrationspfad gemeinsam mit Baseline-, Native-Build- und Smoke-Gates
+  geändert werden.
+- Damit ist insbesondere der SemVer-Sonderfall geschlossen, durch den React Native `0.79 → 0.87`
+  als vermeintliches Minor-Update an der bisherigen Major-Sperre vorbeilaufen konnte. Allgemeine
+  Major-Updates und neue High-/Critical-Abhängigkeiten bleiben weiterhin fail-closed blockiert.
+
 ## Nächster Schritt
 
 1. Von aktuellem `main` den neuen Arbeitszweig `codex/sp3-01b-sdk54-legacy` erstellen.

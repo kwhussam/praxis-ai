@@ -12,19 +12,27 @@ updates:
       development-dependencies:
         dependency-type: development
         update-types: [minor, patch]
-      # Expo pins react/react-native/expo-* to one SDK. Shipping them as a single
-      # PR keeps that set consistent instead of producing individually broken bumps.
-      expo-sdk:
-        patterns:
-          - "expo"
-          - "expo-*"
-          - "@expo/*"
-          - "react-native"
-          - "react-native-*"
-          - "react"
-          - "react-dom"
-        update-types: [minor, patch]
     ignore:
+      # Expo, React, React Native and architecture-sensitive native packages form
+      # one tested SDK baseline. Dependabot cannot preserve Expo's compatibility
+      # matrix: in particular, React Native 0.x SDK jumps are SemVer "minor" and
+      # bypass a major-only guard. These dependencies move only through the staged
+      # mobile-upgrade plan and its native build, smoke and baseline gates.
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native/*"
+      - dependency-name: "@react-native-community/*"
+      - dependency-name: "@react-navigation/*"
+      - dependency-name: "lucide-react-native"
+      - dependency-name: "moti"
+      - dependency-name: "@types/react"
+      - dependency-name: "jest-expo"
+      - dependency-name: "react-test-renderer"
       # No unattended major jumps. Expo SDK majors (e.g. expo-notifications
       # 0.28 -> 57) must move with the whole SDK in a tested upgrade, and crypto
       # majors such as @noble/ciphers 1 -> 2 need a manual review of the local
