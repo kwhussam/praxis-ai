@@ -2,15 +2,15 @@
 
 Stand: 21. August 2026
 
-Aktiver Arbeitszweig: `codex/sp3-01b-sdk53`
+Aktiver Stand: `main` nach Merge von `codex/sp3-01b-sdk53`
 
-Pull Request: #29
+Pull Request: #29 (abgeschlossen)
 
 Diese Datei ist das kurze operative Übergabeprotokoll zum ausführlichen
 `UMSETZUNGSPLAN_2026.md`. Sie beantwortet bei jedem Arbeitspaket drei Fragen:
 Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
-## Aktuelles Arbeitspaket: SP3-01B – Expo-SDK-53-Migration im Simulator verifiziert
+## Abgeschlossenes Arbeitspaket: SP3-01B – Expo-SDK-53-Migration
 
 ### Umgesetzt
 
@@ -62,11 +62,14 @@ Was wurde umgesetzt, wie wurde es verifiziert und was kommt als Nächstes?
 
 ## Nächster Schritt
 
-1. Nach gesonderter Freigabe den Review-Fix auf Pull Request #29 pushen. GitHub-CI muss insbesondere
-   Android Release, Secure SDLC, Dependency-Gate, CodeQL und RLS erneut bestätigen.
-2. Nach grünen Pflichtchecks und Review den Pull Request nur mit gesonderter Merge-Freigabe mergen.
-3. Danach SDK 54 zunächst weiter mit Legacy Architecture in einem neuen Branch migrieren; die New
-   Architecture folgt als eigenes, klar getrenntes Arbeitspaket.
+1. Von aktuellem `main` den neuen Arbeitszweig `codex/sp3-01b-sdk54-legacy` erstellen.
+2. Expo SDK 54 zunächst weiterhin mit `newArchEnabled: false` migrieren. Dabei den vollständigen
+   Paketgraphen, beide Vendor-Patches, Clean Prebuild, native Konfiguration, iOS-/Android-Bundles,
+   Android Release Compile, iOS Simulator Build sowie den seriellen Maestro-Smoke erneut
+   fail-closed verifizieren.
+3. Die SDK-54-Legacy-Baseline in einem eigenen Pull Request reviewen und mergen. Erst danach die
+   React-Native-New-Architecture in einem getrennten Branch aktivieren und hinsichtlich nativer
+   Probes, Verschlüsselung, SQLite, Router, Performance und Geräte-Smokes bewerten.
 
 ## Bewusste Grenzen
 
