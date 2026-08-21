@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-08-20
+Stand: 2026-08-21
 
 Status: `in_progress`
 
@@ -127,18 +127,26 @@ Der Folgelauf und Merge von PR #26 waren grün; SDK 52 ist damit abgeschlossen.
 
 ## Phase 3 – SDK-53-Zwischenstand
 
-Der zweite isolierte Migrationsschritt steht auf Expo 53.0.27, React Native 0.79.6 und der
-sicherheitskorrigierten React-/React-DOM-Linie 19.0.4. Die Legacy Architecture bleibt bewusst
+Der zweite isolierte Migrationsschritt steht auf Expo 53.0.27, React Native 0.79.6 und Expos
+abgestimmter React-/React-DOM-Linie 19.0.0. Die Legacy Architecture bleibt bewusst
 explizit deaktiviert; ihre Ablösung wird nicht mit diesem SDK-Sprung vermischt. Expo Router 5.1.11,
-`jest-expo` 53.0.14 und ein Override für `react-server-dom-webpack` 19.0.4 binden die aktuelle
-React-19-Sicherheitslinie vollständig.
+`jest-expo` 53.0.14 und der maschinengeprüfte Ausschluss aller `react-server-dom-*`-Pakete binden
+die aktuelle RSC-Sicherheitslinie ohne Abweichung des React-Native-Laufzeitpaares oder
+prophylaktischen Paket-Override.
 
-Clean Prebuild, Native-Config, Expo Doctor 18/18, 468 lokale Tests sowie iOS- und
+Clean Prebuild, Native-Config, Expo Doctor 18/18, 469 lokale Tests sowie iOS- und
 Android-Produktionsbundle sind grün. Das Swift-first-Template von React Native 0.79 erforderte eine
 gezielte Anpassung des Network-Probe-Config-Plugins; die iOS-Brücke bleibt anschließend
 reproduzierbar. Metro Package Exports konnten trotz der von Expo für SDK 53 dokumentierten
 Kompatibilitätsrisiken im Standardmodus bleiben, weil beide echten Bundles einschließlich Supabase
 erfolgreich erzeugt wurden.
+
+Der serielle iOS-Simulator-Smoke auf iPhone 16 Plus / iOS 18.6 ist mit 15/15 Flows und 0 Fehlern
+grün. Der Lauf deckt insbesondere die durch React 19 und Expo Router 5 berührten Start-, Auth-,
+Onboarding-, Fragebogen- und Navigationspfade ab. Zwei SDK-53-spezifische Harness-Grenzen wurden
+dabei geschlossen: Router-Deep-Links werden vor jedem Flow auf die App-Wurzel zurückgesetzt und
+Auth-Subflows behandeln `Enter` mit einem nur bei weiterhin sichtbarem Submit-Button ausgeführten
+Fallback. Damit bleiben die Flows seriell voneinander isoliert und fail-closed.
 
 Das Dependency-Gate konnte acht `tar`-Advisories als durch SDK 53 behoben entfernen. Vier
 befristete Ausnahmen ausschließlich für transitive Buildwerkzeuge bleiben aktiv; Laufzeitpakete

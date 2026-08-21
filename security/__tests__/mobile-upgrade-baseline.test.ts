@@ -148,10 +148,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
     expect(appConfig.newArchEnabled).toBe(false);
-    expect(packageJson.expo.install.exclude).toEqual([
-      "react@19.0.0",
-      "react-dom@19.0.0"
-    ]);
+    expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
   it("keeps the SDK 53 legacy renderer on its verified react-native-svg line", () => {
@@ -209,15 +206,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(existsSync(resolve(repositoryRoot, "patches/expo-splash-screen+0.27.7.patch"))).toBe(false);
   });
 
-  it("pins the React 19 security line used by Router server-component peers", () => {
-    expect(packageLock.packages["node_modules/react"].version).toBe("19.0.4");
-    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.0.4");
-    expect(packageJson.overrides["react-server-dom-webpack"]).toBe("19.0.4");
-
-    const installedServerComponents = packageLock.packages["node_modules/react-server-dom-webpack"];
-    if (installedServerComponents) {
-      expect(installedServerComponents.version).toBe("19.0.4");
-    }
+  it("keeps Expo's React pin and does not install an affected server-component package", () => {
+    expect(packageLock.packages["node_modules/react"].version).toBe("19.0.0");
+    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.0.0");
+    expect(packageJson.overrides["react-server-dom-webpack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("5.1.11");
+    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("53.0.14");
   });
 
   it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
@@ -225,16 +222,39 @@ describe("SP3-01B mobile upgrade baseline", () => {
       resolve(repositoryRoot, ".maestro/subflows/bootstrap.yaml"),
       "utf8"
     );
+    const rootRouteReset = bootstrap.lastIndexOf('link: "praxisshield:///"');
     const scrollRecovery = bootstrap.lastIndexOf("- repeat:");
     const continueRecovery = bootstrap.lastIndexOf("visible: Continue");
     const reloadRecovery = bootstrap.lastIndexOf("visible: Reload");
     const finalAuthAssertion = bootstrap.lastIndexOf("- extendedWaitUntil:");
 
-    expect(scrollRecovery).toBeGreaterThan(-1);
+    expect(rootRouteReset).toBeGreaterThan(-1);
+    expect(scrollRecovery).toBeGreaterThan(rootRouteReset);
     expect(continueRecovery).toBeGreaterThan(scrollRecovery);
     expect(reloadRecovery).toBeGreaterThan(continueRecovery);
     expect(finalAuthAssertion).toBeGreaterThan(reloadRecovery);
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
+  });
+
+  it("keeps SDK-53 auth smokes independent of iOS keyboard submit behavior", () => {
+    const registration = readFileSync(
+      resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
+      "utf8"
+    );
+    const login = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/login.yaml"),
+      "utf8"
+    );
+    const onboardingLogin = readFileSync(
+      resolve(repositoryRoot, ".maestro/subflows/login-to-onboarding.yaml"),
+      "utf8"
+    );
+
+    expect(registration).toMatch(/- hideKeyboard\s+- tapOn:\s+id: auth-submit/);
+    for (const flow of [login, onboardingLogin]) {
+      expect(flow).toContain("- pressKey: Enter");
+      expect(flow).toMatch(/visible:\s+id: auth-submit\s+commands:\s+- tapOn:\s+id: auth-submit/);
+    }
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {

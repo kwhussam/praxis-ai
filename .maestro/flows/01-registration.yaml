@@ -13,7 +13,9 @@ tags:
 - tapOn:
     id: auth-password
 - inputText: "${TEST_PASSWORD}"
-- pressKey: Enter
+- hideKeyboard
+- tapOn:
+    id: auth-submit
 - extendedWaitUntil:
     visible:
       id: onboarding-screen
