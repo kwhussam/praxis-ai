@@ -103,7 +103,7 @@
     "jest-expo": "~53.0.14",
     "patch-package": "^8.0.1",
     "react-test-renderer": "19.0.0",
-    "typescript": "~5.8.3",
+    "typescript": "~5.9.3",
     "wrangler": "^4.119.0"
   }
 }
