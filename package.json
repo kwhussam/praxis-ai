@@ -76,7 +76,7 @@
     "expo-sqlite": "~15.2.14",
     "expo-status-bar": "~2.2.3",
     "hono": "^4.6.3",
-    "lucide-react-native": "^0.520.0",
+    "lucide-react-native": "^0.577.0",
     "moti": "^0.29.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
