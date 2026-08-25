@@ -9,7 +9,8 @@ import {
   isCollected,
   notCollected,
   type CollectionMetadata,
-  type CollectionResult
+  type CollectionResult,
+  type CollectionStatus
 } from "@/lib/assessment/collection";
 import { calculateCollectionCoverage, type CollectionCoverage } from "@/lib/assessment/coverage";
 import type { AccessPoint, KnownDevice, RouterFirewallRule } from "@/lib/inventory/types";
@@ -86,6 +87,18 @@ export type WlanCollectionState = {
   visibleWifiNetworks: CollectionMetadata;
   localDevices: CollectionMetadata;
   mdnsDiscovery: CollectionMetadata;
+};
+
+export type NativeProbeEvidenceEntry = {
+  status: Extract<CollectionStatus, "collected" | "not_checked" | "unsupported" | "unavailable">;
+  source: DataSource;
+  sampleCount: number;
+  errorCodes: string[];
+};
+
+export type NativeProbeEvidence = {
+  tcp: NativeProbeEvidenceEntry;
+  ssdp: NativeProbeEvidenceEntry;
 };
 
 export type WlanVulnCategory =
@@ -169,6 +182,7 @@ export interface WlanScanResult {
   };
   methodology: string[];
   collection: WlanCollectionState;
+  nativeProbeEvidence: NativeProbeEvidence;
   coverage: CollectionCoverage;
   interactionContext?: WlanInteractionContext;
 }
@@ -575,6 +589,7 @@ export async function runWlanSecurityScan(options?: WlanSecurityScanOptions): Pr
     findings: buildFindings(context),
     methodology: [...scanMethodology(context), ...wlanCollectionLimitations(collection), ...getPlatformLimitations()],
     collection,
+    nativeProbeEvidence: buildNativeProbeEvidence(context.gatewayProbe),
     coverage: calculateCollectionCoverage({
       currentWifi: collection.currentWifi.status,
       securityProtocol: collection.securityProtocol.status,
@@ -634,6 +649,7 @@ export async function syncWlanScanResultToSupabase(practiceId: string, result: W
       securityFindings: result.securityFindings,
       methodology: result.methodology,
       collection: result.collection,
+      nativeProbeEvidence: result.nativeProbeEvidence,
       coverage: result.coverage,
       interactionContext: result.interactionContext,
       riskScore: result.riskScore,
@@ -685,6 +701,60 @@ function buildWlanScanClientSyncId(result: WlanScanResult) {
   ].join("|");
 
   return `wlan:${fnv1a32(payload)}`;
+}
+
+export function buildNativeProbeEvidence(probe: GatewaySecurityProbeResult | null): NativeProbeEvidence {
+  if (!probe) {
+    return {
+      tcp: notCheckedNativeProbeEvidence(),
+      ssdp: notCheckedNativeProbeEvidence()
+    };
+  }
+
+  return {
+    tcp: nativeProbeEvidenceFromResults(probe.tcp),
+    ssdp: nativeProbeEvidenceFromResults([probe.ssdp])
+  };
+}
+
+function nativeProbeEvidenceFromResults(
+  results: Array<{ source: DataSource; errorCode?: string }>
+): NativeProbeEvidenceEntry {
+  const errorCodes = Array.from(new Set(
+    results.flatMap((result) => typeof result.errorCode === "string" && result.errorCode.length > 0
+      ? [result.errorCode]
+      : [])
+  )).sort();
+
+  if (results.length === 0) {
+    return {
+      status: "unavailable",
+      source: "unavailable",
+      sampleCount: 0,
+      errorCodes: ["native_probe_returned_no_results"]
+    };
+  }
+
+  if (results.some((result) => result.source === "unavailable")) {
+    return { status: "unavailable", source: "unavailable", sampleCount: results.length, errorCodes };
+  }
+  if (results.every((result) => result.source === "unsupported")) {
+    return { status: "unsupported", source: "unsupported", sampleCount: results.length, errorCodes };
+  }
+  if (results.some((result) => result.source === "measured")) {
+    return { status: "collected", source: "measured", sampleCount: results.length, errorCodes };
+  }
+
+  return {
+    status: "unavailable",
+    source: "unavailable",
+    sampleCount: results.length,
+    errorCodes: errorCodes.length > 0 ? errorCodes : ["native_probe_returned_no_measurement"]
+  };
+}
+
+function notCheckedNativeProbeEvidence(): NativeProbeEvidenceEntry {
+  return { status: "not_checked", source: "unavailable", sampleCount: 0, errorCodes: [] };
 }
 
 function fnv1a32(value: string) {

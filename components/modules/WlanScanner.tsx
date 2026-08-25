@@ -634,11 +634,20 @@ function mergeScanResults(previous: WlanScanResult, next: WlanScanResult): WlanS
   const connectedDevicesFinding = next.collection.localDevices.status === "not_checked"
     ? previous.findings.connectedDevices
     : next.findings.connectedDevices;
+  const nativeProbeEvidence = {
+    tcp: next.nativeProbeEvidence.tcp.status === "not_checked"
+      ? previous.nativeProbeEvidence.tcp
+      : next.nativeProbeEvidence.tcp,
+    ssdp: next.nativeProbeEvidence.ssdp.status === "not_checked"
+      ? previous.nativeProbeEvidence.ssdp
+      : next.nativeProbeEvidence.ssdp
+  };
   return {
     ...previous,
     ...next,
     connectedDevices: devices,
     collection,
+    nativeProbeEvidence,
     coverage,
     methodology,
     riskScore: calculateWlanRiskScore(vulnerabilities, securityFindings),

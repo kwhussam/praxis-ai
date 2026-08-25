@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
   "capturedAt": "2026-08-25",
-  "baseCommit": "341d60b562170ddd520f05aba903d403a652c339",
+  "baseCommit": "9ee2b486fefb50aa813d47341925fc8637ec11e1",
   "current": {
     "expoSdk": "54",
     "expo": "54.0.37",
     "reactNative": "0.81.5",
     "react": "19.1.0",
-    "newArchitecture": "explicitly_disabled",
+    "newArchitecture": "explicitly_enabled",
     "node": "22.x",
     "npm": "10.9.2",
     "platforms": {
@@ -18,10 +18,9 @@
     },
     "expoDoctor": {
       "version": "1.20.2",
-      "passed": 17,
+      "passed": 18,
       "total": 18,
-      "reactNativeDirectory": "passed",
-      "expectedOpenFinding": "react-native-reanimated 3.19.5 is intentionally pinned for the SDK 54 Legacy Architecture; Expo expects 4.1.1 for New Architecture projects"
+      "reactNativeDirectory": "passed"
     }
   },
   "migration": {
@@ -119,12 +118,13 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "2.28.0",
-    "react-native-reanimated": "3.19.5",
+    "react-native-reanimated": "4.1.7",
     "react-native-safe-area-context": "5.6.2",
     "react-native-screens": "4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "0.21.2",
     "react-native-wifi-reborn": "4.13.6",
+    "react-native-worklets": "0.5.1",
     "zustand": "4.5.7"
   },
   "architectureSensitivePackages": {
@@ -158,7 +158,8 @@
       "react-native-safe-area-context",
       "react-native-screens",
       "react-native-svg",
-      "react-native-wifi-reborn"
+      "react-native-wifi-reborn",
+      "react-native-worklets"
     ],
     "migrationCoupled": [
       "@react-navigation/native",
@@ -256,15 +257,6 @@
         "expo-build-properties"
       ],
       "reason": "The migration drops Android 6/API 23 and later drops iOS 15 in favor of Android 7/API 24 and iOS 16.4."
-    },
-    {
-      "id": "reanimated_legacy_architecture_pin",
-      "severity": "high",
-      "status": "accepted_visible_deviation_no_install_exclude",
-      "packages": [
-        "react-native-reanimated"
-      ],
-      "reason": "SDK 54 expects react-native-reanimated ~4.1.1, which requires the New Architecture, while newArchEnabled stays false. The project therefore pins 3.19.5. The deviation is deliberately left visible in expo-doctor instead of being hidden behind expo.install.exclude, which the baseline forbids. It resolves only together with the New Architecture migration."
     }
   ],
   "configPlugins": [
@@ -358,7 +350,6 @@
     "https://expo.dev/changelog/xcode-16-3-patches",
     "https://expo.dev/changelog/sdk-54",
     "https://expo.dev/changelog/sdk-56",
-    "https://docs.swmansion.com/react-native-reanimated/docs/3.x/guides/compatibility/",
     "https://docs.swmansion.com/react-native-reanimated/docs/guides/compatibility/",
     "https://reactnative.dev/blog/2024/10/23/release-0.76-new-architecture",
     "https://reactnative.dev/blog/2026/04/07/react-native-0.85"

@@ -5,7 +5,7 @@
     "maximumExceptionDays": 31,
     "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 54-to-57 migration; SDK 54 removes the tar findings but not every transitive Metro build-toolchain advisory",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
-    "nextStage": "sdk54_new_arch",
+    "nextStage": "sdk55",
     "targetDate": "2026-09-07",
     "hardExpiry": "2026-09-13"
   },

@@ -14,108 +14,110 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 ## Aktueller Arbeitskontext
 
-- Branch: `codex/sp3-01b-sdk54`, abgezweigt von `origin/main` (`341d60b`, enthält SDK 53 aus
-  PR `#29` und die Dependabot-Guardrails aus PR `#32`).
-- Die Arbeit liegt in einem separaten Git-Worktree, damit die parallele UI-Redesign-Arbeit im
-  Hauptbaum unberührt bleibt.
+- Stufe: `sdk54_new_arch` – isolierte Aktivierung der New Architecture auf dem stabilen
+  SDK-54-Stand. **Kein SDK-55-Upgrade.**
+- Branch: `codex/sp3-01b-sdk54-new-arc`, abgezweigt von `origin/main` (`9ee2b48`, enthält den
+  gemergten SDK-54-Legacy-Stand aus PR `#37`).
+- Arbeitsstand ist **nicht committet**. Die Arbeit liegt in einem separaten Git-Worktree, damit
+  die parallele UI-Redesign-Arbeit im Hauptbaum unberührt bleibt.
 
 ## Was gemacht wurde
 
-- **SDK-54-Paketgraph installiert und Lockfile erzeugt.** Expo `~54.0.37`, React Native `0.81.5`,
-  React `19.1.x`, `expo-router` `6.0.24`, `react-native-screens` `4.16.0`,
-  `react-native-gesture-handler` `2.28.0`, `react-native-safe-area-context` `5.6.0`,
-  `react-native-svg` `15.12.1`. Werkzeugversionen nachgezogen: `jest-expo` `54.0.18`,
-  `@types/react` `19.1.17`, `typescript` `~5.9.2`.
-- **Vendor-Patches geprüft und bereinigt.**
-  - `expo-modules-core`: Der Patch lag mit der veralteten Zielversion `2.5.0` vor und erzeugte bei
-    jedem `postinstall` eine Versionswarnung. Eine Gegenprobe ohne Patch zeigte, dass
-    `expo-modules-core@3.0.30` den Nullsicherheitsfehler
-    `requestedPermissions!!.contains(permission)` weiterhin enthält – der Patch ist also **nicht**
-    obsolet. Er wurde als `patches/expo-modules-core+3.0.30.patch` neu erzeugt; die Warnung entfällt.
-  - `@expo/plist`: bleibt erforderlich. `@expo/plist@0.4.9` fordert `@xmldom/xmldom: ^0.8.8`, was in
-    den verwundbaren Bereich `<=0.8.12` auflöst. Der Override auf `^0.9.11` ist damit weiterhin
-    sicherheitsrelevant, und der Patch hält plist mit der strengeren 0.9-API kompatibel.
-- **Reanimated für `newArchEnabled: false` abgesichert.** Installiert ist `3.19.5` statt der von
-  SDK 54 vorgeschlagenen `4.1.1`, weil Reanimated 4 die New Architecture zwingend voraussetzt.
-  Die Abweichung wird **nicht** über `expo.install.exclude` stummgeschaltet: Der Baseline-Test
-  erzwingt `exclude: []`, und diese Guardrail ist beabsichtigt. Die Abweichung bleibt in Expo
-  Doctor sichtbar und wird hier begründet.
-- **`lib/ai/report-pdf.ts` an einen Breaking Change angepasst.** `expo-file-system` v19 entfernt
-  `EncodingType` und `cacheDirectory` aus dem Hauptexport. Der Import wurde verhaltenserhaltend auf
-  `expo-file-system/legacy` umgestellt. Die Migration auf die neue `File`/`Directory`-API ist
-  bewusst **nicht** Teil dieses Versionssprungs, weil sie Schreib-, Lösch- und Verzeichnislogik
-  des PDF-Caches samt Logout-Cleanup anfassen würde.
-- **Baseline und Baseline-Tests auf SDK 54 gezogen**, Werte jeweils aus dem erzeugten Lockfile
-  statt aus Annahmen.
-- **Native Probe an das SDK-54-Template angepasst.** Der Android-Pluginpfad registriert
-  `PraxisShieldNetworkProbePackage()` jetzt auch im neuen `PackageList(this).packages.apply {}`-
-  Block und bricht fail-closed ab, wenn Import oder Registrierung nicht eindeutig gepatcht werden
-  kann. Ein Regressionstest deckt diesen Templatewechsel ab.
-- **Android-Zielplattform auf API 36 angehoben.** `compileSdkVersion` und `targetSdkVersion` folgen
-  damit dem SDK-54-Stack; `minSdkVersion` bleibt 24.
+- **New Architecture aktiviert.** `app.json` setzt `newArchEnabled: true`. Der Clean Prebuild
+  reicht die Einstellung nachweislich in beide Generate durch:
+  `ios/Podfile.properties.json` enthält `"newArchEnabled": "true"`, `android/gradle.properties`
+  enthält `newArchEnabled=true`. Das wurde ausdrücklich geprüft, weil eine nur in `app.json`
+  gesetzte Flag einen unbemerkten Legacy-Build erzeugen würde, den alle Tests bestehen.
+- **Reanimated 3 durch Reanimated 4 mit Worklets ersetzt.** Der deklarierte Paketbereich ist
+  `react-native-reanimated: ~4.1.1`, aufgelöst wird daraus laut Lockfile `4.1.7`; dazu
+  `react-native-worklets@0.5.1`. Reanimated 4 verlangt
+  Worklets als eigenständiges Peer-Paket ab Version 0.5.0.
+- **Babel-Plugin umgestellt.** `react-native-reanimated/plugin` → `react-native-worklets/plugin`.
+  Ohne diesen Wechsel kompiliert der Build meist weiter, aber Worklets laufen zur Laufzeit auf dem
+  JS-Thread statt auf dem UI-Thread – ein Fehler, der weder im Build noch im Test auffällt.
+- **Baselineverträge auf den neuen Sollzustand gedreht**, nicht gelockert:
+  `current.newArchitecture` von `explicitly_disabled` auf `explicitly_enabled`, die Zusicherung
+  `appConfig.newArchEnabled` von `false` auf `true`, `react-native-worklets` in die
+  architektursensitiven Pakete aufgenommen.
+- **Risikoeintrag `reanimated_legacy_architecture_pin` entfernt.** Seine Begründung – Reanimated 4
+  verlangt die New Architecture, die aber deaktiviert war – entfällt mit dieser Stufe. Deshalb
+  meldet Expo Doctor jetzt 18/18 statt 17/18.
 
 ## Verifikation
 
 | Nachweis | Ergebnis | Einordnung |
 |---|---|---|
-| `npm ci --offline` | grün | alle Vendor-Patches wenden ohne Warnung an |
-| `npm run verify` | grün | 53 Suites / 472 Tests bestanden, 2 Suites / 6 Tests übersprungen |
-| Dependency-Gate | grün | vier einzeln dokumentierte, zeitlich begrenzte Build-Toolchain-Ausnahmen; keine Runtime-Ausnahme |
-| Expo Doctor 1.20.2 | 17/18 | einzige Abweichung: Reanimated, bewusst und begründet |
-| Clean Prebuild | grün | `npx expo prebuild --clean --no-install` |
-| Native-Konfigurationsgate | grün | `npm run verify:native-config`, inklusive zusammengeführter Android-Konfiguration |
-| iOS-/Android-Produktionsbundles | grün | beide Metro-Exports auf SDK 54 erfolgreich |
-| iOS Release-Simulator-Build | grün | arm64, Legacy Architecture, Pods/Swift/ObjC/Hermes und App-Linking erfolgreich |
-| iOS Development-Build | grün | kompiliert, signiert, installiert und auf iPhone-16-Plus-Simulator geöffnet |
-| iOS-Simulator-Smoke | grün | 15/15 serielle Maestro-Flows, 0 Fehler |
-| Android Release-Build lokal | nicht belegt | Gradle-Konfiguration bis API 36/Reanimated erfolgreich; Download von `dl.google.com` lief wiederholt in Netzwerk-Timeouts, kein Compilerfehler beobachtet |
+| `npm ci` | grün | |
+| `npm run verify` | grün: 485 Tests bestanden, 6 übersprungen | neue New-Architecture-, Doctor-, Persistenz- und WLAN-Probe-Evidenzverträge eingeschlossen |
+| Expo Doctor 1.20.2 | **18/18, keine Beanstandungen** | die bisher sichtbare Reanimated-Abweichung entfällt |
+| Clean Prebuild | grün | `newArchEnabled` in beiden Generaten belegt |
+| `verify:native-config` | grün | |
+| iOS-/Android-Bundles | grün | belegt, dass Reanimated 4 mit dem Worklets-Babel-Plugin sauber transformiert |
+| **iOS Release-Build** | **grün** | `** BUILD SUCCEEDED **` unter New Architecture |
+| Android Release-Build | nicht belegbar | lokal fehlt das SDK-Paket `platforms;android-36` |
+| iOS-Simulator-Smoke | offen | nicht ausgeführt |
+
+Der grüne iOS-Release-Build belegt zugleich, dass die Reanimated-4-/Worklets-Pods, der
+Fabric-/TurboModule-Codegen und die native Probe mit ihrer Legacy-Bridge unter der
+Interop-Schicht **auf Compile-Ebene** tragen.
 
 ## Offene Befunde
 
+### P2 – Laufzeitnachweis der nativen Probes fehlt
+
+Der Registereintrag `custom_network_probe_bridge` bleibt offen. Der iOS-Build belegt nur, dass die
+Legacy-Bridge-Module unter Interop **kompilieren**. Ob sie zur Laufzeit Daten liefern, zeigt erst
+der Smoke.
+
+**Wichtig für die Auswertung:** Ein grüner WLAN-Flow allein beweist das nicht. Der E2E-Vertrag liest
+deshalb die persistierte `nativeProbeEvidence` und verlangt für TCP und SSDP jeweils
+`status: collected`, `source: measured` und mindestens einen Messwert. Ein beliebiger grüner
+NetInfo-/WLAN-Sensor reicht nicht; fehlende Module, leere Ergebnisse und Probe-Fehler brechen den
+Flow fail-closed ab. Der tatsächliche Lauf dieses verschärften Vertrags steht noch aus.
+
 ### P3 – Android-Compile muss in CI belegt werden
 
-Der lokale Android-Release-Build erreichte die SDK-54-Konfiguration mit API 36, scheiterte aber
-wiederholt an Zeitüberschreitungen beim Abruf der Android-Repositories von `dl.google.com`. Das ist
-kein beobachteter Compilerfehler, aber auch kein bestandener Buildnachweis. Der PR darf deshalb erst
-gemergt werden, wenn der CI-Job `android-release-compile` auf diesem Commit grün ist.
+Der lokale Android-Release-Build scheitert an `Failed to find Platform SDK with path:
+platforms;android-36`. Das ist eine fehlende Umgebungsvoraussetzung, kein Compilerfehler.
+Nachladbar mit `sdkmanager "platforms;android-36"`; verbindlicher Nachweis bleibt der CI-Job
+`android-release-compile`. Derselbe Vorbehalt galt bereits in PR `#37`.
 
-### P3 – `expo-file-system`-Legacy-Import ist technischer Rückstand
+### P3 – `ios/build` ist unter New Architecture kein reiner Cache mehr
 
-Der Legacy-Einstiegspunkt ist von Expo unterstützt, aber endlich. Die Migration des PDF-Caches auf
-die neue `File`/`Directory`-API braucht ein eigenes Arbeitspaket mit eigenem Nachweis, weil sie den
-  sicherheitsrelevanten Cache-Cleanup berührt.
+Der Fabric-/TurboModule-Codegen legt seine Artefakte unter `ios/build/generated/` ab, und das
+Pods-Ziel `ReactCodegen` referenziert sie als Eingabedateien. Ein Aufräumen von `ios/build`, das
+unter der Legacy-Architektur folgenlos war, bricht den Build mit
+`Build input file cannot be found: …/States.cpp`. Wiederherstellung über `pod install`.
+Aufräumroutinen und Buildanleitungen müssen das berücksichtigen.
+
+### P3 – `expo-file-system`-Legacy-Import bleibt technischer Rückstand
+
+Unverändert aus der SDK-54-Stufe: Die Migration des PDF-Caches auf die neue `File`/`Directory`-API
+braucht ein eigenes Arbeitspaket, weil sie den sicherheitsrelevanten Cache-Cleanup berührt.
 
 ### P4 – React Test Renderer bleibt vorerst auf 19.0
 
-`react-test-renderer` ist reine Test-Infrastruktur, akzeptiert React 19.1 über seinen Peer-Bereich
-und die vollständige Jest-Suite ist damit grün. Die ohnehin vorgesehene Ablösung des veralteten
-Renderers bleibt ein getrenntes Arbeitspaket und berührt weder App-Bundle noch Native Runtime.
-
-### P4 – Reanimated bleibt in Expo Doctor rot
-
-Beabsichtigt: Reanimated 4 verlangt die New Architecture, `newArchEnabled` ist `false`. Der rote
-Doctor-Check ist der ehrliche Zustand und wird nicht per `install.exclude` unterdrückt – die
-Baseline verbietet das ausdrücklich. Die Abweichung ist im `riskRegister` als
-`reanimated_legacy_architecture_pin` geführt (severity `high`, status
-`accepted_visible_deviation_no_install_exclude`) und dort begründet. Sie löst sich erst mit der
-New-Architecture-Migration auf.
+Unverändert: reine Test-Infrastruktur, getrenntes Arbeitspaket.
 
 ## Als Nächstes
 
-1. SDK-54-Änderung committen, Branch pushen und einen eigenen PR gegen `main` erstellen.
-2. CI/Secure SDLC vollständig abwarten; besonders `android-release-compile` ist der noch fehlende
-   native Nachweis und bleibt Merge-Gate.
-3. Unabhängiges Review ohne offene P1/P2 und ohne unakzeptierten P3-Befund einholen.
-4. Nach grünem Merge die nächste getrennte Stufe `sdk54_new_arch` beginnen. Dort Reanimated 4,
-   `newArchEnabled: true` und die Entfernung der sichtbaren Doctor-Abweichung gemeinsam migrieren.
-5. Die neue `expo-file-system`-`File`/`Directory`-API und die Ablösung von
-   `react-test-renderer` als getrennte Folgepakete planen, nicht in die New-Architecture-Umstellung
-   hineinmischen.
+1. Seriellen iOS-Simulator-Smoke ausführen (15/15) und dabei gezielt WLAN, verschlüsselte
+   Inventarpersistenz, SecureStore, PDF-Cache und Logout prüfen. Bei WLAN den
+   persistierte `nativeProbeEvidence` auswerten, nicht nur das Flow-Ergebnis.
+2. Commit, Push, PR gegen `main`, CI und unabhängiges Review.
+3. `android-release-compile` in CI als Merge-Gate abwarten.
+4. Erst nach grünem Merge die isolierte SDK-55-Stufe beginnen.
+
+## Bewusste Grenzen
+
+- Die physische iOS-/Android-Gerätematrix bleibt wie vereinbart für das spätere
+  Produktionsfreigabe-Gate zurückgestellt.
+- Der lokale Datenträger lief während dieser Stufe zweimal voll. Die dadurch abgebrochenen Builds
+  sind keine Migrationsbefunde; sie wurden nach Freigabe von Speicherplatz wiederholt.
 
 ## Abnahmekriterium für den nächsten Schritt
 
-- PR-CI und Secure-SDLC-Gates vollständig grün;
-- Expo Doctor ohne andere Abweichung als das dokumentierte Reanimated-Pin;
-- `android-release-compile` in CI erfolgreich;
-- vorhandener serieller iOS-Simulator-Smoke 15/15 grün und im PR dokumentiert;
-- keine SDK-Änderung mit der UI-Redesign-Arbeit vermischt.
+- serieller iOS-Simulator-Smoke 15/15 grün, native TCP-/SSDP-Probe-Evidenz ausgewertet;
+- `npm run verify`, `verify:native-config` und Expo Doctor 18/18 grün;
+- iOS Release-Build grün, `android-release-compile` in CI grün;
+- keine New-Architecture-Änderung mit der UI-Redesign-Arbeit vermischt.
