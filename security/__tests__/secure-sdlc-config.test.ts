@@ -21,8 +21,8 @@ const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
 const dependencyAllowlistPath = join(repositoryRoot, "security/dependency-allowlist.json");
-const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.3.5.patch");
-const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+2.5.0.patch");
+const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.4.9.patch");
+const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+3.0.30.patch");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
 const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
   schemaVersion: number;
@@ -135,9 +135,9 @@ describe("SP3-01 secure SDLC configuration", () => {
       exceptions: Array<{ expiresAt: string }>;
     };
 
-    expect(allowlist.policy.decision).toContain("SDK 53 removes the tar findings");
+    expect(allowlist.policy.decision).toContain("SDK 54 removes the tar findings");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
-    expect(allowlist.policy.nextStage).toBe("sdk54_legacy");
+    expect(allowlist.policy.nextStage).toBe("sdk54_new_arch");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
@@ -153,7 +153,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("pull_request:\n    branches: [main]");
   });
 
-  it("keeps the patched xmldom release compatible with Expo SDK 53 prebuild", () => {
+  it("keeps the patched xmldom release compatible with Expo SDK 54 prebuild", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const patch = readFileSync(expoPlistPatch, "utf8");
@@ -168,7 +168,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     `)).toEqual({});
   });
 
-  it("keeps the SDK 53 Android permission lookup fail-closed when the manifest has no permission list", () => {
+  it("keeps the SDK 54 Android permission lookup fail-closed when the manifest has no permission list", () => {
     const patch = readFileSync(expoModulesCorePatch, "utf8");
     const installedSource = readFileSync(join(
       repositoryRoot,

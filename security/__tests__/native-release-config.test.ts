@@ -15,6 +15,9 @@ const { hardenAndroidReleaseSigning } = require("../../plugins/with-secure-andro
 const { androidUsesCleartextTraffic } = require("../../plugins/with-secure-android-backup.js") as {
   androidUsesCleartextTraffic(environment?: Record<string, string | undefined>): "true" | "false";
 };
+const { patchMainApplicationContents } = require("../../plugins/with-network-security-probe.js") as {
+  patchMainApplicationContents(contents: string, packageName: string): string;
+};
 
 function read(relativePath: string) {
   return fs.readFileSync(path.resolve(repoRoot, relativePath), "utf8");
@@ -136,6 +139,29 @@ describe("SP2-06 native release configuration", () => {
     expect(objcBridge).toContain("RCT_EXTERN_MODULE(PraxisShieldNetworkProbe");
     expect(objcBridge).toContain("RCTPromiseResolveBlock");
     expect(objcBridge).toContain("RCTPromiseRejectBlock");
+  });
+
+  it("registers the Android probe in the SDK 54 MainApplication template fail-closed", () => {
+    const sdk54Template = `package ai.praxisshield.app
+
+import com.facebook.react.PackageList
+import com.facebook.react.ReactPackage
+
+override fun getPackages(): List<ReactPackage> =
+    PackageList(this).packages.apply {
+      // add(MyReactNativePackage())
+    }
+`;
+
+    const patched = patchMainApplicationContents(sdk54Template, "ai.praxisshield.app");
+    expect(patched).toContain(
+      "import ai.praxisshield.app.networkprobe.PraxisShieldNetworkProbePackage"
+    );
+    expect(patched).toContain("add(PraxisShieldNetworkProbePackage())");
+    expect(patchMainApplicationContents(patched, "ai.praxisshield.app")).toBe(patched);
+    expect(() => patchMainApplicationContents("class MainApplication", "ai.praxisshield.app")).toThrow(
+      "Could not register the Android network probe import"
+    );
   });
 
   it("runs Maestro against the explicit flow directory and gates the authoritative JUnit result", () => {

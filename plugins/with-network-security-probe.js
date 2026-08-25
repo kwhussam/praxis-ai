@@ -7,8 +7,8 @@ const IOS_PROBE_FILES = ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkP
 module.exports = function withNetworkSecurityProbe(config) {
   config = withXcodeProject(config, (modConfig) => {
     const projectName = modConfig.modRequest.projectName;
-    // SDK 53's native template is Swift-first and already designates the app
-    // bridging header. Config Plugins 10 therefore removed IOSConfig.Swift;
+    // Current native templates are Swift-first and already designate the app
+    // bridging header. Config Plugins removed IOSConfig.Swift;
     // the dangerous mod below creates the declared header fail-closed.
     const project = modConfig.modResults;
     const groupKey = project.findPBXGroupKey({ name: projectName });
@@ -84,12 +84,22 @@ function patchMainApplication(projectRoot, packageName) {
     path.join(projectRoot, "android/app/src/main/java", packagePath, "MainApplication.java")
   ];
   const mainApplication = candidates.find((candidate) => fs.existsSync(candidate));
-  if (!mainApplication) return;
+  if (!mainApplication) {
+    throw new Error(`Could not find MainApplication for Android package ${packageName}`);
+  }
 
-  let contents = fs.readFileSync(mainApplication, "utf8");
+  const contents = patchMainApplicationContents(fs.readFileSync(mainApplication, "utf8"), packageName);
+  fs.writeFileSync(mainApplication, contents);
+}
+
+function patchMainApplicationContents(source, packageName) {
+  let contents = source;
   const importLine = `import ${packageName}.networkprobe.PraxisShieldNetworkProbePackage`;
   if (!contents.includes(importLine)) {
     contents = contents.replace(/(import com\.facebook\.react\.PackageList[^\n]*\n)/, `$1${importLine}\n`);
+    if (!contents.includes(importLine)) {
+      throw new Error("Could not register the Android network probe import in MainApplication");
+    }
   }
 
   if (!contents.includes("PraxisShieldNetworkProbePackage()")) {
@@ -105,9 +115,17 @@ function patchMainApplication(projectRoot, packageName) {
       /return PackageList\(this\)\.packages/,
       "return PackageList(this).packages.apply { add(PraxisShieldNetworkProbePackage()) }"
     );
+    contents = contents.replace(
+      /(PackageList\(this\)\.packages\.apply\s*\{\s*\n)/,
+      `$1              add(PraxisShieldNetworkProbePackage())\n`
+    );
   }
 
-  fs.writeFileSync(mainApplication, contents);
+  if (!contents.includes("PraxisShieldNetworkProbePackage()")) {
+    throw new Error("Could not register the Android network probe package in MainApplication");
+  }
+
+  return contents;
 }
 
 function androidPackageSource(packageName) {
@@ -401,5 +419,8 @@ class PraxisShieldNetworkProbeModule(private val reactContext: ReactApplicationC
     }
   }
 }
+
 `;
 }
+
+module.exports.patchMainApplicationContents = patchMainApplicationContents;

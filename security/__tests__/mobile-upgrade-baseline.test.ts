@@ -122,7 +122,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "53",
+      expoSdk: "54",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
@@ -151,12 +151,12 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
-  it("keeps the SDK 53 legacy renderer on its verified react-native-svg line", () => {
+  it("keeps the SDK 54 legacy renderer on its verified react-native-svg line", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
-    expect(reactNativeVersion).toBe("0.79.6");
-    expect(svgVersion).toBe("15.11.2");
-    expect(packageJson.dependencies["react-native-svg"]).toBe("15.11.2");
+    expect(reactNativeVersion).toBe("0.81.5");
+    expect(svgVersion).toBe("15.12.1");
+    expect(packageJson.dependencies["react-native-svg"]).toBe("15.12.1");
 
     const paperDelegate = readFileSync(
       resolve(
@@ -169,12 +169,12 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(paperDelegate).toContain("extends BaseViewManager<");
   });
 
-  it("keeps RN 0.79 legacy mode on the screens line with the content-wrapper parent fix", () => {
+  it("keeps RN 0.81 legacy mode on the screens line with the content-wrapper parent fix", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
-    expect(reactNativeVersion).toBe("0.79.6");
-    expect(screensVersion).toBe("4.11.1");
-    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.11.1");
+    expect(reactNativeVersion).toBe("0.81.5");
+    expect(screensVersion).toBe("4.16.0");
+    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.16.0");
 
     const contentWrapper = readFileSync(
       resolve(repositoryRoot, "node_modules/react-native-screens/ios/RNSScreenContentWrapper.mm"),
@@ -187,7 +187,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     );
   });
 
-  it("uses Expo Router 5's guarded internal splash startup path instead of a local splash patch", () => {
+  it("uses Expo Router's guarded internal splash startup path instead of a local splash patch", () => {
     const routerSplash = readFileSync(
       resolve(repositoryRoot, "node_modules/expo-router/build/utils/splash.js"),
       "utf8"
@@ -207,14 +207,14 @@ describe("SP3-01B mobile upgrade baseline", () => {
   });
 
   it("keeps Expo's React pin and does not install an affected server-component package", () => {
-    expect(packageLock.packages["node_modules/react"].version).toBe("19.0.0");
-    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.0.0");
+    expect(packageLock.packages["node_modules/react"].version).toBe("19.1.0");
+    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.1.0");
     expect(packageJson.overrides["react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("5.1.11");
-    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("53.0.14");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("6.0.24");
+    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("54.0.18");
   });
 
   it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
@@ -236,7 +236,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
-  it("keeps SDK-53 auth smokes independent of iOS keyboard submit behavior", () => {
+  it("keeps SDK-54 auth smokes independent of iOS keyboard submit behavior", () => {
     const registration = readFileSync(
       resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
       "utf8"
@@ -321,6 +321,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
       }
     }
     expect(ids).toEqual(new Set([
+      "reanimated_legacy_architecture_pin",
       "custom_network_probe_bridge",
       "wifi_collection",
       "encrypted_local_state",
@@ -350,17 +351,19 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("documents a fully green doctor result without suppressing directory checks", () => {
+  it("documents the single accepted Doctor deviation without suppressing directory checks", () => {
     expect(baseline.current.expoDoctor).toEqual({
       version: "1.20.2",
-      passed: 18,
+      passed: 17,
       total: 18,
       reactNativeDirectory: "passed",
-      expectedOpenFinding: null
+      expectedOpenFinding: "react-native-reanimated 3.19.5 is intentionally pinned for the SDK 54 Legacy Architecture; Expo expects 4.1.1 for New Architecture projects"
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {
-      expect(source).toMatch(/^https:\/\/(docs\.expo\.dev|expo\.dev|reactnative\.dev)\//);
+      expect(source).toMatch(
+        /^https:\/\/(docs\.expo\.dev|expo\.dev|reactnative\.dev|docs\.swmansion\.com)\//
+      );
     }
   });
 });
