@@ -1,4 +1,6 @@
-import * as FileSystem from "expo-file-system";
+// SDK 54 moved the classic API to expo-file-system/legacy; the new File/Directory
+// API is a separate migration and deliberately out of scope for this version bump.
+import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 
 import { apiResponse } from "@/lib/api/client";
