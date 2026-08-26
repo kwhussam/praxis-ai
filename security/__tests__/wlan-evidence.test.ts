@@ -157,4 +157,16 @@ describe("WLAN end-to-end probe evidence", () => {
     expect(script).toContain("nativeMeasured");
     expect(script).toContain("probeEvidenceOk");
   });
+
+  it("gates the WLAN flow on completion and persisted native evidence, not a clipped result container", () => {
+    const flow = readFileSync(
+      resolve(repositoryRoot, ".maestro/flows/06-wlan-scan.yaml"),
+      "utf8"
+    );
+
+    expect(flow).toContain("id: wlan-complete");
+    expect(flow).toContain("file: ../scripts/verify-wlan-sync.js");
+    expect(flow).toContain("output.wlanSync.probeEvidenceOk === true");
+    expect(flow).not.toContain("id: wlan-results");
+  });
 });

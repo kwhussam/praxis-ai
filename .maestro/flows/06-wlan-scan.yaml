@@ -22,8 +22,6 @@ tags:
     notVisible:
       id: wlan-sync-pending
     timeout: 30000
-- assertVisible:
-    id: wlan-results
 - runScript:
     file: ../scripts/verify-wlan-sync.js
     env:
