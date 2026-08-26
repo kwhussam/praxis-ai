@@ -169,4 +169,13 @@ describe("WLAN end-to-end probe evidence", () => {
     expect(flow).toContain("output.wlanSync.probeEvidenceOk === true");
     expect(flow).not.toContain("id: wlan-results");
   });
+
+  it("provides a self-contained focused WLAN smoke that keeps the E2E stack alive", () => {
+    const packageJson = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
+    const smokeRunner = readFileSync(resolve(repositoryRoot, "scripts/e2e/smoke.sh"), "utf8");
+
+    expect(packageJson.scripts["e2e:wlan:ios"]).toBe("bash scripts/e2e/smoke.sh ios wlan");
+    expect(smokeRunner).toContain('"$SUITE" != "wlan"');
+    expect(smokeRunner).toContain("MAESTRO_TARGETS=(flows/06-wlan-scan.yaml)");
+  });
 });

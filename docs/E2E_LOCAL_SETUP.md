@@ -57,6 +57,11 @@ Use `npm run e2e:smoke:android` for Android. The smoke runner starts with
 migrations, and the shared seed. It then starts Metro when necessary and runs
 all flows sequentially while continuing after individual failures.
 
+For a focused iOS rerun of the WLAN runtime-evidence gate, use
+`npm run e2e:wlan:ios`. This uses the same self-contained backend/Worker/Metro
+orchestration as the full suite and runs only `06-wlan-scan`; do not start its
+dependencies manually in separate short-lived terminal sessions.
+
 Flows `09-privacy-viewer-forbidden` and `10-privacy-owner-allowed` are API
 integration tests hosted in the Maestro suite. They validate a real Supabase
 JWT against the real Worker and database role checks; they do not exercise a

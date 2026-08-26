@@ -48,14 +48,14 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 | Nachweis | Ergebnis | Einordnung |
 |---|---|---|
 | `npm ci` | grün | |
-| `npm run verify` | grün: 486 Tests bestanden, 6 übersprungen | neue New-Architecture-, Doctor-, Persistenz- und WLAN-Probe-Evidenzverträge eingeschlossen |
+| `npm run verify` | grün: 487 Tests bestanden, 6 übersprungen | neue New-Architecture-, Doctor-, Persistenz- und WLAN-Probe-Evidenzverträge eingeschlossen |
 | Expo Doctor 1.20.2 | **18/18, keine Beanstandungen** | die bisher sichtbare Reanimated-Abweichung entfällt |
 | Clean Prebuild | grün | `newArchEnabled` in beiden Generaten belegt |
 | `verify:native-config` | grün | |
 | iOS-/Android-Bundles | grün | belegt, dass Reanimated 4 mit dem Worklets-Babel-Plugin sauber transformiert |
 | **iOS Release-Build** | **grün** | `** BUILD SUCCEEDED **` unter New Architecture |
 | Android Release-Build | nicht belegbar | lokal fehlt das SDK-Paket `platforms;android-36` |
-| iOS-Simulator-Smoke | 14/15 grün; WLAN-Wiederholung offen | Flow 06 erreichte nach abgeschlossenem Scan eine redundante `wlan-results`-Sichtbarkeitsprüfung nicht; der große Container lag teilweise außerhalb des Viewports. Der native Evidenz-Check wurde deshalb noch nicht ausgeführt. Die UI-Falle ist entfernt, der gezielte Wiederholungslauf steht aus. |
+| iOS-Simulator-Smoke | 14/15 grün; WLAN-Wiederholung offen | Flow 06 erreichte nach abgeschlossenem Scan eine redundante `wlan-results`-Sichtbarkeitsprüfung nicht; die UI-Falle ist entfernt. Ein erster gezielter Wiederholungslauf scheiterte bereits beim Login, weil die manuell separat gestarteten lokalen Supabase-/Worker-Prozesse beendet waren. `e2e:wlan:ios` hält den vollständigen Stack nun selbst; dieser Lauf steht aus. |
 
 Der grüne iOS-Release-Build belegt zugleich, dass die Reanimated-4-/Worklets-Pods, der
 Fabric-/TurboModule-Codegen und die native Probe mit ihrer Legacy-Bridge unter der
