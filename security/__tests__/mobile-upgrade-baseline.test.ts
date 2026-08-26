@@ -126,7 +126,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
-      newArchitecture: "explicitly_disabled",
+      newArchitecture: "explicitly_enabled",
       node: packageJson.engines.node,
       npm: packageJson.packageManager.replace("npm@", "")
     });
@@ -147,11 +147,11 @@ describe("SP3-01B mobile upgrade baseline", () => {
       androidTargetSdk: buildProperties.android.targetSdkVersion,
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
-    expect(appConfig.newArchEnabled).toBe(false);
+    expect(appConfig.newArchEnabled).toBe(true);
     expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
-  it("keeps the SDK 54 legacy renderer on its verified react-native-svg line", () => {
+  it("keeps the New Architecture renderer on its verified react-native-svg line", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
     expect(reactNativeVersion).toBe("0.81.5");
@@ -169,7 +169,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(paperDelegate).toContain("extends BaseViewManager<");
   });
 
-  it("keeps RN 0.81 legacy mode on the screens line with the content-wrapper parent fix", () => {
+  it("keeps RN 0.81 New Architecture mode on the screens line with the content-wrapper parent fix", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
     expect(reactNativeVersion).toBe("0.81.5");
@@ -321,7 +321,6 @@ describe("SP3-01B mobile upgrade baseline", () => {
       }
     }
     expect(ids).toEqual(new Set([
-      "reanimated_legacy_architecture_pin",
       "custom_network_probe_bridge",
       "wifi_collection",
       "encrypted_local_state",
@@ -331,6 +330,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
       "icon_migration",
       "minimum_platform_bump"
     ]));
+
+    const nativeProbeRisk = baseline.riskRegister.find(
+      (risk) => risk.id === "custom_network_probe_bridge"
+    );
+    expect(nativeProbeRisk?.status).toBe(
+      "ios_interop_proven_android_device_proof_deferred"
+    );
+    expect(nativeProbeRisk?.reason).toContain("iOS simulator");
+    expect(nativeProbeRisk?.reason).toContain("physical Android device gate");
   });
 
   it("keeps every golden security contract attached to executable tests", () => {
@@ -351,13 +359,14 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("documents the single accepted Doctor deviation without suppressing directory checks", () => {
+  it("requires a fully green Doctor result without suppressing directory checks", () => {
+    // Stricter than the previous contract: no accepted deviation may exist at all.
+    // toEqual pins the exact shape, so re-introducing an exception field fails here.
     expect(baseline.current.expoDoctor).toEqual({
       version: "1.20.2",
-      passed: 17,
+      passed: 18,
       total: 18,
-      reactNativeDirectory: "passed",
-      expectedOpenFinding: "react-native-reanimated 3.19.5 is intentionally pinned for the SDK 54 Legacy Architecture; Expo expects 4.1.1 for New Architecture projects"
+      reactNativeDirectory: "passed"
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {
@@ -365,5 +374,20 @@ describe("SP3-01B mobile upgrade baseline", () => {
         /^https:\/\/(docs\.expo\.dev|expo\.dev|reactnative\.dev|docs\.swmansion\.com)\//
       );
     }
+  });
+
+  it("keeps the New Architecture worklets contract fail-closed", () => {
+    expect(appConfig.newArchEnabled).toBe(true);
+    expect(packageJson.dependencies["react-native-worklets"]).toBeDefined();
+    expect(packageLock.packages["node_modules/react-native-worklets"]?.version).toBeDefined();
+    // Reanimated 4 is the only line that supports the New Architecture; 3.x must not return.
+    expect(packageLock.packages["node_modules/react-native-reanimated"].version).toMatch(/^4\./);
+
+    // Reanimated 4 moved the worklet transform into react-native-worklets. Keeping the old
+    // plugin still compiles, but worklets then run on the JS thread instead of the UI thread -
+    // a defect neither the build nor the runtime test suite would surface.
+    const babelConfig = readFileSync(resolve(repositoryRoot, "babel.config.js"), "utf8");
+    expect(babelConfig).toContain("react-native-worklets/plugin");
+    expect(babelConfig).not.toContain("react-native-reanimated/plugin");
   });
 });

@@ -4,6 +4,7 @@ declare const jest: {
 
 let mockInsertResult: { error: { code?: string; message: string } | null };
 let mockSelectedRow: unknown;
+let mockInsertedRow: Record<string, unknown> = {};
 var mockNativeWifiSecurityDetails: Record<string, unknown> | null = null;
 
 jest.mock("@react-native-community/netinfo", () => ({
@@ -34,7 +35,10 @@ jest.mock("@/lib/security/networkProbes", () => ({
 jest.mock("@/lib/api/supabase", () => ({
   supabase: {
     from: () => ({
-      insert: async () => mockInsertResult,
+      insert: async (row: Record<string, unknown>) => {
+        mockInsertedRow = row;
+        return mockInsertResult;
+      },
       select: () => ({
         eq: () => ({
           eq: () => ({
@@ -46,7 +50,13 @@ jest.mock("@/lib/api/supabase", () => ({
   }
 }));
 
-import { runWlanSecurityScan, syncWlanScanResultToSupabase, type WlanScanResult } from "@/lib/security/wlan";
+import {
+  buildNativeProbeEvidence,
+  runWlanSecurityScan,
+  syncWlanScanResultToSupabase,
+  type WlanScanResult
+} from "@/lib/security/wlan";
+import type { GatewaySecurityProbeResult } from "@/lib/security/networkProbeTypes";
 
 describe("WLAN collection contract", () => {
   it("surfaces platform limitations and coverage instead of treating them as empty measurements", async () => {
@@ -83,9 +93,47 @@ describe("WLAN collection contract", () => {
       collection_status: "collected"
     });
   });
+
+  it("records unavailable native bridge methods independently from collected WiFi metadata", () => {
+    const evidence = buildNativeProbeEvidence({
+      tcp: [{ source: "unavailable", errorCode: "native_tcp_module_unavailable" }],
+      ssdp: { source: "measured" }
+    } as GatewaySecurityProbeResult);
+
+    expect(evidence).toEqual({
+      tcp: {
+        status: "unavailable",
+        source: "unavailable",
+        sampleCount: 1,
+        errorCodes: ["native_tcp_module_unavailable"]
+      },
+      ssdp: {
+        status: "collected",
+        source: "measured",
+        sampleCount: 1,
+        errorCodes: []
+      }
+    });
+  });
 });
 
 describe("syncWlanScanResultToSupabase", () => {
+  it("persists dedicated native bridge evidence with the WLAN scan", async () => {
+    mockInsertResult = { error: null };
+    mockInsertedRow = {};
+
+    expect(await syncWlanScanResultToSupabase(
+      "11111111-1111-4111-8111-111111111111",
+      minimalScanResult()
+    )).toEqual({ ok: true });
+
+    const networkInfo = mockInsertedRow.network_info as Record<string, unknown>;
+    expect(networkInfo.nativeProbeEvidence).toEqual({
+      tcp: { status: "collected", source: "measured", sampleCount: 4, errorCodes: [] },
+      ssdp: { status: "collected", source: "measured", sampleCount: 1, errorCodes: [] }
+    });
+  });
+
   it("treats a duplicate client_sync_id as an idempotent retry when the existing row is visible", async () => {
     mockInsertResult = { error: { code: "23505", message: "duplicate key value violates unique constraint" } };
     mockSelectedRow = { id: "80000000-0000-4000-8000-0000000000a1", created_at: "2026-07-14T12:00:00.000Z" };
@@ -130,6 +178,10 @@ function minimalScanResult(): WlanScanResult {
       visibleWifiNetworks: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
       localDevices: { status: "not_checked", reason: "Nicht ausgeführt", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" },
       mdnsDiscovery: { status: "unsupported", reason: "iOS", observed_at: "2026-07-14T12:00:00.000Z", freshness: "unknown" }
+    },
+    nativeProbeEvidence: {
+      tcp: { status: "collected", source: "measured", sampleCount: 4, errorCodes: [] },
+      ssdp: { status: "collected", source: "measured", sampleCount: 1, errorCodes: [] }
     },
     coverage: {
       score: 67,

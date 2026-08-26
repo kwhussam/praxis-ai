@@ -15,8 +15,8 @@ if [[ "$PLATFORM" != "ios" && "$PLATFORM" != "android" ]]; then
   echo "Usage: smoke.sh <ios|android> [all|pdf]" >&2
   exit 1
 fi
-if [[ "$SUITE" != "all" && "$SUITE" != "pdf" ]]; then
-  echo "Usage: smoke.sh <ios|android> [all|pdf]" >&2
+if [[ "$SUITE" != "all" && "$SUITE" != "pdf" && "$SUITE" != "wlan" ]]; then
+  echo "Usage: smoke.sh <ios|android> [all|pdf|wlan]" >&2
   exit 1
 fi
 
@@ -28,9 +28,11 @@ set -a
 source "$RUNTIME_ENV"
 set +a
 
-# Flow 15 is part of both suites and requires the same canonical manifest/report
-# fixture. Seed it for the full smoke as well as the focused PDF smoke.
-node scripts/e2e/seed-canonical-report.mjs
+# Flow 15 requires the same canonical manifest/report fixture in the full and
+# focused PDF suites. The WLAN-only suite deliberately avoids unrelated seeds.
+if [[ "$SUITE" == "all" || "$SUITE" == "pdf" ]]; then
+  node scripts/e2e/seed-canonical-report.mjs
+fi
 
 if [[ "$PLATFORM" == "ios" ]]; then
   if ! xcrun simctl list devices booted | grep -q "(Booted)"; then
@@ -80,6 +82,8 @@ shopt -s nullglob
 MAESTRO_TARGETS=(flows/*.yaml)
 if [[ "$SUITE" == "pdf" ]]; then
   MAESTRO_TARGETS=(flows/15-pdf-export.yaml)
+elif [[ "$SUITE" == "wlan" ]]; then
+  MAESTRO_TARGETS=(flows/06-wlan-scan.yaml)
 fi
 
 if [[ "${#MAESTRO_TARGETS[@]}" -eq 0 ]]; then

@@ -137,7 +137,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(allowlist.policy.decision).toContain("SDK 54 removes the tar findings");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
-    expect(allowlist.policy.nextStage).toBe("sdk54_new_arch");
+    expect(allowlist.policy.nextStage).toBe("sdk55");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);

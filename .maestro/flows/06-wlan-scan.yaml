@@ -22,8 +22,6 @@ tags:
     notVisible:
       id: wlan-sync-pending
     timeout: 30000
-- assertVisible:
-    id: wlan-results
 - runScript:
     file: ../scripts/verify-wlan-sync.js
     env:
@@ -36,3 +34,6 @@ tags:
 - assertTrue:
     condition: ${output.wlanSync.consentPersisted === true}
     label: WLAN consent is persisted in the real backend
+- assertTrue:
+    condition: ${output.wlanSync.probeEvidenceOk === true}
+    label: Native TCP and SSDP probes both delivered measured runtime evidence without module or interop failure
