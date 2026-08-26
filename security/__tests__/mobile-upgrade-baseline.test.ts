@@ -330,6 +330,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
       "icon_migration",
       "minimum_platform_bump"
     ]));
+
+    const nativeProbeRisk = baseline.riskRegister.find(
+      (risk) => risk.id === "custom_network_probe_bridge"
+    );
+    expect(nativeProbeRisk?.status).toBe(
+      "ios_interop_proven_android_device_proof_deferred"
+    );
+    expect(nativeProbeRisk?.reason).toContain("iOS simulator");
+    expect(nativeProbeRisk?.reason).toContain("physical Android device gate");
   });
 
   it("keeps every golden security contract attached to executable tests", () => {

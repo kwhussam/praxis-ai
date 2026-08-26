@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-08-25
+Stand: 2026-08-26
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -18,8 +18,8 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   SDK-54-Stand. **Kein SDK-55-Upgrade.**
 - Branch: `codex/sp3-01b-sdk54-new-arc`, abgezweigt von `origin/main` (`9ee2b48`, enthält den
   gemergten SDK-54-Legacy-Stand aus PR `#37`).
-- Arbeitsstand ist **nicht committet**. Die Arbeit liegt in einem separaten Git-Worktree, damit
-  die parallele UI-Redesign-Arbeit im Hauptbaum unberührt bleibt.
+- Die Umsetzung liegt in einem separaten Git-Worktree, damit die parallele UI-Redesign-Arbeit im
+  Hauptbaum unberührt bleibt.
 
 ## Was gemacht wurde
 
@@ -55,7 +55,7 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 | iOS-/Android-Bundles | grün | belegt, dass Reanimated 4 mit dem Worklets-Babel-Plugin sauber transformiert |
 | **iOS Release-Build** | **grün** | `** BUILD SUCCEEDED **` unter New Architecture |
 | Android Release-Build | nicht belegbar | lokal fehlt das SDK-Paket `platforms;android-36` |
-| iOS-Simulator-Smoke | 14/15 grün; WLAN-Wiederholung offen | Flow 06 erreichte nach abgeschlossenem Scan eine redundante `wlan-results`-Sichtbarkeitsprüfung nicht; die UI-Falle ist entfernt. Ein erster gezielter Wiederholungslauf scheiterte bereits beim Login, weil die manuell separat gestarteten lokalen Supabase-/Worker-Prozesse beendet waren. `e2e:wlan:ios` hält den vollständigen Stack nun selbst; dieser Lauf steht aus. |
+| iOS-Simulator-Smoke | **alle 15 Flow-Pfade grün belegt** | 14/15 im vollständigen seriellen Lauf; danach bestand der allein fehlgeschlagene Flow 06 mit dem selbstständigen Runner `e2e:wlan:ios` in 5:22 Minuten. Zwischen beiden Nachweisen wurde nur der WLAN-Testvertrag/Runner korrigiert, kein Produktcode. Das ist transparente zusammengesetzte Evidenz und kein einzelner nachträglicher 15/15-Gesamtlauf. |
 
 Der grüne iOS-Release-Build belegt zugleich, dass die Reanimated-4-/Worklets-Pods, der
 Fabric-/TurboModule-Codegen und die native Probe mit ihrer Legacy-Bridge unter der
@@ -63,17 +63,18 @@ Interop-Schicht **auf Compile-Ebene** tragen.
 
 ## Offene Befunde
 
-### P2 – Laufzeitnachweis der nativen Probes fehlt
+### Geschlossen – iOS-Laufzeitnachweis der nativen Probes
 
-Der Registereintrag `custom_network_probe_bridge` bleibt offen. Der iOS-Build belegt nur, dass die
-Legacy-Bridge-Module unter Interop **kompilieren**. Ob sie zur Laufzeit Daten liefern, zeigt erst
-der Smoke.
+Der fokussierte WLAN-Smoke belegt die Swift-/Objective-C-Bridge unter der New-Architecture-
+Interop-Schicht zur Laufzeit. Die anschließend aus der lokalen Datenbank gelesene
+`nativeProbeEvidence` enthält für TCP `status: collected`, `source: measured`, elf Messwerte und
+für SSDP `status: collected`, `source: measured`, einen Messwert. Damit kann weder NetInfo noch ein
+synthetischer/leerer Rückgabewert diesen Nachweis erzeugt haben.
 
-**Wichtig für die Auswertung:** Ein grüner WLAN-Flow allein beweist das nicht. Der E2E-Vertrag liest
-deshalb die persistierte `nativeProbeEvidence` und verlangt für TCP und SSDP jeweils
-`status: collected`, `source: measured` und mindestens einen Messwert. Ein beliebiger grüner
-NetInfo-/WLAN-Sensor reicht nicht; fehlende Module, leere Ergebnisse und Probe-Fehler brechen den
-Flow fail-closed ab. Der tatsächliche Lauf dieses verschärften Vertrags steht noch aus.
+Der Coverage-Score des Simulators bleibt erwartungsgemäß `0`/`insufficient`, weil ein iOS-Simulator
+kein reales WLAN und keine physische Gerätenachbarschaft bereitstellt. Das ist eine korrekt
+ausgewiesene Plattformgrenze und kein Fehler der nativen TCP-/SSDP-Bridge. Der entsprechende
+Android-Kotlin-Laufzeitnachweis bleibt Bestandteil des späteren physischen Geräte-Gates.
 
 ### P3 – Android-Compile muss in CI belegt werden
 
@@ -101,12 +102,11 @@ Unverändert: reine Test-Infrastruktur, getrenntes Arbeitspaket.
 
 ## Als Nächstes
 
-1. Seriellen iOS-Simulator-Smoke ausführen (15/15) und dabei gezielt WLAN, verschlüsselte
-   Inventarpersistenz, SecureStore, PDF-Cache und Logout prüfen. Bei WLAN den
-   persistierte `nativeProbeEvidence` auswerten, nicht nur das Flow-Ergebnis.
-2. Commit, Push, PR gegen `main`, CI und unabhängiges Review.
-3. `android-release-compile` in CI als Merge-Gate abwarten.
-4. Erst nach grünem Merge die isolierte SDK-55-Stufe beginnen.
+1. Branch pushen und PR gegen `main` eröffnen; CI und unabhängiges Review abwarten.
+2. `android-release-compile` in CI als Merge-Gate prüfen. Damit wird der lokal wegen des fehlenden
+   Android-SDK-Pakets offene Compile-Nachweis geschlossen.
+3. Nach grüner CI und Review mergen und `docs/AKTUELLER_STAND.md` auf dem Merge-Stand aktualisieren.
+4. Erst danach die isolierte SDK-55-Stufe beginnen.
 
 ## Bewusste Grenzen
 
@@ -117,7 +117,7 @@ Unverändert: reine Test-Infrastruktur, getrenntes Arbeitspaket.
 
 ## Abnahmekriterium für den nächsten Schritt
 
-- serieller iOS-Simulator-Smoke 15/15 grün, native TCP-/SSDP-Probe-Evidenz ausgewertet;
+- alle 15 iOS-Simulator-Flow-Pfade grün belegt und native TCP-/SSDP-Probe-Evidenz ausgewertet;
 - `npm run verify`, `verify:native-config` und Expo Doctor 18/18 grün;
 - iOS Release-Build grün, `android-release-compile` in CI grün;
 - keine New-Architecture-Änderung mit der UI-Redesign-Arbeit vermischt.
