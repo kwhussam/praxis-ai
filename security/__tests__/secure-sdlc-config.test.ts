@@ -21,8 +21,7 @@ const workflowsDir = join(repositoryRoot, ".github/workflows");
 const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
 const dependencyAllowlistPath = join(repositoryRoot, "security/dependency-allowlist.json");
-const expoPlistPatch = join(repositoryRoot, "patches/@expo+plist+0.4.9.patch");
-const expoModulesCorePatch = join(repositoryRoot, "patches/expo-modules-core+3.0.30.patch");
+const vendorHardening = join(repositoryRoot, "scripts/apply-vendor-hardening.mjs");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
 const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
   schemaVersion: number;
@@ -135,9 +134,9 @@ describe("SP3-01 secure SDLC configuration", () => {
       exceptions: Array<{ expiresAt: string }>;
     };
 
-    expect(allowlist.policy.decision).toContain("SDK 54 removes the tar findings");
+    expect(allowlist.policy.decision).toContain("SDK 55 removes the PostCSS findings");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
-    expect(allowlist.policy.nextStage).toBe("sdk55");
+    expect(allowlist.policy.nextStage).toBe("sdk56");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
@@ -153,31 +152,49 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("pull_request:\n    branches: [main]");
   });
 
-  it("keeps the patched xmldom release compatible with Expo SDK 54 prebuild", () => {
+  it("keeps the xmldom override compatible with every SDK 55 plist installation", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
-    const patch = readFileSync(expoPlistPatch, "utf8");
     const expoPlist = require("@expo/plist") as { default: { parse(xml: string): unknown } };
+    const installedPlists = Object.entries(packageLock.packages)
+      .filter(([packagePath]) =>
+        packagePath === "node_modules/@expo/plist" || packagePath.endsWith("/node_modules/@expo/plist")
+      ) as Array<[string, { version: string }]>;
 
     expect(packageJson.overrides["@xmldom/xmldom"]).toBe("^0.9.11");
     expect(packageLock.packages["node_modules/@xmldom/xmldom"].version).toBe("0.9.11");
-    expect(patch).toContain('parseFromString(xml.trimStart(), "text/xml")');
+    expect(packageJson.scripts.postinstall).toBe("node scripts/apply-vendor-hardening.mjs");
+    expect(packageJson.devDependencies["patch-package"]).toBe(undefined);
+    expect(installedPlists).toHaveLength(1);
+    expect(installedPlists[0][1].version).toBe("0.5.4");
+    expect(readFileSync(join(repositoryRoot, installedPlists[0][0], "build/parse.js"), "utf8"))
+      .toContain('parseFromString(xml.trimStart(), "text/xml")');
     expect(expoPlist.default.parse(`
       <?xml version="1.0" encoding="UTF-8"?>
       <plist version="1.0"><dict/></plist>
     `)).toEqual({});
   });
 
-  it("keeps the SDK 54 Android permission lookup fail-closed when the manifest has no permission list", () => {
-    const patch = readFileSync(expoModulesCorePatch, "utf8");
+  it("keeps every SDK 55 Android permission lookup fail-closed", () => {
+    const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
+    const corePaths = Object.entries(packageLock.packages)
+      .filter(([packagePath]) =>
+        packagePath === "node_modules/expo-modules-core" ||
+        packagePath.endsWith("/node_modules/expo-modules-core")
+      ) as Array<[string, { version: string }]>;
+
+    expect(existsSync(vendorHardening)).toBe(true);
+    expect(corePaths).toHaveLength(1);
+    expect(corePaths[0][1].version).toBe("55.0.25");
     const installedSource = readFileSync(join(
       repositoryRoot,
-      "node_modules/expo-modules-core/android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt"
+      corePaths[0][0],
+      "android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt"
     ), "utf8");
-
-    expect(patch).toContain("requestedPermissions?.contains(permission) == true");
     expect(installedSource).toContain("requestedPermissions?.contains(permission) == true");
     expect(installedSource).not.toContain("requestedPermissions!!.contains(permission)");
+    expect(execFileSync("node", [vendorHardening], { encoding: "utf8", cwd: repositoryRoot }))
+      .toContain("Vendor hardening verified");
   });
 
   it("accepts only exact, active build-toolchain dependency exceptions", () => {
@@ -318,7 +335,7 @@ function dependencyAllowlist(expiresAt: string) {
       url: "https://github.com/advisories/GHSA-2345-6789-cfgh",
       affectedRange: "<2.0.0",
       scope: "build-toolchain",
-      observedVersions: ["8.4.49"],
+      observedVersions: ["8.5.26"],
       dependencyPaths: ["builder > postcss"],
       owner: "Security Owner",
       reason: "A sufficiently detailed fixture reason for a temporary toolchain exception.",

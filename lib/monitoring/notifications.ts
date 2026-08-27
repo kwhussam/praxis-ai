@@ -26,14 +26,22 @@ export function isCriticalMonitoringAlert(event: Pick<MonitoringEvent, "severity
   );
 }
 
+function isNotificationPermissionGranted(
+  permission: Notifications.NotificationPermissionsStatus
+): boolean {
+  return "granted" in permission && permission.granted === true;
+}
+
 export async function notifyCriticalMonitoringEvent(event: MonitoringEvent) {
   if (!isCriticalMonitoringAlert(event)) return;
   if (Platform.OS === "web") return;
 
   const permissions = await Notifications.getPermissionsAsync();
-  const nextPermissions = permissions.granted ? permissions : await Notifications.requestPermissionsAsync();
+  const nextPermissions = isNotificationPermissionGranted(permissions)
+    ? permissions
+    : await Notifications.requestPermissionsAsync();
 
-  if (!nextPermissions.granted) return;
+  if (!isNotificationPermissionGranted(nextPermissions)) return;
 
   await Notifications.scheduleNotificationAsync({
     content: {

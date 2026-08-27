@@ -28,9 +28,11 @@ type AppConfig = {
 
 type PackageJson = {
   dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
   engines: { node: string };
   packageManager: string;
   overrides: Record<string, string>;
+  scripts: Record<string, string>;
   expo: { install: { exclude: string[] } };
 };
 
@@ -122,11 +124,11 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "54",
+      expoSdk: "55",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
-      newArchitecture: "explicitly_enabled",
+      newArchitecture: "required",
       node: packageJson.engines.node,
       npm: packageJson.packageManager.replace("npm@", "")
     });
@@ -147,34 +149,28 @@ describe("SP3-01B mobile upgrade baseline", () => {
       androidTargetSdk: buildProperties.android.targetSdkVersion,
       iosDeploymentTarget: buildProperties.ios.deploymentTarget
     });
-    expect(appConfig.newArchEnabled).toBe(true);
+    expect(appConfig.newArchEnabled).toBe(undefined);
     expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
-  it("keeps the New Architecture renderer on its verified react-native-svg line", () => {
+  it("keeps the mandatory New Architecture renderer on Expo's SDK 55 SVG line", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
-    expect(reactNativeVersion).toBe("0.81.5");
-    expect(svgVersion).toBe("15.12.1");
-    expect(packageJson.dependencies["react-native-svg"]).toBe("15.12.1");
-
-    const paperDelegate = readFileSync(
-      resolve(
-        repositoryRoot,
-        "node_modules/react-native-svg/android/src/paper/java/com/facebook/react/viewmanagers/RNSVGTextManagerDelegate.java"
-      ),
-      "utf8"
-    );
-    expect(paperDelegate).not.toContain("BaseViewManagerInterface");
-    expect(paperDelegate).toContain("extends BaseViewManager<");
+    expect(reactNativeVersion).toBe("0.83.10");
+    expect(svgVersion).toBe("15.15.3");
+    expect(packageJson.dependencies["react-native-svg"]).toBe("15.15.3");
+    expect(existsSync(resolve(
+      repositoryRoot,
+      "node_modules/react-native-svg/apple/Utils/RNSVGFabricConversions.h"
+    ))).toBe(true);
   });
 
-  it("keeps RN 0.81 New Architecture mode on the screens line with the content-wrapper parent fix", () => {
+  it("keeps RN 0.83 on the SDK 55 screens line with the content-wrapper parent fix", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
-    expect(reactNativeVersion).toBe("0.81.5");
-    expect(screensVersion).toBe("4.16.0");
-    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.16.0");
+    expect(reactNativeVersion).toBe("0.83.10");
+    expect(screensVersion).toBe("4.23.0");
+    expect(packageJson.dependencies["react-native-screens"]).toBe("~4.23.0");
 
     const contentWrapper = readFileSync(
       resolve(repositoryRoot, "node_modules/react-native-screens/ios/RNSScreenContentWrapper.mm"),
@@ -207,14 +203,16 @@ describe("SP3-01B mobile upgrade baseline", () => {
   });
 
   it("keeps Expo's React pin and does not install an affected server-component package", () => {
-    expect(packageLock.packages["node_modules/react"].version).toBe("19.1.0");
-    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.1.0");
+    expect(packageLock.packages["node_modules/react"].version).toBe("19.2.0");
+    expect(packageLock.packages["node_modules/react-dom"].version).toBe("19.2.0");
     expect(packageJson.overrides["react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("6.0.24");
-    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("54.0.18");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("55.0.18");
+    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("55.0.22");
+    expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~55.0.25");
+    expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("55.0.25");
   });
 
   it("recovers a delayed Expo dev-menu first run before asserting the auth screen", () => {
@@ -236,7 +234,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
-  it("keeps SDK-54 auth smokes independent of iOS keyboard submit behavior", () => {
+  it("keeps SDK-55 auth smokes independent of iOS keyboard submit behavior", () => {
     const registration = readFileSync(
       resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
       "utf8"
@@ -359,14 +357,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("requires a fully green Doctor result without suppressing directory checks", () => {
-    // Stricter than the previous contract: no accepted deviation may exist at all.
-    // toEqual pins the exact shape, so re-introducing an exception field fails here.
+  it("keeps the exact SDK-55 Doctor result and its local Xcode tooling gate explicit", () => {
+    // SDK 55 requires Xcode 26. The repository is compatible, while this workstation still has
+    // Xcode 16.4. Keep that environment gate explicit instead of claiming a green native proof.
     expect(baseline.current.expoDoctor).toEqual({
-      version: "1.20.2",
-      passed: 18,
-      total: 18,
-      reactNativeDirectory: "passed"
+      version: "1.20.3",
+      passed: 19,
+      total: 20,
+      reactNativeDirectory: "passed",
+      expectedOpenFinding: "local_xcode_16_4_requires_26"
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {
@@ -377,7 +376,8 @@ describe("SP3-01B mobile upgrade baseline", () => {
   });
 
   it("keeps the New Architecture worklets contract fail-closed", () => {
-    expect(appConfig.newArchEnabled).toBe(true);
+    // SDK 55 requires New Architecture and removed the opt-out config field.
+    expect(appConfig.newArchEnabled).toBe(undefined);
     expect(packageJson.dependencies["react-native-worklets"]).toBeDefined();
     expect(packageLock.packages["node_modules/react-native-worklets"]?.version).toBeDefined();
     // Reanimated 4 is the only line that supports the New Architecture; 3.x must not return.
