@@ -53,6 +53,18 @@ tags:
 - tapOn:
     text: "Abbrechen|Cancel|Schließen|Close"
     optional: true
+# iOS 26 zeigt im kompakten Share-Sheet keinen beschrifteten Schließen-Button.
+# Wenn das Dokument noch sichtbar ist, schließen wir das native Sheet per Drag.
+- runFlow:
+    when:
+      visible: "PraxisShield-Bericht-a2400000.*"
+    commands:
+      - swipe:
+          start: "50%,46%"
+          end: "50%,92%"
+          duration: 600
+- waitForAnimationToEnd:
+    timeout: 5000
 - extendedWaitUntil:
     visible:
       id: report-detail-export-pdf

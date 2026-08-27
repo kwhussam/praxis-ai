@@ -179,10 +179,13 @@ Lint, TypeScript, 487 lokale Tests, Clean Prebuild, Native-Config und Dependency
 Beide Hermes-Produktionsbundles sind grün; ihr erster Lauf deckte das unter SDK 55 nicht mehr
 zuverlässig hoistbare `babel-preset-expo` auf. Es ist nun als direkte, SDK-kompatible
 Dev-Abhängigkeit versioniert und maschinengeprüft.
-Expo Doctor 1.20.3 besteht 19/20 Prüfungen; die einzige offene Prüfung ist die lokale
-Werkzeugversion Xcode 16.4, während SDK 55 Xcode 26 verlangt. Deshalb sind iOS-Release-Build und
-SDK-55-Simulator-Smoke auf einem Xcode-26-Runner ein hartes Merge-Gate und dürfen lokal nicht als
-bestanden ausgewiesen werden. Der Android-Release-Compile bleibt wie zuvor ein GitHub-CI-Gate.
+Nach der lokalen Installation von Xcode 26.6 besteht Expo Doctor 1.20.3 alle 20 Prüfungen. Clean
+Prebuild, Pods, der signaturfreie iOS-Release-Build auf iOS SDK 26.5 und der installierbare
+Simulator-Debug-Build sind grün; auch der Android-Release-Compile ist in GitHub grün. Der erste
+serielle iOS-26.5-Smoke bestand 4/15 Flows. Die elf Fehler wurden auf vier Änderungen an
+iOS-Systemdialogen beziehungsweise XCTest-Verhalten eingegrenzt (Deep-Link-Bestätigung,
+Passwort-Speichern, Tastatur-Dismiss und Share-Sheet-Dismiss), nicht auf elf Produktdefekte. Der
+Maestro-Harness ist angepasst; der erneute 15/15-Lauf bleibt das letzte lokale Runtime-Gate.
 
 ## Primärquellen
 

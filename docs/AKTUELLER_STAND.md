@@ -55,20 +55,29 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 | `npm run security:dependencies` | grün | 2 befristete Build-Toolchain-Ausnahmen; 2 PostCSS-Befunde geschlossen |
 | Clean Prebuild | grün | native Projekte reproduzierbar aus versionierter Konfiguration erzeugt |
 | `verify:native-config` | grün | Android New Architecture, iOS-Entitlements und Release-Stripping geprüft |
-| Expo Doctor 1.20.3 | **19/20** | einzige Beanstandung: lokales Xcode `16.4`; SDK 55 verlangt Xcode `26` |
-| iOS Release-Build | lokal blockiert | mit Xcode 16.4 nicht zulässig; Nachweis muss auf Xcode 26 erfolgen |
-| Android Release-Build | ausstehend | verbindlicher Nachweis im PR-Job `android-release-compile` |
+| Expo Doctor 1.20.3 | **20/20** | nach Installation von Xcode `26.6` vollständig grün |
+| iOS Release-Build | grün | signaturfreier Release-Build mit Xcode `26.6` / iOS SDK `26.5`: `BUILD SUCCEEDED` |
+| Android Release-Build | grün | PR-Job `android-release-compile` einschließlich Manifest-Verifikation bestanden |
 | iOS-/Android-Bundles | grün | beide Hermes-Produktionsbundles mit Expo Router und Worklets erzeugt |
-| Simulator-/Geräte-Smokes | ausstehend | SDK-55-Smoke benötigt eine Xcode-26-Umgebung; physische Matrix bleibt Release-Gate |
+| iOS Simulator-Smoke | erneute Prüfung nötig | erster iOS-26.5-Lauf: 4/15 grün; 11 Flows durch vier neue Systemdialog-/Treiberverhalten blockiert, Harness angepasst |
+| Physische Geräte-Smokes | zurückgestellt | iOS-/Android-Gerätematrix bleibt wie vereinbart ein späteres Release-Gate |
 
 ## Offene Befunde
 
-### P3 – Xcode 26 ist ein hartes SDK-55-Gate
+### Geschlossen – Xcode-26-Tooling und iOS Release-Build
 
-Ein iOS-Release-Build oder Simulator-Smoke mit Xcode 16.4 wäre kein gültiger SDK-55-Nachweis. Vor
-dem Merge muss ein CI-/Mac-Runner mit Xcode 26 den iOS-Build und den fokussierten Smoke ausführen
-oder die lokale Xcode-Installation aktualisiert werden. Dieser Umgebungsbefund wird nicht als
-bestandener Test umgedeutet.
+Die lokale Maschine läuft jetzt mit Xcode `26.6` (Build `17F113`) und iOS SDK `26.5`. Expo Doctor
+besteht 20/20 Prüfungen. Clean Prebuild, CocoaPods-Installation, vollständiger signaturfreier
+iOS-Release-Build und ein installierbarer Simulator-Debug-Build sind grün.
+
+### P3 (Verifikation) – iOS-26-Systemdialoge im Maestro-Harness
+
+Der erste vollständige Lauf bestand 4/15 Flows. Die Screenshots belegen keine elf unabhängigen
+Produktfehler: Ein zweiter Deep-Link-Bestätigungsdialog blockierte 01/02, der iOS-26-Dialog
+`Passwort sichern?` blockierte die Login-basierten Flows, `hideKeyboard` war in Flow 12 nicht
+verfügbar und das neue Share-Sheet ließ sich in Flow 15 nicht mehr über einen beschrifteten
+Abbrechen-Button schließen. Der Harness quittiert diese Zustände jetzt explizit beziehungsweise
+nutzt sichere Tap-/Swipe-Fallbacks. Die erneute Ausführung aller 15 Flows ist noch ausstehend.
 
 ### P3 – Zwei befristete `image-size`-Ausnahmen
 
@@ -77,10 +86,10 @@ repository-kontrollierte Build-Assets auf isolierten Runnern und gelangen nicht 
 Anwendungslogik in App oder Worker. Sie bleiben bis spätestens 2026-09-13 befristet und werden in
 der SDK-56-Stufe erneut geprüft.
 
-### P3 – Android- und Runtime-Nachweis bleiben extern
+### P3 – Runtime-Nachweis bleibt offen
 
-Der PR muss den Android-Release-Compile bestehen. Native Netzwerk-Probes, WLAN/Permissions,
-verschlüsselte Persistenz, PDF-Cache und Tenant-Wechsel müssen zusätzlich mindestens im
+Der Android-Release-Compile ist in GitHub grün. Native Netzwerk-Probes, WLAN/Permissions,
+verschlüsselte Persistenz, PDF-Cache und Tenant-Wechsel müssen noch mindestens im
 fokussierten SDK-55-Smoke auf einer kompatiblen Plattform bestehen. Die vollständige physische
 iOS-/Android-Matrix bleibt wie vereinbart das spätere Produktions-Gate.
 
@@ -93,18 +102,18 @@ iOS-/Android-Matrix bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. Diesen isolierten SDK-55-Stand committen, Branch pushen und einen PR gegen `main` erstellen.
-2. GitHub-CI einschließlich `android-release-compile`, Secure SDLC und Dependency-Gate prüfen.
-3. Auf Xcode 26 einen iOS-Release-Build und den fokussierten seriellen Simulator-Smoke ausführen;
-   Ergebnis in dieser Datei dokumentieren.
-4. Erst nach grünen Pflicht-Gates und Review mergen. Danach SDK 56 als eigene, nicht produktiv
+1. Die vier iOS-26-Anpassungen im Maestro-Harness committen und den Branch aktualisieren.
+2. Den seriellen iOS-26.5-Simulator-Smoke erneut vollständig ausführen und die JUnit-Auswertung
+   `15 flows, 0 failures` verlangen.
+3. GitHub-CI und Secure SDLC nach dem zusätzlichen Commit erneut grün prüfen.
+4. Erst nach grünem Simulator-Smoke und Review mergen. Danach SDK 56 als eigene, nicht produktiv
    freigegebene Übergangsstufe beginnen und die zwei `image-size`-Ausnahmen erneut bewerten.
 
 ## Bewusste Grenzen
 
 - Die physische iOS-/Android-Gerätematrix bleibt wie vereinbart für das spätere
   Produktionsfreigabe-Gate zurückgestellt.
-- Xcode 16.4 kann keine gültige SDK-55-iOS-Evidenz liefern; dafür ist Xcode 26 erforderlich.
+- Die lokale Simulatorprüfung ersetzt keine spätere Prüfung auf physischen iOS-/Android-Geräten.
 
 ## Abnahmekriterium für den nächsten Schritt
 

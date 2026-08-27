@@ -26,6 +26,13 @@ appId: ai.praxisshield.app
     commands:
       - tapOn:
           id: auth-submit
+- waitForAnimationToEnd:
+    timeout: 5000
+# A clean iOS 26 keychain presents the system password-save prompt after every
+# clearKeychain login. Dismiss it before asserting or using the dashboard.
+- tapOn:
+    text: "Später|Not Now"
+    optional: true
 - extendedWaitUntil:
     visible:
       id: tab-dashboard

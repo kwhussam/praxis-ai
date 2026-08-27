@@ -221,12 +221,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
       "utf8"
     );
     const rootRouteReset = bootstrap.lastIndexOf('link: "praxisshield:///"');
+    const rootConfirmation = bootstrap.indexOf('text: "Open|Öffnen"', rootRouteReset);
     const scrollRecovery = bootstrap.lastIndexOf("- repeat:");
     const continueRecovery = bootstrap.lastIndexOf("visible: Continue");
     const reloadRecovery = bootstrap.lastIndexOf("visible: Reload");
     const finalAuthAssertion = bootstrap.lastIndexOf("- extendedWaitUntil:");
 
     expect(rootRouteReset).toBeGreaterThan(-1);
+    expect(rootConfirmation).toBeGreaterThan(rootRouteReset);
+    expect(rootConfirmation).toBeLessThan(scrollRecovery);
     expect(scrollRecovery).toBeGreaterThan(rootRouteReset);
     expect(continueRecovery).toBeGreaterThan(scrollRecovery);
     expect(reloadRecovery).toBeGreaterThan(continueRecovery);
@@ -247,12 +250,25 @@ describe("SP3-01B mobile upgrade baseline", () => {
       resolve(repositoryRoot, ".maestro/subflows/login-to-onboarding.yaml"),
       "utf8"
     );
+    const invitation = readFileSync(
+      resolve(repositoryRoot, ".maestro/flows/12-invitation-auth-handoff.yaml"),
+      "utf8"
+    );
+    const pdfExport = readFileSync(
+      resolve(repositoryRoot, ".maestro/flows/15-pdf-export.yaml"),
+      "utf8"
+    );
 
     expect(registration).toMatch(/- hideKeyboard\s+- tapOn:\s+id: auth-submit/);
     for (const flow of [login, onboardingLogin]) {
       expect(flow).toContain("- pressKey: Enter");
       expect(flow).toMatch(/visible:\s+id: auth-submit\s+commands:\s+- tapOn:\s+id: auth-submit/);
+      expect(flow).toContain('text: "Später|Not Now"');
     }
+    expect(invitation).not.toContain("- hideKeyboard");
+    expect(invitation).toContain('point: "50%,35%"');
+    expect(pdfExport).toContain('visible: "PraxisShield-Bericht-a2400000.*"');
+    expect(pdfExport).toContain('end: "50%,92%"');
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {
@@ -357,15 +373,15 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("keeps the exact SDK-55 Doctor result and its local Xcode tooling gate explicit", () => {
-    // SDK 55 requires Xcode 26. The repository is compatible, while this workstation still has
-    // Xcode 16.4. Keep that environment gate explicit instead of claiming a green native proof.
+  it("keeps the exact SDK-55 Doctor result after the Xcode 26 upgrade explicit", () => {
+    // Xcode 26.6 closes the former local tooling gate; a future Doctor regression must not be
+    // hidden by leaving the historical Xcode 16.4 exception in the baseline.
     expect(baseline.current.expoDoctor).toEqual({
       version: "1.20.3",
-      passed: 19,
+      passed: 20,
       total: 20,
       reactNativeDirectory: "passed",
-      expectedOpenFinding: "local_xcode_16_4_requires_26"
+      expectedOpenFinding: null
     });
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {

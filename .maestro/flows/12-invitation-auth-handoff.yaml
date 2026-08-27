@@ -11,11 +11,11 @@ name: 12-invitation-auth-handoff
 - tapOn:
     id: invitation-code
 - inputText: "ABCDEFGHJK"
-# F-02: Tastatur schließen und Animation abwarten, damit der onChangeText-State
-# (10-stelliger Code) committet ist, bevor getappt wird. Sonst ist canSubmit beim
-# Tap noch false und redeem() bricht am frühen Guard ab, ohne die 401-Meldung zu
-# zeigen. retryTapIfNoChange fängt einen verbliebenen Race ab.
-- hideKeyboard
+# F-02: iOS 26 bietet dem XCTest-Treiber für diese Tastatur keine standardisierte
+# Dismiss-Aktion mehr an. Ein Tap auf den nicht interaktiven Beschreibungstext
+# schließt sie und committet zugleich den onChangeText-State des 10-stelligen Codes.
+- tapOn:
+    point: "50%,35%"
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:

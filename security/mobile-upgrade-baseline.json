@@ -18,10 +18,10 @@
     },
     "expoDoctor": {
       "version": "1.20.3",
-      "passed": 19,
+      "passed": 20,
       "total": 20,
       "reactNativeDirectory": "passed",
-      "expectedOpenFinding": "local_xcode_16_4_requires_26"
+      "expectedOpenFinding": null
     }
   },
   "migration": {
