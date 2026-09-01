@@ -3,7 +3,7 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 55-to-57 migration; SDK 55 removes the PostCSS findings but not the two transitive Metro image-size advisories",
+    "decision": "No active High/Critical dependency exceptions after the controlled September 2026 maintenance; the unused optional Metro peer chain and its image-size advisories were removed",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
     "nextStage": "sdk56",
     "targetDate": "2026-09-07",
@@ -201,7 +201,7 @@
       "expiresAt": "2026-09-13"
     }
   ],
-  "exceptions": [
+  "resolvedInDependencyMaintenance": [
     {
       "id": "GHSA-5p2g-fcmc-qvqq",
       "package": "image-size",
@@ -216,7 +216,7 @@
       "owner": "PraxisShield CTO / Product Owner",
       "reason": "React Native 0.83.10 still pins image-size 1.2.1 through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
-      "remediation": "Re-evaluate with Expo SDK 56 and delete this exception immediately when Metro resolves a patched image-size dependency.",
+      "remediation": "The controlled September 2026 lockfile refresh removed the unused optional React Native Metro peer chain and image-size from the installation.",
       "reviewedAt": "2026-08-26",
       "expiresAt": "2026-09-13"
     },
@@ -234,9 +234,10 @@
       "owner": "PraxisShield CTO / Product Owner",
       "reason": "React Native 0.83.10 still pins image-size 1.2.1 through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
       "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
-      "remediation": "Re-evaluate with Expo SDK 56 and delete this exception immediately when Metro resolves a patched image-size dependency.",
+      "remediation": "The controlled September 2026 lockfile refresh removed the unused optional React Native Metro peer chain and image-size from the installation.",
       "reviewedAt": "2026-08-26",
       "expiresAt": "2026-09-13"
     }
-  ]
+  ],
+  "exceptions": []
 }

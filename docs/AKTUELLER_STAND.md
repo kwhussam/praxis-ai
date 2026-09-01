@@ -14,13 +14,28 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 ## Aktueller Arbeitskontext
 
-- Stufe: `sdk55` – erster Expo-Stand mit verpflichtender React-Native-New-Architecture.
-- Branch: `codex/sp3-01b-sdk55`, abgezweigt von aktuellem `origin/main` am Merge-Commit
-  `165fea5548b5c3ebce96f8cd109e4c93cbfccc98`.
-- Ausgangspunkt: SDK 54 mit aktivierter New Architecture wurde als PR `#39` gemergt; die
-  nachgelagerten GitHub-Läufe `CI` und `Secure SDLC` waren grün.
+- Stufe: kontrollierte Dependency-Wartung nach dem abgeschlossenen Expo-SDK-55-Upgrade.
+- Branch: `codex/dependency-maintenance-2026-09-01`, direkt von `origin/main` am SDK-55-Merge
+  `9a75507b8561606857e9c7cefe94c0d4cdbbd31d` abgezweigt.
+- Ausgangspunkt: SDK 55 wurde als PR `#40` gemergt; die nachgelagerten GitHub-Läufe `CI` und
+  `Secure SDLC` waren grün. Die roten Dependabot-Läufe waren Baseline-/Allowlist-Drift, keine
+  Regression des gemergten Hauptzweigs.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
+
+## Was in der aktuellen Dependency-Wartung gemacht wurde
+
+- **Vier Dependabot-Updates konsolidiert:** Hono `4.13.5` (Security-Patch), Supabase JS
+  `2.112.4`, TanStack Query `5.102.8`, Wrangler `4.127.1` und Cloudflare Workers Types
+  `5.20260829.1` liegen gemeinsam in einem reproduzierbaren Lockfile.
+- **Baseline synchronisiert:** Die exakt installierten Runtime-Versionen sind in
+  `security/mobile-upgrade-baseline.json` nachgezogen; künftige Drift bleibt fail-closed.
+- **Zwei High-Ausnahmen geschlossen:** Die nicht benötigte optionale
+  `@react-native/metro-config`-Peer-Kette wurde aus dem Lockfile entfernt. Damit sind
+  `image-size` und beide zugehörigen High-Advisories nicht mehr installiert; die aktive
+  Allowlist ist leer, der historische Nachweis bleibt erhalten.
+- **Runtime-Verträglichkeit bewiesen:** Beide nativen Hermes-Produktionsbundles entstehen ohne
+  die optionale Peer-Kette; Wrangler `4.127.1` paketiert den Worker im Dry-Run erfolgreich.
 
 ## Was in der SDK-55-Stufe gemacht wurde
 
@@ -42,9 +57,9 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **Release-Konfiguration angepasst:** Expo Dev Launcher benötigt im Debug-Generate exakt
   `_expo._tcp`. Der Verifier erlaubt nur diesen einzelnen Debug-Dienst und verlangt zugleich Expos
   Release-Build-Phase, die Local-Network-Schlüssel für Nicht-Debug-Builds entfernt.
-- **Dependency-Allowlist neu bewertet:** Zwei PostCSS-Advisories sind mit PostCSS `8.5.26` behoben.
-  Übrig bleiben zwei befristete High-Advisories von `image-size@1.2.1`, ausschließlich transitiv
-  über React Native/Metro in der Buildkette. Neue Befunde blockieren weiterhin fail-closed.
+- **Dependency-Allowlist neu bewertet:** Zwei PostCSS-Advisories sind mit PostCSS `8.5.26`
+  behoben. Die damals noch befristeten `image-size`-Advisories wurden in der anschließenden
+  kontrollierten Dependency-Wartung ebenfalls geschlossen.
 
 ## Verifikation
 
@@ -52,13 +67,14 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 |---|---|---|
 | `npm ci` | grün | Lockfile und Vendor-Härtung aus einem frischen Install reproduziert |
 | `npm run verify` | grün: 487 Tests bestanden, 6 übersprungen | Lint, TypeScript und Jest einschließlich SDK-/Supply-Chain-Verträgen |
-| `npm run security:dependencies` | grün | 2 befristete Build-Toolchain-Ausnahmen; 2 PostCSS-Befunde geschlossen |
+| `npm run security:dependencies` | grün | 0 aktive High-/Critical-Ausnahmen; `image-size` nicht mehr installiert |
 | Clean Prebuild | grün | native Projekte reproduzierbar aus versionierter Konfiguration erzeugt |
 | `verify:native-config` | grün | Android New Architecture, iOS-Entitlements und Release-Stripping geprüft |
 | Expo Doctor 1.20.3 | **20/20** | nach Installation von Xcode `26.6` vollständig grün |
 | iOS Release-Build | grün | signaturfreier Release-Build mit Xcode `26.6` / iOS SDK `26.5`: `BUILD SUCCEEDED` |
 | Android Release-Build | grün | PR-Job `android-release-compile` einschließlich Manifest-Verifikation bestanden |
 | iOS-/Android-Bundles | grün | beide Hermes-Produktionsbundles mit Expo Router und Worklets erzeugt |
+| Wrangler Worker-Dry-Run | grün | Wrangler `4.127.1` paketiert den Hono-Worker ohne Deployment |
 | iOS Simulator-Smoke | grün über kombinierte Nachweise | vollständiger Wiederholungslauf: 14/15 laut Terminalausgabe; anschließend Flow 15 fokussiert: 1/1 einschließlich nativer Share-UI und Klartext-Cache-Gate |
 | Physische Geräte-Smokes | zurückgestellt | iOS-/Android-Gerätematrix bleibt wie vereinbart ein späteres Release-Gate |
 
@@ -90,12 +106,13 @@ Viewport. Der Flow prüft nun stattdessen, dass der native Dateiname verschwinde
 Berichte-Tab wieder sichtbar ist. Der fokussierte Wiederholungslauf bestand 1/1; auch das
 nachgelagerte Klartext-Cache-Gate war grün.
 
-### P3 – Zwei befristete `image-size`-Ausnahmen
+### Geschlossen – Zwei befristete `image-size`-Ausnahmen
 
-React Native 0.83.10 zieht über Metro weiterhin `image-size@1.2.1`. Die Advisories betreffen nur
-repository-kontrollierte Build-Assets auf isolierten Runnern und gelangen nicht als
-Anwendungslogik in App oder Worker. Sie bleiben bis spätestens 2026-09-13 befristet und werden in
-der SDK-56-Stufe erneut geprüft.
+Die optionale Peer-Auflösung installierte neben Expos Metro-Konfiguration zusätzlich
+`@react-native/metro-config` und darüber `image-size@1.2.1`, obwohl PraxisShield diesen Pfad nicht
+verwendet. Der kontrollierte Lockfile-Refresh entfernt diese optionale Kette. `npm ci`, alle Tests
+und beide nativen Produktionsbundles belegen die Verträglichkeit; das Dependency-Gate akzeptiert
+nun 0 Ausnahmen.
 
 ### P3 – Physischer Runtime-Nachweis bleibt offen
 
@@ -109,15 +126,15 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 - Migration des PDF-Caches von `expo-file-system/legacy` auf die neue API;
 - React Test Renderer `19.0` als reine Test-Infrastruktur;
 - Icon-Migration vor dem endgültigen SDK-57-Ziel;
-- zwei `image-size`-Ausnahmen aus der Metro-Buildkette.
 
 ## Als Nächstes
 
-1. Die iOS-26-Anpassungen und den korrigierten PDF-Abschlussnachweis committen und den Branch
-   aktualisieren.
-2. GitHub-CI und Secure SDLC nach dem zusätzlichen Commit erneut grün prüfen.
-3. Nach unabhängigem Review mergen. Danach SDK 56 als eigene, nicht produktiv
-   freigegebene Übergangsstufe beginnen und die zwei `image-size`-Ausnahmen erneut bewerten.
+1. Den konsolidierten Dependency-Wartungsbranch pushen und einen Pull Request gegen `main`
+   erstellen.
+2. GitHub-CI und Secure SDLC einschließlich `android-release-compile` grün prüfen und den
+   Dependency-Diff unabhängig reviewen lassen.
+3. Nach grünem Review mergen. Danach SDK 56 als eigene, nicht produktiv freigegebene
+   Übergangsstufe beginnen; eine erneute `image-size`-Ausnahme ist nicht mehr erforderlich.
 
 ## Bewusste Grenzen
 
@@ -132,6 +149,5 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 - Android-Release-Compile in GitHub-CI grün;
 - iOS-Release-Build, vollständiger 14/15-Simulatorlauf und fokussierter 1/1-PDF-Smoke unter
   Xcode 26 grün;
-- keine neuen High-/Critical-Abhängigkeiten und höchstens die zwei dokumentierten,
-  nicht abgelaufenen Build-Toolchain-Ausnahmen;
+- keine High-/Critical-Abhängigkeiten und keine aktive Dependency-Ausnahme;
 - unabhängiges Review ohne offenen P1-/P2-/P3-Codebefund.
