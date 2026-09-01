@@ -3,9 +3,9 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 54-to-57 migration; SDK 54 removes the tar findings but not every transitive Metro build-toolchain advisory",
+    "decision": "Temporary owner-approved risk acceptance during the staged Expo SDK 55-to-57 migration; SDK 55 removes the PostCSS findings but not the two transitive Metro image-size advisories",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
-    "nextStage": "sdk55",
+    "nextStage": "sdk56",
     "targetDate": "2026-09-07",
     "hardExpiry": "2026-09-13"
   },
@@ -163,43 +163,7 @@
       "expiresAt": "2026-09-13"
     }
   ],
-  "exceptions": [
-    {
-      "id": "GHSA-5p2g-fcmc-qvqq",
-      "package": "image-size",
-      "severity": "high",
-      "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
-      "affectedRange": "<=2.0.2",
-      "scope": "build-toolchain",
-      "observedVersions": ["1.2.1"],
-      "dependencyPaths": [
-        "react-native > @react-native/community-cli-plugin > metro > image-size"
-      ],
-      "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.79 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
-      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
-      "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
-      "reviewedAt": "2026-08-20",
-      "expiresAt": "2026-09-13"
-    },
-    {
-      "id": "GHSA-w3rx-r6r6-pgpr",
-      "package": "image-size",
-      "severity": "high",
-      "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
-      "affectedRange": "<=2.0.2",
-      "scope": "build-toolchain",
-      "observedVersions": ["1.2.1"],
-      "dependencyPaths": [
-        "react-native > @react-native/community-cli-plugin > metro > image-size"
-      ],
-      "owner": "PraxisShield CTO / Product Owner",
-      "reason": "React Native 0.79 pins image-size through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
-      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
-      "remediation": "Upgrade the Expo and React Native SDK set to a Metro version with a patched image-size dependency, then delete this exception and rebuild all evidence.",
-      "reviewedAt": "2026-08-20",
-      "expiresAt": "2026-09-13"
-    },
+  "resolvedInSdk55": [
     {
       "id": "GHSA-6g55-p6wh-862q",
       "package": "postcss",
@@ -212,10 +176,10 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 53 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
-      "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
-      "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
-      "reviewedAt": "2026-08-20",
+      "reason": "Expo SDK 53 pinned PostCSS through Metro configuration for local bundling.",
+      "mitigation": "Builds processed repository-controlled CSS only on isolated runners with the committed lockfile.",
+      "remediation": "Expo SDK 55 resolves PostCSS to 8.5.26, outside the affected advisory range.",
+      "reviewedAt": "2026-08-26",
       "expiresAt": "2026-09-13"
     },
     {
@@ -230,10 +194,48 @@
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
       "owner": "PraxisShield CTO / Product Owner",
-      "reason": "Expo SDK 53 pins PostCSS through Metro configuration for local bundling; PraxisShield does not expose PostCSS as a production service or user-input parser.",
-      "mitigation": "Builds process repository-controlled CSS only, use the committed dependency lock, and execute on isolated runners without accepting attacker-controlled source maps.",
-      "remediation": "Upgrade the coordinated Expo SDK toolchain to a patched PostCSS release, remove this exception immediately, and regenerate SBOM and release evidence.",
-      "reviewedAt": "2026-08-20",
+      "reason": "Expo SDK 53 pinned PostCSS through Metro configuration for local bundling.",
+      "mitigation": "Builds processed repository-controlled CSS only on isolated runners with the committed lockfile.",
+      "remediation": "Expo SDK 55 resolves PostCSS to 8.5.26, outside the affected advisory range.",
+      "reviewedAt": "2026-08-26",
+      "expiresAt": "2026-09-13"
+    }
+  ],
+  "exceptions": [
+    {
+      "id": "GHSA-5p2g-fcmc-qvqq",
+      "package": "image-size",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
+      "affectedRange": "<=2.0.2",
+      "scope": "build-toolchain",
+      "observedVersions": ["1.2.1"],
+      "dependencyPaths": [
+        "react-native > @react-native/community-cli-plugin > metro > image-size"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "React Native 0.83.10 still pins image-size 1.2.1 through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
+      "remediation": "Re-evaluate with Expo SDK 56 and delete this exception immediately when Metro resolves a patched image-size dependency.",
+      "reviewedAt": "2026-08-26",
+      "expiresAt": "2026-09-13"
+    },
+    {
+      "id": "GHSA-w3rx-r6r6-pgpr",
+      "package": "image-size",
+      "severity": "high",
+      "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
+      "affectedRange": "<=2.0.2",
+      "scope": "build-toolchain",
+      "observedVersions": ["1.2.1"],
+      "dependencyPaths": [
+        "react-native > @react-native/community-cli-plugin > metro > image-size"
+      ],
+      "owner": "PraxisShield CTO / Product Owner",
+      "reason": "React Native 0.83.10 still pins image-size 1.2.1 through Metro asset processing; the parser is used while building local assets and is not shipped as application logic.",
+      "mitigation": "Only repository-controlled image assets are processed, dependency installation is lockfile-pinned, and CI builds run on isolated ephemeral runners without untrusted uploads.",
+      "remediation": "Re-evaluate with Expo SDK 56 and delete this exception immediately when Metro resolves a patched image-size dependency.",
+      "reviewedAt": "2026-08-26",
       "expiresAt": "2026-09-13"
     }
   ]

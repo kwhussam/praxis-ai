@@ -23,11 +23,34 @@ requireText(iosEntitlements, "<true/>", "iOS entitlements");
 const iosInfo = read("ios/PraxisShieldAI/Info.plist");
 requireText(iosInfo, "NSLocalNetworkUsageDescription", "iOS Info.plist");
 requireText(iosInfo, "NSLocationWhenInUseUsageDescription", "iOS Info.plist");
-forbidText(iosInfo, "NSBonjourServices", "iOS Info.plist");
+const bonjourKey = "<key>NSBonjourServices</key>";
+if (iosInfo.includes(bonjourKey)) {
+  const bonjourStart = iosInfo.indexOf(bonjourKey);
+  const bonjourEnd = iosInfo.indexOf("</array>", bonjourStart);
+  if (bonjourEnd < bonjourStart) {
+    throw new Error("iOS Info.plist has a malformed NSBonjourServices array");
+  }
+  const bonjourSection = iosInfo.slice(bonjourStart, bonjourEnd);
+  const services = [...bonjourSection.matchAll(/<string>([^<]+)<\/string>/g)]
+    .map((match) => match[1]);
+  if (services.length !== 1 || services[0] !== "_expo._tcp") {
+    throw new Error(`iOS Info.plist has unexpected Bonjour services: ${services.join(", ")}`);
+  }
+}
 requireText(iosInfo, `<string>${appConfig.version}</string>`, "iOS release version");
 requireText(iosInfo, `<string>${appConfig.ios.buildNumber}</string>`, "iOS release build number");
 
 const iosProject = read("ios/PraxisShieldAI.xcodeproj/project.pbxproj");
+if (iosInfo.includes(bonjourKey)) {
+  requireText(
+    iosProject,
+    "[Expo Dev Launcher] Strip Local Network Keys for Release",
+    "iOS Xcode project"
+  );
+  requireText(iosProject, 'if [ \\"$CONFIGURATION\\" != \\"Debug\\" ]; then', "iOS Xcode project");
+  requireText(iosProject, 'Delete :NSBonjourServices:$i', "iOS Xcode project");
+  requireText(iosProject, "_expo._tcp", "iOS Xcode project");
+}
 for (const fileName of ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"]) {
   requireText(iosProject, `${fileName} in Sources`, "iOS Xcode project");
   requireText(read(`ios/PraxisShieldAI/${fileName}`), "PraxisShieldNetworkProbe", `iOS ${fileName}`);
@@ -48,6 +71,7 @@ requireText(iosObjcBridge, "RCTPromiseResolveBlock", "iOS Objective-C bridge");
 requireText(iosObjcBridge, "RCTPromiseRejectBlock", "iOS Objective-C bridge");
 
 const androidManifest = read("android/app/src/main/AndroidManifest.xml");
+requireText(read("android/gradle.properties"), "newArchEnabled=true", "Android Gradle properties");
 requireText(androidManifest, 'android:allowBackup="false"', "Android release manifest");
 requireText(androidManifest, 'android:fullBackupContent="@xml/backup_rules"', "Android release manifest");
 requireText(androidManifest, 'android:dataExtractionRules="@xml/data_extraction_rules"', "Android release manifest");

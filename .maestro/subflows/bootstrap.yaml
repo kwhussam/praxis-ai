@@ -78,6 +78,15 @@ appId: ai.praxisshield.app
           link: "praxisshield:///"
 - waitForAnimationToEnd:
     timeout: 30000
+# iOS 26 asks for confirmation again when the test switches from the dev-client
+# URL to the app's root scheme. Without this second acknowledgement the auth
+# screen is visible behind a system sheet, but Maestro cannot interact with it.
+- tapOn:
+    text: "Open|Öffnen"
+    optional: true
+- tapOn:
+    text: Continue
+    optional: true
 - repeat:
     times: 6
     commands:

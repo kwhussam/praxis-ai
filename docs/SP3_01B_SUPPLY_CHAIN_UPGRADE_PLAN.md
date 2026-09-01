@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-08-21
+Stand: 2026-08-27
 
 Status: `in_progress`
 
@@ -26,8 +26,8 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53 und 54 Legacy sind `released` (SDK 54 gemergt als PR #37, Commit `9ee2b48`); SDK 54 New Architecture ist `in_progress`; SDK 55 bis 57 stehen aus |
-| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, `@expo/plist`-Patch und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `pending` |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist technisch migriert und in Verifikation; SDK 56 und 57 stehen aus |
+| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`; 2 transitive Metro-/`image-size`-Ausnahmen bleiben bis zur SDK-56-Prüfung |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
 ## Technische Leitplanken
@@ -155,8 +155,41 @@ bestanden markiert, weil Googles Android-Repository wiederholt in Timeouts lief.
 bleibt zwingendes GitHub-CI-Gate. Physische Gerätesmokes bleiben unverändert vor der
 Produktionsfreigabe verpflichtend.
 
+## Phase 3 – SDK-54-New-Architecture-Abschluss
+
+Die New Architecture wurde auf SDK 54 separat aktiviert und als PR #39 gemergt. Der Stand bestand
+die GitHub-CI und Secure-SDLC-Pipeline. iOS-Release-Build, Reanimated-4-/Worklets-Transformation
+und alle 15 seriellen iOS-Simulator-Pfade wurden belegt; der WLAN-Lauf bestätigte zusätzlich echte
+persistierte TCP-/SSDP-Probe-Evidenz über die Interop-Schicht. Der Android-Kotlin-Laufzeitnachweis
+bleibt Teil des späteren physischen Geräte-Gates.
+
+## Phase 3 – SDK-55-Zwischenstand
+
+Der fünfte isolierte Migrationsschritt steht auf Expo 55.0.30, React Native 0.83.10 und
+React/React DOM 19.2.0. Die New Architecture ist in SDK 55 verpflichtend; das nicht mehr
+unterstützte Konfigurationsfeld `newArchEnabled` wurde entfernt. Expo Router 55, Reanimated 4.2,
+Worklets 0.7 und alle nativen Expo-Module sind als koordinierter Satz aktualisiert.
+
+Die alten Patch-Package-Patches wurden durch eine kleine fail-closed Postinstall-Härtung ersetzt,
+die exakte Vendor-Versionen und bekannte Quellformen erzwingt. Das Dependency-Gate schließt beide
+PostCSS-Advisories; zwei `image-size@1.2.1`-Advisories bleiben ausschließlich für die transitive
+Metro-Buildkette befristet akzeptiert und werden in SDK 56 erneut bewertet.
+
+Lint, TypeScript, 487 lokale Tests, Clean Prebuild, Native-Config und Dependency-Gate sind grün.
+Beide Hermes-Produktionsbundles sind grün; ihr erster Lauf deckte das unter SDK 55 nicht mehr
+zuverlässig hoistbare `babel-preset-expo` auf. Es ist nun als direkte, SDK-kompatible
+Dev-Abhängigkeit versioniert und maschinengeprüft.
+Nach der lokalen Installation von Xcode 26.6 besteht Expo Doctor 1.20.3 alle 20 Prüfungen. Clean
+Prebuild, Pods, der signaturfreie iOS-Release-Build auf iOS SDK 26.5 und der installierbare
+Simulator-Debug-Build sind grün; auch der Android-Release-Compile ist in GitHub grün. Der erste
+serielle iOS-26.5-Smoke bestand 4/15 Flows. Die elf Fehler wurden auf vier Änderungen an
+iOS-Systemdialogen beziehungsweise XCTest-Verhalten eingegrenzt (Deep-Link-Bestätigung,
+Passwort-Speichern, Tastatur-Dismiss und Share-Sheet-Dismiss), nicht auf elf Produktdefekte. Der
+Maestro-Harness ist angepasst; der erneute 15/15-Lauf bleibt das letzte lokale Runtime-Gate.
+
 ## Primärquellen
 
+- Expo SDK 55: <https://expo.dev/changelog/sdk-55>
 - Expo SDK 56: <https://expo.dev/changelog/sdk-56>
 - Expo SDK 57 / aktuelle Versionsmatrix: <https://docs.expo.dev/versions/latest/>
 - Expo New Architecture: <https://docs.expo.dev/guides/new-architecture/>
