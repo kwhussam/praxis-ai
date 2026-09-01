@@ -65,7 +65,13 @@ tags:
           duration: 600
 - waitForAnimationToEnd:
     timeout: 5000
+# The dismissal drag can also move the underlying report scroll view on iOS 26.
+# Prove that the native sheet is gone via its own filename and a fixed tab-bar
+# element instead of requiring the scrolled export button to remain on-screen.
+- extendedWaitUntil:
+    notVisible: "PraxisShield-Bericht-a2400000.*"
+    timeout: 30000
 - extendedWaitUntil:
     visible:
-      id: report-detail-export-pdf
+      id: tab-reports
     timeout: 30000

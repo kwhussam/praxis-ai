@@ -269,6 +269,8 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(invitation).toContain('point: "50%,35%"');
     expect(pdfExport).toContain('visible: "PraxisShield-Bericht-a2400000.*"');
     expect(pdfExport).toContain('end: "50%,92%"');
+    expect(pdfExport).toContain('notVisible: "PraxisShield-Bericht-a2400000.*"');
+    expect(pdfExport).toMatch(/visible:\s+id: tab-reports/);
   });
 
   it("tracks every architecture-sensitive dependency exactly once", () => {

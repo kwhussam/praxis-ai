@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-08-27
+Stand: 2026-09-01
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -59,7 +59,7 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 | iOS Release-Build | grün | signaturfreier Release-Build mit Xcode `26.6` / iOS SDK `26.5`: `BUILD SUCCEEDED` |
 | Android Release-Build | grün | PR-Job `android-release-compile` einschließlich Manifest-Verifikation bestanden |
 | iOS-/Android-Bundles | grün | beide Hermes-Produktionsbundles mit Expo Router und Worklets erzeugt |
-| iOS Simulator-Smoke | erneute Prüfung nötig | erster iOS-26.5-Lauf: 4/15 grün; 11 Flows durch vier neue Systemdialog-/Treiberverhalten blockiert, Harness angepasst |
+| iOS Simulator-Smoke | grün über kombinierte Nachweise | vollständiger Wiederholungslauf: 14/15 laut Terminalausgabe; anschließend Flow 15 fokussiert: 1/1 einschließlich nativer Share-UI und Klartext-Cache-Gate |
 | Physische Geräte-Smokes | zurückgestellt | iOS-/Android-Gerätematrix bleibt wie vereinbart ein späteres Release-Gate |
 
 ## Offene Befunde
@@ -70,14 +70,25 @@ Die lokale Maschine läuft jetzt mit Xcode `26.6` (Build `17F113`) und iOS SDK `
 besteht 20/20 Prüfungen. Clean Prebuild, CocoaPods-Installation, vollständiger signaturfreier
 iOS-Release-Build und ein installierbarer Simulator-Debug-Build sind grün.
 
-### P3 (Verifikation) – iOS-26-Systemdialoge im Maestro-Harness
+### Geschlossen – iOS-26-Systemdialoge und PDF-Smoke im Maestro-Harness
 
-Der erste vollständige Lauf bestand 4/15 Flows. Die Screenshots belegen keine elf unabhängigen
+Der erste vollständige Lauf bestand 4/15 Flows. Die Screenshots belegten keine elf unabhängigen
 Produktfehler: Ein zweiter Deep-Link-Bestätigungsdialog blockierte 01/02, der iOS-26-Dialog
 `Passwort sichern?` blockierte die Login-basierten Flows, `hideKeyboard` war in Flow 12 nicht
 verfügbar und das neue Share-Sheet ließ sich in Flow 15 nicht mehr über einen beschrifteten
 Abbrechen-Button schließen. Der Harness quittiert diese Zustände jetzt explizit beziehungsweise
-nutzt sichere Tap-/Swipe-Fallbacks. Die erneute Ausführung aller 15 Flows ist noch ausstehend.
+nutzt sichere Tap-/Swipe-Fallbacks.
+
+Im vollständigen Wiederholungslauf wurden laut Terminalausgabe 14/15 Flows grün; nur Flow 15
+schlug fehl. Das Fenster wurde danach geschlossen, weshalb für diesen Gesamtlauf kein
+übernehmbares zusammengefasstes JUnit-Artefakt vorliegt. Der verbleibende Flow wurde deshalb
+fokussiert reproduziert: Der Worker lieferte das PDF mit HTTP 200, iOS zeigte das native
+Share-Sheet mit dem kanonischen 5-KB-Dokument und entfernte die Klartextdatei nach dem Schließen.
+Der Fehler lag ausschließlich in der letzten Maestro-Assertion: Der iOS-26-Schließen-Drag
+scrollte zugleich den darunterliegenden Bericht und schob den erwarteten Export-Button aus dem
+Viewport. Der Flow prüft nun stattdessen, dass der native Dateiname verschwindet und der feste
+Berichte-Tab wieder sichtbar ist. Der fokussierte Wiederholungslauf bestand 1/1; auch das
+nachgelagerte Klartext-Cache-Gate war grün.
 
 ### P3 – Zwei befristete `image-size`-Ausnahmen
 
@@ -86,12 +97,12 @@ repository-kontrollierte Build-Assets auf isolierten Runnern und gelangen nicht 
 Anwendungslogik in App oder Worker. Sie bleiben bis spätestens 2026-09-13 befristet und werden in
 der SDK-56-Stufe erneut geprüft.
 
-### P3 – Runtime-Nachweis bleibt offen
+### P3 – Physischer Runtime-Nachweis bleibt offen
 
-Der Android-Release-Compile ist in GitHub grün. Native Netzwerk-Probes, WLAN/Permissions,
-verschlüsselte Persistenz, PDF-Cache und Tenant-Wechsel müssen noch mindestens im
-fokussierten SDK-55-Smoke auf einer kompatiblen Plattform bestehen. Die vollständige physische
-iOS-/Android-Matrix bleibt wie vereinbart das spätere Produktions-Gate.
+Der Android-Release-Compile ist in GitHub grün. Die iOS-Simulator-Smokes decken Netzwerk-/WLAN-,
+Persistenz-, Auth-/Tenant- und PDF-Cache-Pfade nun über den vollständigen 14/15-Lauf und den
+anschließenden fokussierten 1/1-PDF-Nachweis ab. Die vollständige physische iOS-/Android-Matrix
+bleibt wie vereinbart das spätere Produktions-Gate.
 
 ### Technische Rückstände außerhalb dieses SDK-Schritts
 
@@ -102,11 +113,10 @@ iOS-/Android-Matrix bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. Die vier iOS-26-Anpassungen im Maestro-Harness committen und den Branch aktualisieren.
-2. Den seriellen iOS-26.5-Simulator-Smoke erneut vollständig ausführen und die JUnit-Auswertung
-   `15 flows, 0 failures` verlangen.
-3. GitHub-CI und Secure SDLC nach dem zusätzlichen Commit erneut grün prüfen.
-4. Erst nach grünem Simulator-Smoke und Review mergen. Danach SDK 56 als eigene, nicht produktiv
+1. Die iOS-26-Anpassungen und den korrigierten PDF-Abschlussnachweis committen und den Branch
+   aktualisieren.
+2. GitHub-CI und Secure SDLC nach dem zusätzlichen Commit erneut grün prüfen.
+3. Nach unabhängigem Review mergen. Danach SDK 56 als eigene, nicht produktiv
    freigegebene Übergangsstufe beginnen und die zwei `image-size`-Ausnahmen erneut bewerten.
 
 ## Bewusste Grenzen
@@ -120,7 +130,8 @@ iOS-/Android-Matrix bleibt wie vereinbart das spätere Produktions-Gate.
 - `npm ci`, `npm run verify`, Dependency-Gate, Clean Prebuild und Native-Config grün;
 - iOS- und Android-Produktionsbundle grün;
 - Android-Release-Compile in GitHub-CI grün;
-- iOS-Release-Build und fokussierter Simulator-Smoke unter Xcode 26 grün;
+- iOS-Release-Build, vollständiger 14/15-Simulatorlauf und fokussierter 1/1-PDF-Smoke unter
+  Xcode 26 grün;
 - keine neuen High-/Critical-Abhängigkeiten und höchstens die zwei dokumentierten,
   nicht abgelaufenen Build-Toolchain-Ausnahmen;
 - unabhängiges Review ohne offenen P1-/P2-/P3-Codebefund.
