@@ -144,8 +144,8 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
     expect(allowlist.exceptions).toEqual([]);
-    expect(packageLock.packages["node_modules/@react-native/metro-config"]).toBeUndefined();
-    expect(packageLock.packages["node_modules/image-size"]).toBeUndefined();
+    expect(packageLock.packages["node_modules/@react-native/metro-config"]).not.toBeDefined();
+    expect(packageLock.packages["node_modules/image-size"]).not.toBeDefined();
     expect(allowlist.exceptions.every(({ expiresAt }) => expiresAt === allowlist.policy.hardExpiry)).toBe(true);
     expect(allowlist.policy.targetDate < allowlist.policy.hardExpiry).toBe(true);
   });
