@@ -26,8 +26,8 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist technisch migriert und in Verifikation; SDK 56 und 57 stehen aus |
-| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`; 2 transitive Metro-/`image-size`-Ausnahmen bleiben bis zur SDK-56-Prüfung |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist `released` (PR #40, Merge `9a75507`) mit grünen GitHub-Läufen `CI` und `Secure SDLC`; SDK 56 und 57 stehen weiterhin aus |
+| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – **0 aktive High-/Critical-Ausnahmen**: SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`, die 2 transitiven `image-size`-Ausnahmen sind durch die Dependency-Wartung (PR #47, Merge `8282ae1`) geschlossen. Offen bleiben nur der `@xmldom/xmldom`-Override und die Vendor-Härtung; sie werden mit SDK 56/57 neu bewertet |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
 ## Technische Leitplanken
@@ -92,6 +92,24 @@ ein späteres Downgrade oder ein neu eingeführter Node-20-Runner kann nicht unb
 - Alle Jobs laufen auf GitHub-hosted Runnern und erfüllen damit die Mindestversion. Für
   selbstgehostete Runner bleibt `2.327.1` ein hartes Aufnahme-Gate.
 
+Lokale Verifikation der Phase 1 (historischer Nachweis, Stand 2026-08-15 – **nicht** der aktuelle
+Testumfang; der aktuelle Stand sind 487 Tests, siehe Abschnitt „Actions-Wartung 2026-09“): Lint,
+TypeScript, YAML-Syntax und 441 Tests bestanden; 6 Remote-/Gerätetests blieben wie zuvor bewusst
+übersprungen. GitHub-CI-Lauf
+[`31814292278`](https://github.com/kwhussam/praxis-ai/actions/runs/31814292278) bestand `quality`
+einschließlich Gitleaks, Clean-Prebuild, Android-Release-Compile und Gesamtverifikation sowie
+`rls-pgtap`. Es wurde keine Node-20-Annotation mehr erzeugt. Phase 1 ist mit PR
+[`#22`](https://github.com/kwhussam/praxis-ai/pull/22) abgeschlossen: CI-Lauf
+[`31877006993`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006993) bestand `quality`
+einschließlich Android-Release-Compile und Gesamtverifikation sowie `rls-pgtap`; Secure-SDLC-Lauf
+[`31877006987`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006987) bestand im zweiten
+Versuch Dependency Review v5, Dependency-/SBOM-Gate und CodeQL. Der zunächst fehlgeschlagene
+Dependency Review war kein Codefehler; nach Aktivierung des GitHub Dependency Graph lief er grün.
+
+Die normative Phase-2-Baseline steht in
+[`SP3_01B_UPGRADE_BASELINE.md`](./SP3_01B_UPGRADE_BASELINE.md); ihre maschinenprüfbare Fassung ist
+`security/mobile-upgrade-baseline.json`.
+
 ### Actions-Wartung 2026-09
 
 Turnus-Review der geprüften Action-Baseline am 2026-09-02. Dependabot hatte die drei Anhebungen
@@ -118,21 +136,13 @@ Alle SHAs wurden gegen die exakten Upstream-Tag-Refs aufgelöst (annotierte Code
 gepeeltes Commit-Objekt) und die `runs.using`-Deklaration jeder Action wurde am gepinnten Stand als
 `node24` verifiziert. Permissions, Gates und `continue-on-error`-Freiheit sind unverändert.
 
-Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 441 Tests bestanden; 6 Remote-/Gerätetests
-blieben wie zuvor bewusst übersprungen. GitHub-CI-Lauf
-[`31814292278`](https://github.com/kwhussam/praxis-ai/actions/runs/31814292278) bestand `quality`
-einschließlich Gitleaks, Clean-Prebuild, Android-Release-Compile und Gesamtverifikation sowie
-`rls-pgtap`. Es wurde keine Node-20-Annotation mehr erzeugt. Phase 1 ist mit PR
-[`#22`](https://github.com/kwhussam/praxis-ai/pull/22) abgeschlossen: CI-Lauf
-[`31877006993`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006993) bestand `quality`
-einschließlich Android-Release-Compile und Gesamtverifikation sowie `rls-pgtap`; Secure-SDLC-Lauf
-[`31877006987`](https://github.com/kwhussam/praxis-ai/actions/runs/31877006987) bestand im zweiten
-Versuch Dependency Review v5, Dependency-/SBOM-Gate und CodeQL. Der zunächst fehlgeschlagene
-Dependency Review war kein Codefehler; nach Aktivierung des GitHub Dependency Graph lief er grün.
-
-Die normative Phase-2-Baseline steht in
-[`SP3_01B_UPGRADE_BASELINE.md`](./SP3_01B_UPGRADE_BASELINE.md); ihre maschinenprüfbare Fassung ist
-`security/mobile-upgrade-baseline.json`.
+Lokale Verifikation dieser Stufe (Stand 2026-09-02): `npm ci`, Lint, TypeScript und **487 Tests**
+bestanden; 6 Remote-/Gerätetests blieben wie zuvor bewusst übersprungen. Der fail-closed
+Inventartest `security/__tests__/secure-sdlc-config.test.ts` ist mit 13/13 grün.
+`npm run security:dependencies` ist grün und akzeptiert **0 Ausnahmen**; die Allowlist enthält
+keinen aktiven Eintrag mehr. `git diff --check` ist sauber und die alten Pins kommen in `.github`
+und `security` nicht mehr vor. CodeQL und der Android-Release-Compile bleiben GitHub-CI-Gates; sie
+laufen lokal nicht.
 
 ## Phase 3 – SDK-52-Zwischenstand
 
@@ -189,7 +199,7 @@ und alle 15 seriellen iOS-Simulator-Pfade wurden belegt; der WLAN-Lauf bestätig
 persistierte TCP-/SSDP-Probe-Evidenz über die Interop-Schicht. Der Android-Kotlin-Laufzeitnachweis
 bleibt Teil des späteren physischen Geräte-Gates.
 
-## Phase 3 – SDK-55-Zwischenstand
+## Phase 3 – SDK-55-Abschluss
 
 Der fünfte isolierte Migrationsschritt steht auf Expo 55.0.30, React Native 0.83.10 und
 React/React DOM 19.2.0. Die New Architecture ist in SDK 55 verpflichtend; das nicht mehr
@@ -198,8 +208,12 @@ Worklets 0.7 und alle nativen Expo-Module sind als koordinierter Satz aktualisie
 
 Die alten Patch-Package-Patches wurden durch eine kleine fail-closed Postinstall-Härtung ersetzt,
 die exakte Vendor-Versionen und bekannte Quellformen erzwingt. Das Dependency-Gate schließt beide
-PostCSS-Advisories; zwei `image-size@1.2.1`-Advisories bleiben ausschließlich für die transitive
-Metro-Buildkette befristet akzeptiert und werden in SDK 56 erneut bewertet.
+PostCSS-Advisories; zwei `image-size@1.2.1`-Advisories blieben zunächst ausschließlich für die
+transitive Metro-Buildkette befristet akzeptiert. Sie sind inzwischen geschlossen: Die
+Dependency-Wartung (PR [`#47`](https://github.com/kwhussam/praxis-ai/pull/47), Merge `8282ae1`)
+entfernte die ungenutzte optionale `@react-native/metro-config`-Peer-Kette, womit `image-size` gar
+nicht mehr installiert wird. Beide Advisories stehen nur noch als historischer Nachweis unter
+`resolvedInDependencyMaintenance`; die aktive Allowlist ist leer.
 
 Lint, TypeScript, 487 lokale Tests, Clean Prebuild, Native-Config und Dependency-Gate sind grün.
 Beide Hermes-Produktionsbundles sind grün; ihr erster Lauf deckte das unter SDK 55 nicht mehr
@@ -211,7 +225,13 @@ Simulator-Debug-Build sind grün; auch der Android-Release-Compile ist in GitHub
 serielle iOS-26.5-Smoke bestand 4/15 Flows. Die elf Fehler wurden auf vier Änderungen an
 iOS-Systemdialogen beziehungsweise XCTest-Verhalten eingegrenzt (Deep-Link-Bestätigung,
 Passwort-Speichern, Tastatur-Dismiss und Share-Sheet-Dismiss), nicht auf elf Produktdefekte. Der
-Maestro-Harness ist angepasst; der erneute 15/15-Lauf bleibt das letzte lokale Runtime-Gate.
+Maestro-Harness ist angepasst; der Wiederholungslauf bestand 14/15 Flows. Der verbleibende Flow 15
+wurde fokussiert mit 1/1 reproduziert — die Ursache war eine Maestro-Assertion, nicht der
+PDF-Export, und ist behoben.
+
+SDK 55 ist damit abgeschlossen und als PR [`#40`](https://github.com/kwhussam/praxis-ai/pull/40)
+(Merge `9a75507`) gemergt; die nachgelagerten GitHub-Läufe `CI` und `Secure SDLC` waren grün.
+SDK 56 bleibt als nicht produktiv freizugebende Übergangsstufe und SDK 57 als Zielstufe offen.
 
 ## Primärquellen
 
