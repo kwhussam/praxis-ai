@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-08-15",
+  "reviewedAt": "2026-09-02",
   "minimumRunnerVersion": "2.327.1",
   "actions": {
     "actions/attest": {
@@ -22,10 +22,10 @@
       "source": "https://github.com/actions/dependency-review-action/releases/tag/v5.0.0"
     },
     "actions/setup-java": {
-      "sha": "b6effb05e454b25005698d916606bdc6ffcbf961",
-      "release": "v5.7.0",
+      "sha": "dd06d9cba3e5552c54d9f8ea23572deb30010f7c",
+      "release": "v6.0.0",
       "runtime": "node24",
-      "source": "https://github.com/actions/setup-java/releases/tag/v5.7.0"
+      "source": "https://github.com/actions/setup-java/releases/tag/v6.0.0"
     },
     "actions/setup-node": {
       "sha": "820762786026740c76f36085b0efc47a31fe5020",
@@ -40,16 +40,16 @@
       "source": "https://github.com/actions/upload-artifact/releases/tag/v7.0.1"
     },
     "github/codeql-action/analyze": {
-      "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-      "release": "v4.37.7",
+      "sha": "cdf488f595d80d6e07e03d4674febd5ab45fa938",
+      "release": "v4.37.9",
       "runtime": "node24",
-      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.7"
+      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.9"
     },
     "github/codeql-action/init": {
-      "sha": "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd",
-      "release": "v4.37.7",
+      "sha": "cdf488f595d80d6e07e03d4674febd5ab45fa938",
+      "release": "v4.37.9",
       "runtime": "node24",
-      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.7"
+      "source": "https://github.com/github/codeql-action/releases/tag/v4.37.9"
     },
     "gitleaks/gitleaks-action": {
       "sha": "e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e",
