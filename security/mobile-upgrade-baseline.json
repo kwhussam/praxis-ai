@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "capturedAt": "2026-08-27",
-  "baseCommit": "165fea5548b5c3ebce96f8cd109e4c93cbfccc98",
+  "capturedAt": "2026-09-02",
+  "baseCommit": "b5b33b621dc26431d43473ab7ce7be90f34a5c7a",
   "current": {
-    "expoSdk": "55",
-    "expo": "55.0.30",
-    "reactNative": "0.83.10",
-    "react": "19.2.0",
+    "expoSdk": "56",
+    "expo": "56.0.21",
+    "reactNative": "0.85.3",
+    "react": "19.2.3",
     "newArchitecture": "required",
     "node": "22.x",
     "npm": "10.9.2",
@@ -14,14 +14,14 @@
       "androidMinSdk": 24,
       "androidCompileSdk": 36,
       "androidTargetSdk": 36,
-      "iosDeploymentTarget": "15.1"
+      "iosDeploymentTarget": "16.4"
     },
     "expoDoctor": {
-      "version": "1.20.3",
-      "passed": 20,
-      "total": 20,
+      "version": "1.20.4",
+      "passed": 21,
+      "total": 22,
       "reactNativeDirectory": "passed",
-      "expectedOpenFinding": null
+      "expectedOpenFinding": "Hermes V1 250829098.0.10 shipped with React Native 0.85.3 is affected by the documented memory regression that also hits react-native-worklets and react-native-reanimated. The fix first ships in Hermes V1 250829098.0.16 / React Native 0.86.2, so it is structurally unresolvable inside SDK 56 and is the reason this stage stays transitional and is not released to production."
     }
   },
   "migration": {
@@ -88,44 +88,43 @@
     "@expo/vector-icons": "15.1.1",
     "@noble/ciphers": "1.3.0",
     "@opentelemetry/api": "1.9.1",
-    "@react-native-community/netinfo": "11.5.2",
-    "@react-navigation/native": "7.3.17",
+    "@react-native-community/netinfo": "12.0.1",
     "@supabase/supabase-js": "2.112.4",
     "@tanstack/react-query": "5.102.8",
-    "expo": "55.0.30",
-    "expo-asset": "55.0.20",
-    "expo-blur": "55.0.18",
-    "expo-build-properties": "55.0.18",
-    "expo-constants": "55.0.17",
-    "expo-crypto": "55.0.19",
-    "expo-dev-client": "55.0.39",
-    "expo-device": "55.0.21",
-    "expo-file-system": "55.0.26",
-    "expo-font": "55.0.8",
-    "expo-haptics": "55.0.18",
-    "expo-linear-gradient": "55.0.18",
-    "expo-linking": "55.0.17",
-    "expo-network": "55.0.18",
-    "expo-notifications": "55.0.27",
-    "expo-router": "55.0.18",
-    "expo-secure-store": "55.0.18",
-    "expo-sharing": "55.0.24",
-    "expo-sqlite": "55.0.20",
-    "expo-status-bar": "55.0.6",
+    "expo": "56.0.21",
+    "expo-asset": "56.0.24",
+    "expo-blur": "56.0.4",
+    "expo-build-properties": "56.0.27",
+    "expo-constants": "56.0.25",
+    "expo-crypto": "56.0.5",
+    "expo-dev-client": "56.0.26",
+    "expo-device": "56.0.4",
+    "expo-file-system": "56.0.11",
+    "expo-font": "56.0.7",
+    "expo-haptics": "56.0.3",
+    "expo-linear-gradient": "56.0.4",
+    "expo-linking": "56.0.17",
+    "expo-network": "56.0.5",
+    "expo-notifications": "56.0.25",
+    "expo-router": "56.2.20",
+    "expo-secure-store": "56.0.4",
+    "expo-sharing": "56.0.26",
+    "expo-sqlite": "56.0.6",
+    "expo-status-bar": "56.0.4",
     "hono": "4.13.5",
     "lucide-react-native": "0.520.0",
     "moti": "0.29.0",
-    "react": "19.2.0",
-    "react-dom": "19.2.0",
-    "react-native": "0.83.10",
-    "react-native-gesture-handler": "2.30.1",
-    "react-native-reanimated": "4.2.1",
-    "react-native-safe-area-context": "5.6.2",
-    "react-native-screens": "4.23.0",
-    "react-native-svg": "15.15.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.85.3",
+    "react-native-gesture-handler": "2.31.2",
+    "react-native-reanimated": "4.3.1",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.26.2",
+    "react-native-svg": "15.15.4",
     "react-native-web": "0.21.2",
     "react-native-wifi-reborn": "4.13.6",
-    "react-native-worklets": "0.7.4",
+    "react-native-worklets": "0.8.3",
     "zustand": "4.5.7"
   },
   "architectureSensitivePackages": {
@@ -163,7 +162,6 @@
       "react-native-worklets"
     ],
     "migrationCoupled": [
-      "@react-navigation/native",
       "lucide-react-native",
       "moti",
       "react",
@@ -180,7 +178,7 @@
       "packages": [
         "react-native"
       ],
-      "reason": "Persisted measured TCP and SSDP evidence proves the Swift/Objective-C legacy bridge through the New Architecture interop layer on an iOS simulator. Runtime proof for the Kotlin bridge remains deferred to the physical Android device gate."
+      "reason": "Persisted measured TCP and SSDP evidence proves the Swift/Objective-C legacy bridge through the New Architecture interop layer on an iOS simulator, now on React Native 0.85. Runtime proof for the Kotlin bridge remains deferred to the physical Android device gate."
     },
     {
       "id": "wifi_collection",
@@ -208,56 +206,55 @@
     {
       "id": "file_and_pdf_lifecycle",
       "severity": "high",
-      "status": "legacy_api_migration_deferred_to_sdk56_review",
+      "status": "legacy_api_still_exported_migration_deferred_to_sdk57",
       "packages": [
         "expo-file-system",
         "expo-sharing"
       ],
-      "reason": "Expo changes the default file-system API in SDK 54 and makes copy/move asynchronous in SDK 56."
+      "reason": "SDK 56 makes copy() and move() asynchronous, but PraxisShield calls neither and reads the PDF cache through the still-exported expo-file-system/legacy entry point. The migration off the deprecated legacy API remains open for the SDK 57 stage."
     },
     {
       "id": "router_navigation_split",
       "severity": "high",
-      "status": "reassess_router_peer_before_sdk56",
+      "status": "resolved_in_sdk56_router_decoupled",
       "packages": [
         "expo-router",
-        "@react-navigation/native",
         "react-native-gesture-handler",
         "react-native-screens"
       ],
-      "reason": "SDK 56 decouples Expo Router from React Navigation and Expo Doctor warns when both remain installed."
+      "reason": "SDK 56 decoupled Expo Router from React Navigation; expo-router 56 builds on its own standard-navigation fork. The orphaned @react-navigation/native direct dependency was removed after proving no application module imported it and no other package required it. Expo Doctor's dedicated check now passes."
     },
     {
       "id": "animation_runtime",
       "severity": "high",
-      "status": "sdk56_transitional_only_then_sdk57",
+      "status": "sdk56_hermes_v1_regression_open_fix_in_sdk57",
       "packages": [
         "moti",
         "react-native-reanimated"
       ],
-      "reason": "Reanimated 4 requires New Architecture and SDK 56 has a documented Hermes/Reanimated memory regression fixed in SDK 57."
+      "reason": "SDK 56 enables Hermes V1 by default and Expo Doctor confirms the installed Hermes V1 250829098.0.10 is affected by the documented memory regression with react-native-worklets and react-native-reanimated. The fix first ships in Hermes V1 250829098.0.16 / React Native 0.86.2, so it cannot be closed inside SDK 56. This is the reason SDK 56 stays transitional and is not released to production."
     },
     {
       "id": "icon_migration",
       "severity": "medium",
-      "status": "migrate_before_final_target",
+      "status": "explicit_direct_dependency_migration_deferred_to_sdk57",
       "packages": [
         "@expo/vector-icons",
         "expo-font",
         "react-native-svg",
         "lucide-react-native"
       ],
-      "reason": "Expo SDK 56 deprecates the Expo vector-icon wrapper in favor of scoped React Native vector-icon packages."
+      "reason": "SDK 56 removed @expo/vector-icons from the expo package's own dependencies; PraxisShield already declares it directly, so rendering is unaffected. Migrating to the scoped @react-native-vector-icons packages remains open before the final target."
     },
     {
       "id": "minimum_platform_bump",
       "severity": "high",
-      "status": "approved_android24_ios16_4",
+      "status": "applied_android24_ios16_4",
       "packages": [
         "react-native",
         "expo-build-properties"
       ],
-      "reason": "The migration drops Android 6/API 23 and later drops iOS 15 in favor of Android 7/API 24 and iOS 16.4."
+      "reason": "The migration keeps Android 7/API 24 and raises the iOS deployment target to 16.4, which expo-build-properties enforces fail-closed in SDK 56. Android compileSdk and targetSdk stay at 36."
     }
   ],
   "configPlugins": [

@@ -5,7 +5,7 @@ const {
   withAndroidManifest,
   withAppBuildGradle,
   withDangerousMod
-} = require("@expo/config-plugins");
+} = require("expo/config-plugins");
 
 // Expo SDK 51's Android release lint accepts these five backup domains. PraxisShield is not
 // directBootAware and does not create device-protected storage; verify-native-config enforces that

@@ -1,4 +1,4 @@
-const { withAppDelegate } = require("@expo/config-plugins");
+const { withAppDelegate } = require("expo/config-plugins");
 
 const PROVIDER_RETURN =
   '  return [[RCTBundleURLProvider sharedSettings] jsBundleURLForBundleRoot:@".expo/.virtual-metro-entry"];';

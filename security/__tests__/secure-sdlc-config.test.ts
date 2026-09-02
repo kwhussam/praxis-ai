@@ -139,13 +139,21 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(allowlist.policy.decision).toContain("No active High/Critical dependency exceptions");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
-    expect(allowlist.policy.nextStage).toBe("sdk56");
+    expect(allowlist.policy.nextStage).toBe("sdk57");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
     expect(allowlist.exceptions).toEqual([]);
-    expect(packageLock.packages["node_modules/@react-native/metro-config"]).not.toBeDefined();
-    expect(packageLock.packages["node_modules/image-size"]).not.toBeDefined();
+    // React Native 0.85 reinstates @react-native/metro-config as a real dependency of
+    // react-native-worklets and @react-native/community-cli-plugin, so its absence is no
+    // longer a usable proxy. Metro 0.84 dropped image-size entirely, so assert the actual
+    // security property directly and at every nesting level instead of at the root only.
+    const imageSizeInstallations = Object.keys(packageLock.packages).filter(
+      (packagePath) =>
+        packagePath === "node_modules/image-size" ||
+        packagePath.endsWith("/node_modules/image-size")
+    );
+    expect(imageSizeInstallations).toEqual([]);
     expect(allowlist.exceptions.every(({ expiresAt }) => expiresAt === allowlist.policy.hardExpiry)).toBe(true);
     expect(allowlist.policy.targetDate < allowlist.policy.hardExpiry).toBe(true);
   });
@@ -158,10 +166,9 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("pull_request:\n    branches: [main]");
   });
 
-  it("keeps the xmldom override compatible with every SDK 55 plist installation", () => {
+  it("keeps the xmldom override compatible with every SDK 56 plist installation", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
-    const expoPlist = require("@expo/plist") as { default: { parse(xml: string): unknown } };
     const installedPlists = Object.entries(packageLock.packages)
       .filter(([packagePath]) =>
         packagePath === "node_modules/@expo/plist" || packagePath.endsWith("/node_modules/@expo/plist")
@@ -171,17 +178,28 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(packageLock.packages["node_modules/@xmldom/xmldom"].version).toBe("0.9.11");
     expect(packageJson.scripts.postinstall).toBe("node scripts/apply-vendor-hardening.mjs");
     expect(packageJson.devDependencies["patch-package"]).toBe(undefined);
-    expect(installedPlists).toHaveLength(1);
-    expect(installedPlists[0][1].version).toBe("0.5.4");
-    expect(readFileSync(join(repositoryRoot, installedPlists[0][0], "build/parse.js"), "utf8"))
-      .toContain('parseFromString(xml.trimStart(), "text/xml")');
+    // SDK 56 no longer hoists @expo/plist to the project root; it is installed once per
+    // consumer. Every single installation must carry the hardening, because the override
+    // forces xmldom 0.9 while @expo/plist itself still declares the ^0.8.8 API.
+    expect(installedPlists.length).toBeGreaterThan(0);
+    for (const [packagePath, metadata] of installedPlists) {
+      expect(metadata.version).toBe("0.7.0");
+      expect(readFileSync(join(repositoryRoot, packagePath, "build/parse.js"), "utf8"))
+        .toContain('parseFromString(xml.trimStart(), "text/xml")');
+    }
+
+    // The unpatched upstream call throws under xmldom 0.9, so a working parse proves the
+    // hardening is actually in effect rather than merely present as a string.
+    const expoPlist = require(
+      join(repositoryRoot, installedPlists[0][0])
+    ) as { default: { parse(xml: string): unknown } };
     expect(expoPlist.default.parse(`
       <?xml version="1.0" encoding="UTF-8"?>
       <plist version="1.0"><dict/></plist>
     `)).toEqual({});
   });
 
-  it("keeps every SDK 55 Android permission lookup fail-closed", () => {
+  it("keeps every SDK 56 Android permission lookup fail-closed", () => {
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const corePaths = Object.entries(packageLock.packages)
       .filter(([packagePath]) =>
@@ -191,7 +209,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(existsSync(vendorHardening)).toBe(true);
     expect(corePaths).toHaveLength(1);
-    expect(corePaths[0][1].version).toBe("55.0.25");
+    expect(corePaths[0][1].version).toBe("56.0.25");
     const installedSource = readFileSync(join(
       repositoryRoot,
       corePaths[0][0],

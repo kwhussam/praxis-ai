@@ -3,9 +3,9 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "No active High/Critical dependency exceptions after the controlled September 2026 maintenance; the unused optional Metro peer chain and its image-size advisories were removed",
+    "decision": "No active High/Critical dependency exceptions after the Expo SDK 56 migration; React Native 0.85 reintroduces @react-native/metro-config as a real dependency of react-native-worklets and the community CLI plugin, but Metro 0.84 no longer depends on image-size, so the previously excepted advisories stay uninstalled",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
-    "nextStage": "sdk56",
+    "nextStage": "sdk57",
     "targetDate": "2026-09-07",
     "hardExpiry": "2026-09-13"
   },
@@ -17,7 +17,9 @@
       "url": "https://github.com/advisories/GHSA-23hp-3jrh-7fpw",
       "affectedRange": "<=7.5.18",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -36,7 +38,9 @@
       "url": "https://github.com/advisories/GHSA-34x7-hfp2-rc4v",
       "affectedRange": "<7.5.7",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -55,7 +59,9 @@
       "url": "https://github.com/advisories/GHSA-83g3-92jg-28cx",
       "affectedRange": "<7.5.8",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -74,7 +80,9 @@
       "url": "https://github.com/advisories/GHSA-8qq5-rm4j-mr97",
       "affectedRange": "<=7.5.2",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -93,7 +101,9 @@
       "url": "https://github.com/advisories/GHSA-8x88-c5mf-7j5w",
       "affectedRange": "<=7.5.17",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -112,7 +122,9 @@
       "url": "https://github.com/advisories/GHSA-9ppj-qmqm-q256",
       "affectedRange": "<=7.5.10",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -131,7 +143,9 @@
       "url": "https://github.com/advisories/GHSA-qffp-2rhf-9h96",
       "affectedRange": "<=7.5.9",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -150,7 +164,9 @@
       "url": "https://github.com/advisories/GHSA-r6q2-hw4h-h46w",
       "affectedRange": "<=7.5.3",
       "scope": "build-toolchain",
-      "observedVersions": ["6.2.1"],
+      "observedVersions": [
+        "6.2.1"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > tar",
         "expo > @expo/cli > cacache > tar"
@@ -171,7 +187,9 @@
       "url": "https://github.com/advisories/GHSA-6g55-p6wh-862q",
       "affectedRange": "<=8.5.11",
       "scope": "build-toolchain",
-      "observedVersions": ["8.4.49"],
+      "observedVersions": [
+        "8.4.49"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
@@ -189,7 +207,9 @@
       "url": "https://github.com/advisories/GHSA-r28c-9q8g-f849",
       "affectedRange": "<=8.5.17",
       "scope": "build-toolchain",
-      "observedVersions": ["8.4.49"],
+      "observedVersions": [
+        "8.4.49"
+      ],
       "dependencyPaths": [
         "expo > @expo/cli > @expo/metro-config > postcss"
       ],
@@ -209,7 +229,9 @@
       "url": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
       "affectedRange": "<=2.0.2",
       "scope": "build-toolchain",
-      "observedVersions": ["1.2.1"],
+      "observedVersions": [
+        "1.2.1"
+      ],
       "dependencyPaths": [
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
@@ -227,7 +249,9 @@
       "url": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
       "affectedRange": "<=2.0.2",
       "scope": "build-toolchain",
-      "observedVersions": ["1.2.1"],
+      "observedVersions": [
+        "1.2.1"
+      ],
       "dependencyPaths": [
         "react-native > @react-native/community-cli-plugin > metro > image-size"
       ],
