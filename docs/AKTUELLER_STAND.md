@@ -115,6 +115,23 @@ diese Bewertung erneut. Der Regressionstest prüft nun **jede** der sechs
 `@expo/plist`-Installationen (SDK 56 hoistet nicht mehr) und belegt die Wirksamkeit zusätzlich
 durch einen echten Parse-Aufruf statt nur durch einen Textvergleich.
 
+### `expo/fetch` als Standard-`fetch` — nur zur Laufzeit prüfbar
+
+SDK 56 ersetzt `globalThis.fetch` durch `expo/fetch` (Opt-out über
+`EXPO_PUBLIC_USE_RN_FETCH=1`). Es wurde **kein** Opt-out gesetzt; der SDK-56-Standard bleibt aktiv.
+
+Betroffen sind zwei Stellen mit unterschiedlicher Risikolage:
+
+- `lib/api/client.ts` setzt Timeouts über `AbortController` und `signal`. Abbruch- und
+  Timeout-Semantik sind damit implementierungsabhängig.
+- `lib/security/networkProbes.ts` spricht per `fetch` lokale Netzknoten im Klartext an; die
+  ATS-Ausnahme dafür ist bewusst auf `NSAllowsLocalNetworking` begrenzt.
+
+Die Jest-Suite mockt `fetch` und kann diesen Austausch deshalb **grundsätzlich nicht** abdecken.
+Der Nachweis gehört in den Laufzeit-Smoke (WLAN-Seite und Worker-Aufrufe) und steht auf dieser
+Stufe noch aus. Es wurde nichts an den Aufrufstellen geändert — eine Anpassung ohne Laufzeitbefund
+wäre geraten, nicht belegt.
+
 ### Hermes v1 — bekanntes, nicht schließbares Risiko dieser Stufe
 
 - SDK 56 aktiviert **Hermes v1 standardmäßig**. Genau diese Konfiguration wird hier verwendet:
@@ -172,11 +189,20 @@ durch einen echten Parse-Aufruf statt nur durch einen Textvergleich.
 | Android-Produktionsbundle | grün | Hermes-Bytecode `8.6 MB` (`.hbc`) |
 | **Android Unsigned Release Compile** | **nicht ausgeführt** | Android-SDK-Plattform 36 lokal nicht installiert, kein `sdkmanager`/cmdline-tools vorhanden. **Kein Codebefund** — der Build lief bis zur Abhängigkeitsauflösung. Zwingendes GitHub-CI-Gate. |
 | **`npm run verify:android-release-manifest`** | **nicht ausführbar** | scheitert fail-closed am fehlenden Android-Release-Output; hängt am vorigen Punkt |
-| **Vollständiger 15-Flow-Maestro-Lauf** | **nicht ausgeführt** | Docker antwortet auf diesem Rechner nicht, damit ist `npm run e2e:env:up` (lokales Supabase) nicht startbar |
+| Fokussierter iOS-Simulator-Smoke | grün: 7/7 | iPhone 17 Pro / iOS 26.5, Release-Build: App-Start, Auth-Screen gerendert, `auth-submit`-testID vorhanden, Navigation zur Registrierung — unter Hermes v1 und New Architecture |
+| **Vollständiger 15-Flow-Maestro-Lauf** | **nicht ausgeführt** | Docker antwortet auf diesem Rechner nicht, damit ist `npm run e2e:env:up` (lokales Supabase) nicht startbar. Login, Onboarding/Dashboard, WLAN-Seite und PDF-Export-Pfad sind dadurch **nicht** abgedeckt |
 | Physische Geräte-Smokes | zurückgestellt | bleiben wie vereinbart ein späteres Release-Gate |
 
-Die drei fett markierten Zeilen sind **nicht** bestanden und dürfen nicht als bestanden gelesen
+Die fett markierten Zeilen sind **nicht** bestanden und dürfen nicht als bestanden gelesen
 werden. Die exakten noch offenen Kommandos stehen unter „Als Nächstes".
+
+Zum fokussierten Smoke: Er belegt, dass der migrierte Stack real bootet — Hermes v1 führt das
+Bundle aus, die New-Architecture-App startet, Expo Router mountet die Auth-Route und die UI
+rendert. Ein erster Startversuch schlug mit `Error: supabaseUrl is required.` fehl; Ursache war
+die fehlende `.env` im isolierten Worktree, also die **fail-closed Konfigurationsprüfung der App
+selbst**, kein SDK-56-Defekt. Mit lokalen Platzhalterwerten startet die App sauber. Der Smoke
+deckt bewusst nur die backend-unabhängigen Pfade ab; alles Weitere braucht das geseedete
+Supabase.
 
 ## Verifikation der SDK-55-Stufe (historisch)
 
