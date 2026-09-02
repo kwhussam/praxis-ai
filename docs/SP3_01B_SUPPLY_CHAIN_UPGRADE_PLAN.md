@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-08-27
+Stand: 2026-09-02
 
 Status: `in_progress`
 
@@ -58,10 +58,10 @@ besitzt keine eigene JavaScript-Runtime:
 | `actions/attest` | v4.2.2 | Node 24 | `1e69f48acb82d1966a394da916b4c1698aa569d6` |
 | `actions/checkout` | v7.0.1 | Node 24 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
 | `actions/dependency-review-action` | v5.0.0 | Node 24 | `a1d282b36b6f3519aa1f3fc636f609c47dddb294` |
-| `actions/setup-java` | v5.7.0 | Node 24 | `b6effb05e454b25005698d916606bdc6ffcbf961` |
+| `actions/setup-java` | v6.0.0 | Node 24 | `dd06d9cba3e5552c54d9f8ea23572deb30010f7c` |
 | `actions/setup-node` | v7.0.0 | Node 24 | `820762786026740c76f36085b0efc47a31fe5020` |
 | `actions/upload-artifact` | v7.0.1 | Node 24 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
-| `github/codeql-action/init` und `analyze` | v4.37.7 | Node 24 | `ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd` |
+| `github/codeql-action/init` und `analyze` | v4.37.9 | Node 24 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` |
 | `gitleaks/gitleaks-action` | v3.0.0 | Node 24 | `e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e` |
 | `supabase/setup-cli` | v3.0.0 | Composite | `46f7f98c7f948ad727d22c1e67fab04c223a0520` |
 
@@ -91,6 +91,32 @@ ein späteres Downgrade oder ein neu eingeführter Node-20-Runner kann nicht unb
   PraxisShield-Policy wird daher ohne semantische Abschwächung übernommen.
 - Alle Jobs laufen auf GitHub-hosted Runnern und erfüllen damit die Mindestversion. Für
   selbstgehostete Runner bleibt `2.327.1` ein hartes Aufnahme-Gate.
+
+### Actions-Wartung 2026-09
+
+Turnus-Review der geprüften Action-Baseline am 2026-09-02. Dependabot hatte die drei Anhebungen
+einzeln vorgeschlagen ([`#44`](https://github.com/kwhussam/praxis-ai/pull/44),
+[`#45`](https://github.com/kwhussam/praxis-ai/pull/45),
+[`#46`](https://github.com/kwhussam/praxis-ai/pull/46)). Sie werden bewusst **nicht** einzeln
+gemergt, sondern in einem kontrollierten Commit zusammengeführt: `setup-java` kommt in zwei
+Workflows vor und CodeQL `init`/`analyze` müssen denselben SHA tragen. Ein Einzelmerge würde
+zwischenzeitlich uneinheitliche Pins erzeugen, die das fail-closed Inventar genau dafür
+zurückweist.
+
+- `actions/setup-java` v5.7.0 → v6.0.0 (`dd06d9cba3e5552c54d9f8ea23572deb30010f7c`): v6 migriert
+  intern auf ESM; der Upstream dokumentiert dies ausdrücklich als nicht nutzerseitig brechend.
+  Die einzige Umbenennung betrifft `jdkFile` → `jdk-file` mit weiterhin akzeptiertem Alias;
+  PraxisShield nutzt diesen Input nicht. Beide Verwendungen bleiben unverändert auf Temurin 17,
+  ohne Cache-Aktivierung im normalen CI. Die Runtime bleibt `node24`.
+- `github/codeql-action/init` und `analyze` v4.37.7 → v4.37.9
+  (`cdf488f595d80d6e07e03d4674febd5ab45fa938`): 4.37.8 enthält keine nutzerseitigen Änderungen,
+  4.37.9 hebt ausschließlich das CodeQL-Standardbundle auf 2.26.4 an. Inputs, `build-mode: none`,
+  `queries: security-extended` und die SARIF-Pfade bleiben unverändert; das nachgelagerte
+  `security:sarif:gate` bleibt damit wirksam.
+
+Alle SHAs wurden gegen die exakten Upstream-Tag-Refs aufgelöst (annotierte CodeQL-Tags über ihr
+gepeeltes Commit-Objekt) und die `runs.using`-Deklaration jeder Action wurde am gepinnten Stand als
+`node24` verifiziert. Permissions, Gates und `continue-on-error`-Freiheit sind unverändert.
 
 Lokale Verifikation: Lint, TypeScript, YAML-Syntax und 441 Tests bestanden; 6 Remote-/Gerätetests
 blieben wie zuvor bewusst übersprungen. GitHub-CI-Lauf
@@ -200,6 +226,8 @@ Maestro-Harness ist angepasst; der erneute 15/15-Lauf bleibt das letzte lokale R
 - Upload Artifact: <https://github.com/actions/upload-artifact/releases/tag/v7.0.1>
 - Gitleaks Action: <https://github.com/gitleaks/gitleaks-action/releases/tag/v3.0.0>
 - Dependency Review: <https://github.com/actions/dependency-review-action/releases/tag/v5.0.0>
+- Setup Java: <https://github.com/actions/setup-java/releases/tag/v6.0.0>
+- CodeQL Action: <https://github.com/github/codeql-action/releases/tag/v4.37.9>
 - Checkout v5/v6/v7: <https://github.com/actions/checkout/releases>
 - Setup Node v5/v6/v7: <https://github.com/actions/setup-node/releases>
 - Upload Artifact v5/v6/v7: <https://github.com/actions/upload-artifact/releases>

@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-01
+Stand: 2026-09-02
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -14,16 +14,17 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 ## Aktueller Arbeitskontext
 
-- Stufe: kontrollierte Dependency-Wartung nach dem abgeschlossenen Expo-SDK-55-Upgrade.
-- Branch: `codex/dependency-maintenance-2026-09-01`, direkt von `origin/main` am SDK-55-Merge
-  `9a75507b8561606857e9c7cefe94c0d4cdbbd31d` abgezweigt.
-- Ausgangspunkt: SDK 55 wurde als PR `#40` gemergt; die nachgelagerten GitHub-Läufe `CI` und
-  `Secure SDLC` waren grün. Die roten Dependabot-Läufe waren Baseline-/Allowlist-Drift, keine
-  Regression des gemergten Hauptzweigs.
+- Stufe: kontrollierte Wartung der geprüften GitHub-Actions-Baseline nach abgeschlossener
+  Dependency-Wartung.
+- Branch: `codex/github-actions-maintenance-2026-09`, direkt von `origin/main` am Stand
+  `dae766bdc001247d98263a308123eb5709b03550` abgezweigt.
+- Ausgangspunkt: PR `#47` (konsolidierte Dependency-Wartung) und PR `#48`
+  (`@cloudflare/workers-types` `5.20260830.1`) sind gemergt. Damit ist die Dependency-Stufe
+  abgeschlossen; die aktive Dependency-Allowlist ist leer.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
 
-## Was in der aktuellen Dependency-Wartung gemacht wurde
+## Was in der Dependency-Wartung gemacht wurde (abgeschlossen, PR #47 und #48)
 
 - **Vier Dependabot-Updates konsolidiert:** Hono `4.13.5` (Security-Patch), Supabase JS
   `2.112.4`, TanStack Query `5.102.8`, Wrangler `4.127.1` und Cloudflare Workers Types
@@ -36,6 +37,34 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   Allowlist ist leer, der historische Nachweis bleibt erhalten.
 - **Runtime-Verträglichkeit bewiesen:** Beide nativen Hermes-Produktionsbundles entstehen ohne
   die optionale Peer-Kette; Wrangler `4.127.1` paketiert den Worker im Dry-Run erfolgreich.
+- **Abgeschlossen:** PR [`#47`](https://github.com/kwhussam/praxis-ai/pull/47) ist als
+  `8282ae1` gemergt. Der nachgezogene Dependabot-Gruppen-PR
+  [`#48`](https://github.com/kwhussam/praxis-ai/pull/48) hebt `@cloudflare/workers-types` auf
+  `5.20260830.1` und ist als `dae766b` gemergt; er ist der Ausgangspunkt dieser Stufe.
+
+## Was in der aktuellen Actions-Wartung gemacht wurde
+
+- **Drei Dependabot-Action-PRs konsolidiert:** [`#44`](https://github.com/kwhussam/praxis-ai/pull/44),
+  [`#45`](https://github.com/kwhussam/praxis-ai/pull/45) und
+  [`#46`](https://github.com/kwhussam/praxis-ai/pull/46) liegen in einem kontrollierten Commit.
+  Sie werden bewusst nicht einzeln gemergt: `setup-java` wird in zwei Workflows verwendet und
+  CodeQL `init`/`analyze` müssen denselben SHA tragen. Einzelmerges würden zwischenzeitlich
+  uneinheitliche Pins erzeugen, die das fail-closed Inventar zurückweist.
+- **`actions/setup-java` v5.7.0 → v6.0.0** (`dd06d9cba3e5552c54d9f8ea23572deb30010f7c`) in
+  `.github/workflows/ci.yml` und `.github/workflows/release-android.yml`. Beide Stellen tragen
+  denselben SHA und bleiben unverändert auf Temurin 17.
+- **`github/codeql-action/init` und `analyze` v4.37.7 → v4.37.9**
+  (`cdf488f595d80d6e07e03d4674febd5ab45fa938`) gemeinsam in `.github/workflows/security.yml`.
+- **Inventar und Plan nachgezogen:** `security/github-action-inventory.json` führt SHA, Release,
+  Quelle und `reviewedAt: 2026-09-02`; die Runtime bleibt für alle drei Einträge belegt `node24`.
+  Die Tabelle in `docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md` ist mit der Breaking-Change-Prüfung
+  ergänzt.
+- **Pins gegen den Upstream verifiziert:** Jeder SHA wurde über den exakten Tag-Ref aufgelöst
+  (annotierte CodeQL-Tags über ihr gepeeltes Commit-Objekt) und die `runs.using`-Deklaration am
+  gepinnten Stand als `node24` geprüft. Alle Verwendungen bleiben auf vollständige 40-stellige
+  Commit-SHAs gepinnt.
+- **Keine Abschwächung:** Permissions unverändert, kein `continue-on-error`, keine gelockerten
+  Gates, keine weiteren Dependency-Änderungen.
 
 ## Was in der SDK-55-Stufe gemacht wurde
 
@@ -129,12 +158,14 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. Den konsolidierten Dependency-Wartungsbranch pushen und einen Pull Request gegen `main`
+1. Den konsolidierten Actions-Wartungsbranch pushen und einen Pull Request gegen `main`
    erstellen.
-2. GitHub-CI und Secure SDLC einschließlich `android-release-compile` grün prüfen und den
-   Dependency-Diff unabhängig reviewen lassen.
-3. Nach grünem Review mergen. Danach SDK 56 als eigene, nicht produktiv freigegebene
-   Übergangsstufe beginnen; eine erneute `image-size`-Ausnahme ist nicht mehr erforderlich.
+2. GitHub-CI und Secure SDLC grün prüfen. Entscheidend sind `setup-java` in `quality` und im
+   Android-Release-Compile sowie ein vollständiger CodeQL-Lauf mit anschließendem
+   `security:sarif:gate`.
+3. Nach grünem Review und Merge die Dependabot-PRs `#44`, `#45` und `#46` als überholt schließen.
+   Vorher bleiben sie bewusst offen.
+4. Danach SDK 56 als eigene, nicht produktiv freigegebene Übergangsstufe beginnen.
 
 ## Bewusste Grenzen
 
@@ -144,7 +175,11 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Abnahmekriterium für den nächsten Schritt
 
-- `npm ci`, `npm run verify`, Dependency-Gate, Clean Prebuild und Native-Config grün;
+- `npm ci`, `npm run verify` und `npm run security:dependencies` grün;
+- Actions-Inventartest fail-closed grün: jede Verwendung SHA-gepinnt, CodeQL `init`/`analyze` und
+  beide `setup-java`-Stellen jeweils identisch;
+- GitHub-CI und Secure SDLC grün, insbesondere CodeQL v4.37.9 und `security:sarif:gate`;
+- Dependency-Gate, Clean Prebuild und Native-Config grün;
 - iOS- und Android-Produktionsbundle grün;
 - Android-Release-Compile in GitHub-CI grün;
 - iOS-Release-Build, vollständiger 14/15-Simulatorlauf und fokussierter 1/1-PDF-Smoke unter
