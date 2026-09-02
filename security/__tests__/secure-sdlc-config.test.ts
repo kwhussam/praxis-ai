@@ -122,7 +122,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("if-no-files-found: error");
   });
 
-  it("binds every temporary dependency exception to the staged SDK remediation deadline", () => {
+  it("documents that the controlled dependency maintenance closed every active exception", () => {
     const allowlist = JSON.parse(readFileSync(dependencyAllowlistPath, "utf8")) as {
       policy: {
         decision: string;
@@ -133,13 +133,19 @@ describe("SP3-01 secure SDLC configuration", () => {
       };
       exceptions: Array<{ expiresAt: string }>;
     };
+    const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8")) as {
+      packages: Record<string, unknown>;
+    };
 
-    expect(allowlist.policy.decision).toContain("SDK 55 removes the PostCSS findings");
+    expect(allowlist.policy.decision).toContain("No active High/Critical dependency exceptions");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
     expect(allowlist.policy.nextStage).toBe("sdk56");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
+    expect(allowlist.exceptions).toEqual([]);
+    expect(packageLock.packages["node_modules/@react-native/metro-config"]).not.toBeDefined();
+    expect(packageLock.packages["node_modules/image-size"]).not.toBeDefined();
     expect(allowlist.exceptions.every(({ expiresAt }) => expiresAt === allowlist.policy.hardExpiry)).toBe(true);
     expect(allowlist.policy.targetDate < allowlist.policy.hardExpiry).toBe(true);
   });

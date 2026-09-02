@@ -54,8 +54,8 @@
     "@opentelemetry/api": "^1.9.1",
     "@react-native-community/netinfo": "11.5.2",
     "@react-navigation/native": "^7.0.14",
-    "@supabase/supabase-js": "^2.45.4",
-    "@tanstack/react-query": "^5.56.2",
+    "@supabase/supabase-js": "^2.112.4",
+    "@tanstack/react-query": "^5.102.8",
     "expo": "^55.0.30",
     "expo-asset": "~55.0.20",
     "expo-blur": "~55.0.18",
@@ -76,7 +76,7 @@
     "expo-sharing": "~55.0.24",
     "expo-sqlite": "~55.0.20",
     "expo-status-bar": "~55.0.6",
-    "hono": "^4.6.3",
+    "hono": "^4.13.5",
     "lucide-react-native": "^0.520.0",
     "moti": "^0.29.0",
     "react": "19.2.0",
@@ -94,7 +94,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/workers-types": "^5.20260829.1",
     "@types/react": "~19.2.10",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
@@ -106,7 +106,7 @@
     "jest-expo": "~55.0.22",
     "react-test-renderer": "19.0.0",
     "typescript": "~5.9.2",
-    "wrangler": "^4.119.0"
+    "wrangler": "^4.127.1"
   },
   "expo": {
     "install": {
