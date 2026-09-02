@@ -94,7 +94,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@cloudflare/workers-types": "^5.20260829.1",
+    "@cloudflare/workers-types": "^5.20260830.1",
     "@types/react": "~19.2.10",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
