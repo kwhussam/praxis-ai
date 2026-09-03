@@ -18,14 +18,10 @@ appId: ai.praxisshield.app
 - tapOn:
     id: auth-password
 - inputText: "${PASSWORD}"
+# Enter is the single submit action. An additional conditional tap raced with the
+# navigation transition on iOS 26: the button was visible while the condition was
+# evaluated but had disappeared by the time Maestro tried to tap it.
 - pressKey: Enter
-- runFlow:
-    when:
-      visible:
-        id: auth-submit
-    commands:
-      - tapOn:
-          id: auth-submit
 - waitForAnimationToEnd:
     timeout: 5000
 # A clean iOS 26 keychain presents the system password-save prompt after every

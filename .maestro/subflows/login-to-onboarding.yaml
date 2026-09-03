@@ -7,13 +7,6 @@ appId: ai.praxisshield.app
     id: auth-password
 - inputText: "${PASSWORD}"
 - pressKey: Enter
-- runFlow:
-    when:
-      visible:
-        id: auth-submit
-    commands:
-      - tapOn:
-          id: auth-submit
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:

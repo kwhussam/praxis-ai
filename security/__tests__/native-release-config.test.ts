@@ -200,8 +200,8 @@ override fun getPackages(): List<ReactPackage> =
 
     // The native build must not start an implicit bundler; the smoke owns Metro so the bundle
     // always matches the checked-out revision.
-    expect(appStart).toContain('npx expo "run:$PLATFORM" --no-bundler');
-    expect(appStart).toContain('npx expo start --dev-client --host lan --port "${E2E_METRO_PORT:-8081}"');
+    expect(appStart).toContain('exec npx expo "run:$PLATFORM" --no-bundler');
+    expect(appStart).toContain('exec npx expo start --dev-client --host lan --port "${E2E_METRO_PORT:-8081}"');
     expect(appStart).not.toContain("--localhost");
 
     // Refuse an occupied port, and always clean up the server this script started.
@@ -221,6 +221,23 @@ override fun getPackages(): List<ReactPackage> =
     expect(smokeRunner).toContain('METRO_DEVICE_HOST="10.0.2.2"');
     expect(smokeRunner).toContain("dev-client-url.mjs");
     expect(smokeRunner).not.toContain("http%3A%2F%2F");
+  });
+
+  it("keeps the iOS 26 Maestro interactions deterministic", () => {
+    const registration = read(".maestro/flows/01-registration.yaml");
+    const loginScreen = read("app/(auth)/login.tsx");
+    const login = read(".maestro/subflows/login.yaml");
+    const onboardingLogin = read(".maestro/subflows/login-to-onboarding.yaml");
+    const inventory = read(".maestro/flows/13-inventory-persistence.yaml");
+
+    expect(registration).not.toContain("hideKeyboard");
+    expect(registration.match(/pressKey: Enter/g)).toHaveLength(2);
+    expect(loginScreen).toContain('onSubmitEditing={() => passwordInputRef.current?.focus()}');
+    expect(loginScreen).toContain('returnKeyType="next"');
+    expect(login).not.toContain("id: auth-submit");
+    expect(onboardingLogin).not.toContain("id: auth-submit");
+    expect(inventory.match(/scrollUntilVisible:/g)).toHaveLength(2);
+    expect(inventory.match(/id: inventory-add-item/g)).toHaveLength(4);
   });
 
   it("refuses to run when a foreign server already listens on the Metro port", () => {

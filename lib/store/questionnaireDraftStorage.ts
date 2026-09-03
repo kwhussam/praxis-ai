@@ -1,5 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
+import { canOperateSecureStore } from "@/lib/security/secureStoreAvailability";
 import {
   DEFAULT_QUESTIONNAIRE_ANSWERS,
   type QuestionnaireAnswerKey,
@@ -39,22 +40,27 @@ const writeQueues = new Map<string, Promise<unknown>>();
 
 export async function loadQuestionnaireDraft(practiceId: string): Promise<QuestionnaireDraft | null> {
   if (!(await secureStoreAvailable())) return null;
+  try {
+    const manifest = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
+    if (!manifest) return null;
 
-  const manifest = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
-  if (!manifest) return null;
+    const draft = await readDraftGeneration(practiceId, manifest);
+    if (!draft) {
+      await deleteGeneration(practiceId, manifest);
+      await SecureStore.deleteItemAsync(manifestKey(practiceId), options());
+      return null;
+    }
 
-  const draft = await readDraftGeneration(practiceId, manifest);
-  if (!draft) {
-    await deleteGeneration(practiceId, manifest);
-    await SecureStore.deleteItemAsync(manifestKey(practiceId), options());
+    if (Date.parse(draft.expiresAt) <= Date.now()) {
+      await deleteQuestionnaireDraft(practiceId);
+      return null;
+    }
+    return draft;
+  } catch {
+    // The current in-app questionnaire state stays volatile. There is intentionally no
+    // AsyncStorage, file or database fallback for assessment answers.
     return null;
   }
-
-  if (Date.parse(draft.expiresAt) <= Date.now()) {
-    await deleteQuestionnaireDraft(practiceId);
-    return null;
-  }
-  return draft;
 }
 
 export async function saveQuestionnaireDraft(
@@ -66,72 +72,79 @@ export async function saveQuestionnaireDraft(
 ): Promise<boolean> {
   return enqueueWrite(practiceId, async () => {
     if (!(await secureStoreAvailable())) return false;
+    try {
+      const previous = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
+      // Do not call the public loader from inside the write queue: an expired
+      // draft would enqueue deleteQuestionnaireDraft behind this save and deadlock.
+      const previousDraft = previous ? await readDraftGeneration(practiceId, previous) : null;
+      const now = new Date();
+      const generation = `${now.getTime()}-${Math.random().toString(36).slice(2, 10)}`;
+      const draft: QuestionnaireDraft = {
+        version: MANIFEST_VERSION,
+        practiceId,
+        answers: sanitizeAnswers(answers),
+        answeredKeys: sanitizeAnsweredKeys(answeredKeys),
+        assessmentProfile: sanitizeAssessmentProfile(assessmentProfile),
+        sectionId: sanitizeSectionId(sectionId),
+        createdAt: previousDraft?.createdAt ?? now.toISOString(),
+        updatedAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + RETENTION_MS).toISOString()
+      };
+      const chunks = split(JSON.stringify(draft));
+      const nextManifest: DraftManifest = { version: MANIFEST_VERSION, generation, chunkCount: chunks.length };
+      const registry = parseRegistry(await SecureStore.getItemAsync(registryKey(practiceId), options()));
+      const knownGenerations = uniqueManifests([
+        ...registry.generations,
+        ...(previous ? [previous] : []),
+        nextManifest
+      ]);
 
-    const previous = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
-    // Do not call the public loader from inside the write queue: an expired
-    // draft would enqueue deleteQuestionnaireDraft behind this save and deadlock.
-    const previousDraft = previous ? await readDraftGeneration(practiceId, previous) : null;
-    const now = new Date();
-    const generation = `${now.getTime()}-${Math.random().toString(36).slice(2, 10)}`;
-    const draft: QuestionnaireDraft = {
-      version: MANIFEST_VERSION,
-      practiceId,
-      answers: sanitizeAnswers(answers),
-      answeredKeys: sanitizeAnsweredKeys(answeredKeys),
-      assessmentProfile: sanitizeAssessmentProfile(assessmentProfile),
-      sectionId: sanitizeSectionId(sectionId),
-      createdAt: previousDraft?.createdAt ?? now.toISOString(),
-      updatedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + RETENTION_MS).toISOString()
-    };
-    const chunks = split(JSON.stringify(draft));
-    const nextManifest: DraftManifest = { version: MANIFEST_VERSION, generation, chunkCount: chunks.length };
-    const registry = parseRegistry(await SecureStore.getItemAsync(registryKey(practiceId), options()));
-    const knownGenerations = uniqueManifests([
-      ...registry.generations,
-      ...(previous ? [previous] : []),
-      nextManifest
-    ]);
-
-    // Registry first: a crash before the manifest switch remains discoverable
-    // and can be swept by the next save/delete operation.
-    await SecureStore.setItemAsync(
-      registryKey(practiceId),
-      JSON.stringify({ version: MANIFEST_VERSION, generations: knownGenerations } satisfies DraftRegistry),
-      options()
-    );
-    await Promise.all(
-      chunks.map((chunk, index) =>
-        SecureStore.setItemAsync(chunkKey(practiceId, generation, index), chunk, options())
-      )
-    );
-    await SecureStore.setItemAsync(manifestKey(practiceId), JSON.stringify(nextManifest), options());
-    await Promise.all(
-      knownGenerations
-        .filter((manifest) => manifest.generation !== generation)
-        .map((manifest) => deleteGeneration(practiceId, manifest))
-    );
-    await SecureStore.setItemAsync(
-      registryKey(practiceId),
-      JSON.stringify({ version: MANIFEST_VERSION, generations: [nextManifest] } satisfies DraftRegistry),
-      options()
-    );
-    return true;
+      // Registry first: a crash before the manifest switch remains discoverable
+      // and can be swept by the next save/delete operation.
+      await SecureStore.setItemAsync(
+        registryKey(practiceId),
+        JSON.stringify({ version: MANIFEST_VERSION, generations: knownGenerations } satisfies DraftRegistry),
+        options()
+      );
+      await Promise.all(
+        chunks.map((chunk, index) =>
+          SecureStore.setItemAsync(chunkKey(practiceId, generation, index), chunk, options())
+        )
+      );
+      await SecureStore.setItemAsync(manifestKey(practiceId), JSON.stringify(nextManifest), options());
+      await Promise.all(
+        knownGenerations
+          .filter((manifest) => manifest.generation !== generation)
+          .map((manifest) => deleteGeneration(practiceId, manifest))
+      );
+      await SecureStore.setItemAsync(
+        registryKey(practiceId),
+        JSON.stringify({ version: MANIFEST_VERSION, generations: [nextManifest] } satisfies DraftRegistry),
+        options()
+      );
+      return true;
+    } catch {
+      return false;
+    }
   });
 }
 
 export async function deleteQuestionnaireDraft(practiceId: string): Promise<void> {
   await enqueueWrite(practiceId, async () => {
     if (!(await secureStoreAvailable())) return;
-    const manifest = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
-    const registry = parseRegistry(await SecureStore.getItemAsync(registryKey(practiceId), options()));
-    const generations = uniqueManifests([
-      ...registry.generations,
-      ...(manifest ? [manifest] : [])
-    ]);
-    await Promise.all(generations.map((entry) => deleteGeneration(practiceId, entry)));
-    await SecureStore.deleteItemAsync(manifestKey(practiceId), options());
-    await SecureStore.deleteItemAsync(registryKey(practiceId), options());
+    try {
+      const manifest = parseManifest(await SecureStore.getItemAsync(manifestKey(practiceId), options()));
+      const registry = parseRegistry(await SecureStore.getItemAsync(registryKey(practiceId), options()));
+      const generations = uniqueManifests([
+        ...registry.generations,
+        ...(manifest ? [manifest] : [])
+      ]);
+      await Promise.all(generations.map((entry) => deleteGeneration(practiceId, entry)));
+      await SecureStore.deleteItemAsync(manifestKey(practiceId), options());
+      await SecureStore.deleteItemAsync(registryKey(practiceId), options());
+    } catch {
+      // A native store failure must not trigger an unprotected deletion fallback.
+    }
   });
 }
 
@@ -143,7 +156,7 @@ function options() {
 }
 
 async function secureStoreAvailable() {
-  return SecureStore.isAvailableAsync().catch(() => false);
+  return canOperateSecureStore(options());
 }
 
 function manifestKey(practiceId: string) {

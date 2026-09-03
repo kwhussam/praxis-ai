@@ -41,11 +41,11 @@ if [[ "$MODE" == "run" ]]; then
   # Build and install the native app only. The smoke runner owns Metro so that the bundler
   # always matches the checked-out revision instead of attaching to whatever an implicit
   # bundler left running.
-  npx expo "run:$PLATFORM" --no-bundler
+  exec npx expo "run:$PLATFORM" --no-bundler
 elif [[ "$MODE" == "start" ]]; then
   # --host lan binds beyond the loopback interface, which the Android emulator needs to reach
   # the host through 10.0.2.2. iOS still connects via 127.0.0.1.
-  npx expo start --dev-client --host lan --port "${E2E_METRO_PORT:-8081}"
+  exec npx expo start --dev-client --host lan --port "${E2E_METRO_PORT:-8081}"
 else
   echo "Usage: app-start.sh <ios|android> <run|start>" >&2
   exit 1

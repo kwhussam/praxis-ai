@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-02
+Stand: 2026-09-03
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -206,7 +206,7 @@ und abweichende Ports korrekt sind.
 | Nachweis | Ergebnis | Einordnung |
 |---|---|---|
 | `npm ci` | grün | frischer Install; beide Vendor-Härtungen fail-closed reproduziert |
-| `npm run verify` | grün: 487 bestanden, 6 übersprungen | Lint, TypeScript 6.0.3 und Jest; identische Testanzahl wie SDK 55, kein Test verloren |
+| `npm run verify` | grün: 500 bestanden, 6 übersprungen | Lint, TypeScript 6.0.3 und Jest einschließlich neuer Metro-/SecureStore-Verträge |
 | `npm run security:dependencies` | grün | **0 aktive High-/Critical-Ausnahmen**; keine neue Ausnahme eingetragen |
 | `npm run security:expo-doctor` | grün | führt den gepinnten `expo-doctor@1.20.4` aus und wertet das echte Ergebnis aus: **21/22**, einziger Befund ist die Hermes-v1-Regression |
 | Doctor-Gate blockt nachweislich | grün | fixture-getestet: zusätzlicher Befund, verschwundener Befund und unlesbare Ausgabe führen jeweils zu Exit 1 |
@@ -217,14 +217,11 @@ und abweichende Ports korrekt sind.
 | Sicherheitsvertrag im gebauten Produkt | grün | `MinimumOSVersion 16.4`, ATS ohne `NSAllowsArbitraryLoads`, Zweckstrings vorhanden, kein `NSBonjourServices` |
 | iOS-Produktionsbundle | grün | Hermes-Bytecode `8.4 MB` (`.hbc`) |
 | Android-Produktionsbundle | grün | Hermes-Bytecode `8.6 MB` (`.hbc`) |
-| **Android Unsigned Release Compile** | **nicht ausgeführt** | Android-SDK-Plattform 36 lokal nicht installiert, kein `sdkmanager`/cmdline-tools vorhanden. **Kein Codebefund** — der Build lief bis zur Abhängigkeitsauflösung. Zwingendes GitHub-CI-Gate. |
-| **`npm run verify:android-release-manifest`** | **nicht ausführbar** | scheitert fail-closed am fehlenden Android-Release-Output; hängt am vorigen Punkt |
+| Android Unsigned Release Compile | grün in GitHub-CI | `android-release-compile` einschließlich zusammengeführter Manifest-Prüfung bestanden; lokal weiterhin keine Android-SDK-Plattform 36 |
+| `npm run verify:android-release-manifest` | grün in GitHub-CI | Release-Manifest fail-closed gegen Backup-, Cleartext-, Berechtigungs- und Signing-Regeln geprüft |
 | Fokussierter iOS-Simulator-Smoke | grün: 7/7 | iPhone 17 Pro / iOS 26.5, Release-Build: App-Start, Auth-Screen gerendert, `auth-submit`-testID vorhanden, Navigation zur Registrierung — unter Hermes v1 und New Architecture |
-| **Vollständiger 15-Flow-Maestro-Lauf** | **nicht ausgeführt** | Docker antwortet auf diesem Rechner nicht, damit ist `npm run e2e:env:up` (lokales Supabase) nicht startbar. Login, Onboarding/Dashboard, WLAN-Seite und PDF-Export-Pfad sind dadurch **nicht** abgedeckt |
+| Vollständiger 15-Flow-Maestro-Lauf | grün: 15/15 | iPhone 17 Pro / iOS 26.5; Auth, Onboarding, Fragebogen, WLAN, Fehlerpfade, Tenant-Isolation, verschlüsselte Inventarpersistenz, Dashboard und PDF-Export |
 | Physische Geräte-Smokes | zurückgestellt | bleiben wie vereinbart ein späteres Release-Gate |
-
-Die fett markierten Zeilen sind **nicht** bestanden und dürfen nicht als bestanden gelesen
-werden. Die exakten noch offenen Kommandos stehen unter „Als Nächstes".
 
 Zum fokussierten Smoke: Er belegt, dass der migrierte Stack real bootet — Hermes v1 führt das
 Bundle aus, die New-Architecture-App startet, Expo Router mountet die Auth-Route und die UI
@@ -279,6 +276,10 @@ Viewport. Der Flow prüft nun stattdessen, dass der native Dateiname verschwinde
 Berichte-Tab wieder sichtbar ist. Der fokussierte Wiederholungslauf bestand 1/1; auch das
 nachgelagerte Klartext-Cache-Gate war grün.
 
+Der abschließende vollständige Lauf am 3. September bestand 15/15 Flows. Die zwischenzeitlichen
+Fehler in Registrierung, WLAN, Report-Fehlerpfad und Inventar waren Harness-Probleme bei Fokus,
+Systemdialogen, doppeltem Submit und Sichtbarkeit — keine fachlichen Sicherheitsbefunde.
+
 ### Geschlossen – Zwei befristete `image-size`-Ausnahmen
 
 Die optionale Peer-Auflösung installierte neben Expos Metro-Konfiguration zusätzlich
@@ -290,8 +291,8 @@ nun 0 Ausnahmen.
 ### P3 – Physischer Runtime-Nachweis bleibt offen
 
 Der Android-Release-Compile ist in GitHub grün. Die iOS-Simulator-Smokes decken Netzwerk-/WLAN-,
-Persistenz-, Auth-/Tenant- und PDF-Cache-Pfade nun über den vollständigen 14/15-Lauf und den
-anschließenden fokussierten 1/1-PDF-Nachweis ab. Die vollständige physische iOS-/Android-Matrix
+Persistenz-, Auth-/Tenant- und PDF-Cache-Pfade nun über den vollständigen grünen 15/15-Lauf ab.
+Die vollständige physische iOS-/Android-Matrix
 bleibt wie vereinbart das spätere Produktions-Gate.
 
 ### Technische Rückstände außerhalb dieses SDK-Schritts
@@ -302,19 +303,11 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. Den SDK-56-Branch pushen und einen Pull Request gegen `main` erstellen. **Nicht selbst
-   mergen.**
-2. GitHub-CI und Secure SDLC grün prüfen. Der Job `android-release-compile` ist hier das
-   entscheidende Gate, weil der lokale Android-Release-Compile mangels installierter
-   Android-SDK-Plattform 36 nicht ausgeführt werden konnte.
-3. Den fehlenden Android-Nachweis lokal nachholen oder bewusst der CI überlassen. Lokal wären
-   dafür die Android-cmdline-tools und `sdkmanager "platforms;android-36"` nötig; danach
-   `./android/gradlew -p android :app:assembleRelease` und
-   `npm run verify:android-release-manifest`.
-4. Den vollständigen seriellen 15-Flow-Maestro-Lauf als eigenes Merge-Gate nachziehen
-   (`npm run e2e:env:up` und `npm run e2e:smoke`). Er ist auf dieser Stufe **nicht** bestanden
-   markiert.
-5. Nach grünem Review und Merge die SDK-57-Stufe als eigene Phase beginnen. Sie schließt die
+1. Diesen Korrekturstand auf `codex/sp3-01b-sdk56` pushen und die aktualisierten Checks von PR
+   `#50` abwarten.
+2. PR `#50` unabhängig reviewen und erst bei weiterhin grüner GitHub-CI und Secure SDLC mergen.
+3. Nach dem Merge den Post-Merge-Lauf auf `main` prüfen.
+4. Anschließend die SDK-57-Stufe auf einem frischen Branch beginnen. Sie schließt die
    Hermes-v1-Regression, die Migration weg von `expo-file-system/legacy` und die Icon-Migration
    auf die scoped `@react-native-vector-icons`-Pakete.
 
@@ -325,8 +318,7 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 - Der lokale **Android-Release-Compile konnte nicht ausgeführt werden**: Die Android-SDK-Plattform
   36 ist auf diesem Rechner nicht installiert und es gibt weder `sdkmanager` noch cmdline-tools,
   um sie ohne zusätzliche Werkzeuginstallation nachzuziehen. Der Beweis bleibt damit — wie schon
-  in der SDK-53-Stufe — ein zwingendes GitHub-CI-Gate. Er ist **nicht** als bestanden markiert.
-- Der **vollständige 15-Flow-Maestro-Lauf steht aus** und ist nicht als bestanden markiert.
+  in der SDK-53-Stufe — durch das grüne GitHub-CI-Gate erbracht, aber nicht lokal wiederholt.
 - Die physische iOS-/Android-Gerätematrix bleibt wie vereinbart für das spätere
   Produktionsfreigabe-Gate zurückgestellt.
 - Die lokale Simulatorprüfung ersetzt keine spätere Prüfung auf physischen iOS-/Android-Geräten.
@@ -345,7 +337,6 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 - Dependency-Gate, Clean Prebuild und Native-Config grün;
 - iOS- und Android-Produktionsbundle grün;
 - Android-Release-Compile in GitHub-CI grün;
-- iOS-Release-Build, vollständiger 14/15-Simulatorlauf und fokussierter 1/1-PDF-Smoke unter
-  Xcode 26 grün;
+- iOS-Release-Build und vollständiger 15/15-Simulatorlauf unter Xcode 26 grün;
 - keine High-/Critical-Abhängigkeiten und keine aktive Dependency-Ausnahme;
 - unabhängiges Review ohne offenen P1-/P2-/P3-Codebefund.

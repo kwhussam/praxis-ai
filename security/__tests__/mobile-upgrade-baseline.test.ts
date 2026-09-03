@@ -248,7 +248,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
-  it("keeps SDK-55 auth smokes independent of iOS keyboard submit behavior", () => {
+  it("keeps SDK-56 auth smokes deterministic on iOS 26", () => {
     const registration = readFileSync(
       resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
       "utf8"
@@ -270,10 +270,12 @@ describe("SP3-01B mobile upgrade baseline", () => {
       "utf8"
     );
 
-    expect(registration).toMatch(/- hideKeyboard\s+- tapOn:\s+id: auth-submit/);
+    expect(registration).not.toContain("hideKeyboard");
+    expect(registration.match(/- pressKey: Enter/g)).toHaveLength(2);
+    expect(registration).toContain('text: "Später|Not Now"');
     for (const flow of [login, onboardingLogin]) {
       expect(flow).toContain("- pressKey: Enter");
-      expect(flow).toMatch(/visible:\s+id: auth-submit\s+commands:\s+- tapOn:\s+id: auth-submit/);
+      expect(flow).not.toContain("id: auth-submit");
       expect(flow).toContain('text: "Später|Not Now"');
     }
     expect(invitation).not.toContain("- hideKeyboard");
