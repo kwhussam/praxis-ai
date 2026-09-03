@@ -310,6 +310,7 @@ und abweichende Ports korrekt sind.
 | Wrangler Worker-Dry-Run | grün | 296.74 KiB / gzip 67.71 KiB, Bindings unverändert |
 | **Android Unsigned Release Compile** | **nicht lokal ausgeführt** | Android-SDK-Plattform 36 weiterhin nicht installiert, kein `sdkmanager`. Zwingendes GitHub-CI-Gate. |
 | **`npm run verify:android-release-manifest`** | **nicht lokal ausführbar** | scheitert fail-closed am fehlenden Android-Release-Output; hängt am vorigen Punkt |
+| **Kurzer iOS-Boot-/Auth-Smoke** | **nicht ausgeführt** | Der Simulator-Build brach mit `lipo: No space left on device` beim dSYM ab. Kein Codebefund: derselbe Quellstand hat den signaturfreien `iphoneos`-Release-Build erfolgreich erzeugt. |
 | **Vollständiger 15-Flow-Maestro-Lauf** | **nicht ausgeführt** | Docker auf diesem Rechner nicht ansprechbar, damit kein lokales Supabase; zusätzlich lief das Datenvolume an die Kapazitätsgrenze |
 | **Android-Smoke** | **nicht ausgeführt** | kein Emulator verfügbar |
 | Physische Geräte-Smokes | zurückgestellt | bleiben wie vereinbart ein späteres Produktions-Gate |
@@ -441,6 +442,11 @@ bleibt wie vereinbart das spätere Produktions-Gate.
   als bestanden: Docker ist auf diesem Rechner nicht ansprechbar und das Datenvolume lief während
   der Arbeit an die Kapazitätsgrenze. Besonders der PDF-Flow braucht diesen Nachweis, weil die
   Dateisystem-Migration genau dort eingreift.
+- Auch der **kurze iOS-Boot-/Auth-Smoke ist nicht ausgeführt**: Der dafür nötige Simulator-Build
+  scheiterte an erschöpftem Speicherplatz (`lipo: No space left on device`). Der Laufzeitnachweis
+  dieser Stufe steht damit **vollständig** aus; die statischen Gates und der `iphoneos`-Release-
+  Build ersetzen ihn ausdrücklich nicht. Es gibt also **keinen** Runtime-Beleg dafür, dass die
+  migrierte SDK-57-App bootet — das ist die wichtigste offene Lücke dieser Stufe.
 - Der lokale **Android-Release-Compile konnte nicht ausgeführt werden**: Die Android-SDK-Plattform
   36 ist auf diesem Rechner nicht installiert und es gibt weder `sdkmanager` noch cmdline-tools,
   um sie ohne zusätzliche Werkzeuginstallation nachzuziehen. Der Beweis bleibt damit — wie schon
