@@ -8,6 +8,9 @@ RUNTIME_ENV="$ROOT_DIR/.e2e/runtime.env"
 METRO_PID_FILE="$ROOT_DIR/.e2e/metro.pid"
 METRO_LOG="$ROOT_DIR/.e2e/metro.log"
 RESULT_DIR="$ROOT_DIR/.maestro/artifacts/junit"
+METRO_PORT="${E2E_METRO_PORT:-8081}"
+HOST_METRO_URL="http://127.0.0.1:${METRO_PORT}"
+export E2E_METRO_PORT="$METRO_PORT"
 
 export MAESTRO_DRIVER_STARTUP_TIMEOUT="${MAESTRO_DRIVER_STARTUP_TIMEOUT:-180000}"
 
@@ -21,6 +24,17 @@ if [[ "$SUITE" != "all" && "$SUITE" != "pdf" && "$SUITE" != "wlan" ]]; then
 fi
 
 cd "$ROOT_DIR"
+
+# A Metro server that is already listening was started from an unknown revision and may serve a
+# stale bundle. Reusing it would silently invalidate the whole smoke, so refuse to run instead
+# of attaching to a server this script does not own. Checked before the environment is brought
+# up so the run fails fast and leaves no half-started Supabase behind.
+if curl --fail --silent --max-time 2 "$HOST_METRO_URL/status" >/dev/null; then
+  echo "Port ${METRO_PORT} ist bereits durch einen fremden Metro-Server belegt." >&2
+  echo "Beende ihn zuerst und starte den Smoke erneut." >&2
+  exit 1
+fi
+
 bash scripts/e2e/env-up.sh
 
 set -a
@@ -43,35 +57,41 @@ if [[ "$PLATFORM" == "ios" ]]; then
     echo "Development build is not installed. Run npm run e2e:app:ios first." >&2
     exit 1
   }
-  DEV_CLIENT_URL="ai.praxisshield.app://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8081"
+  METRO_DEVICE_HOST="127.0.0.1"
 elif ! adb get-state >/dev/null 2>&1; then
   echo "No connected Android emulator. Start one before running npm run e2e:smoke:android." >&2
   exit 1
 else
-  DEV_CLIENT_URL="ai.praxisshield.app://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"
+  METRO_DEVICE_HOST="10.0.2.2"
 fi
 
-if ! curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
-  if [[ -f "$METRO_PID_FILE" ]]; then
-    OLD_METRO_PID="$(cat "$METRO_PID_FILE")"
-    if kill -0 "$OLD_METRO_PID" 2>/dev/null; then
-      kill "$OLD_METRO_PID"
-      wait "$OLD_METRO_PID" 2>/dev/null || true
-    fi
+DEV_CLIENT_URL="$(node "$ROOT_DIR/scripts/e2e/dev-client-url.mjs" \
+  "ai.praxisshield.app" "$METRO_DEVICE_HOST" "$METRO_PORT")"
+
+bash scripts/e2e/app-start.sh "$PLATFORM" start \
+  >"$METRO_LOG" 2>&1 < /dev/null &
+METRO_PID="$!"
+echo "$METRO_PID" > "$METRO_PID_FILE"
+
+cleanup_metro() {
+  kill "$METRO_PID" 2>/dev/null || true
+  wait "$METRO_PID" 2>/dev/null || true
+  rm -f "$METRO_PID_FILE"
+}
+trap cleanup_metro EXIT
+
+for _ in $(seq 1 60); do
+  if curl --fail --silent --max-time 2 "$HOST_METRO_URL/status" | grep -q "packager-status:running"; then
+    break
   fi
+  if ! kill -0 "$METRO_PID" 2>/dev/null; then
+    echo "Metro exited before becoming ready. See $METRO_LOG" >&2
+    exit 1
+  fi
+  sleep 1
+done
 
-  nohup bash scripts/e2e/app-start.sh "$PLATFORM" start > "$METRO_LOG" 2>&1 < /dev/null &
-  echo "$!" > "$METRO_PID_FILE"
-
-  for _ in $(seq 1 60); do
-    if curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packager-status:running"; then
-      break
-    fi
-    sleep 1
-  done
-fi
-
-curl --fail --silent --max-time 2 http://127.0.0.1:8081/status | grep -q "packager-status:running" || {
+curl --fail --silent --max-time 2 "$HOST_METRO_URL/status" | grep -q "packager-status:running" || {
   echo "Metro did not become ready. See $METRO_LOG" >&2
   exit 1
 }

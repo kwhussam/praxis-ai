@@ -119,6 +119,42 @@ describe("EncryptedInventoryRepository", () => {
     expect(blobs.rows.size).toBe(0);
   });
 
+  it("bleibt flüchtig, wenn der Keychain-Zugriff trotz gemeldeter Verfügbarkeit wirft", async () => {
+    // isAvailableAsync() kann true melden und jeder echte Zugriff trotzdem scheitern, etwa bei
+    // fehlendem Entitlement. Dann darf kein Snapshot unter einem unsicheren Schlüssel entstehen.
+    const keys = new MemoryKeyStore();
+    keys.accessError = new Error("errSecMissingEntitlement");
+    const blobs = new MemoryBlobStore();
+    const repository = new EncryptedInventoryRepository(keys, blobs, localInventoryCipher);
+
+    expect(await repository.save(inventorySnapshot("practice-a", 1, "PVS-A"), 0)).toEqual({
+      status: "volatile",
+      reason: "secure_store_unavailable"
+    });
+    expect(blobs.rows.size).toBe(0);
+    expect(await repository.load("practice-a")).toEqual({
+      status: "volatile",
+      reason: "secure_store_unavailable"
+    });
+  });
+
+  it("meldet einen brechenden Keychain beim Lesen eines vorhandenen Snapshots flüchtig", async () => {
+    const keys = new MemoryKeyStore();
+    const blobs = new MemoryBlobStore();
+    const repository = new EncryptedInventoryRepository(keys, blobs, localInventoryCipher);
+    await repository.save(inventorySnapshot("practice-a", 1, "PVS-A"), 0);
+
+    // Der Blob bleibt liegen, aber der Schlüssel ist nicht mehr erreichbar: flüchtig statt
+    // eines generischen, wiederholbaren Speicherfehlers.
+    keys.accessError = new Error("errSecInteractionNotAllowed");
+
+    expect(await repository.load("practice-a")).toEqual({
+      status: "volatile",
+      reason: "secure_store_unavailable"
+    });
+    expect(blobs.rows.size).toBe(1);
+  });
+
   it("erkennt Revisionskonflikte ohne den neueren Snapshot zu überschreiben", async () => {
     const keys = new MemoryKeyStore();
     const blobs = new MemoryBlobStore();
@@ -151,25 +187,30 @@ describe("EncryptedInventoryRepository", () => {
 class MemoryKeyStore implements LocalInventoryKeyStore {
   available = true;
   values = new Map<string, Uint8Array>();
+  // Mirrors a Keychain that reports itself as available and still throws on every access.
+  accessError: Error | null = null;
 
   constructor(private readonly fixedKey?: Uint8Array) {}
 
   async isAvailable() {
-    return this.available;
+    return this.accessError ? false : this.available;
   }
 
   async load(practiceId: string) {
+    if (this.accessError) throw this.accessError;
     const key = this.values.get(practiceId);
     return key ? { version: 1 as const, bytes: key.slice() } : null;
   }
 
   async create(practiceId: string) {
+    if (this.accessError) throw this.accessError;
     const key = this.fixedKey?.slice() ?? Uint8Array.from({ length: 32 }, (_, index) => index + 1);
     this.values.set(practiceId, key.slice());
     return { version: 1 as const, bytes: key };
   }
 
   async delete(practiceId: string) {
+    if (this.accessError) throw this.accessError;
     this.values.delete(practiceId);
   }
 }

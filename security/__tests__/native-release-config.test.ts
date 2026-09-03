@@ -7,6 +7,15 @@ const fs = require("fs") as {
 const path = require("path") as {
   resolve(...parts: string[]): string;
 };
+const { spawn, spawnSync } = require("child_process") as {
+  spawn(command: string, args: string[], options: Record<string, unknown>): { kill(): void };
+  spawnSync(command: string, args: string[], options: Record<string, unknown>): {
+    status: number | null;
+    stdout: string;
+    stderr: string;
+  };
+};
+declare const process: { env: Record<string, string | undefined> };
 
 const repoRoot = path.resolve(__dirname, "../..");
 const { hardenAndroidReleaseSigning } = require("../../plugins/with-secure-android-backup.js") as {
@@ -183,6 +192,71 @@ override fun getPackages(): List<ReactPackage> =
     expect(maestroConfig).toContain("continueOnFailure: false");
     expect(maestroConfig).not.toContain("continueOnFailure: true");
     expect(smokeConfig).not.toContain("executionOrder:");
+  });
+
+  it("owns its Metro server instead of reusing a foreign one", () => {
+    const smokeRunner = read("scripts/e2e/smoke.sh");
+    const appStart = read("scripts/e2e/app-start.sh");
+
+    // The native build must not start an implicit bundler; the smoke owns Metro so the bundle
+    // always matches the checked-out revision.
+    expect(appStart).toContain('npx expo "run:$PLATFORM" --no-bundler');
+    expect(appStart).toContain('npx expo start --dev-client --host lan --port "${E2E_METRO_PORT:-8081}"');
+    expect(appStart).not.toContain("--localhost");
+
+    // Refuse an occupied port, and always clean up the server this script started.
+    expect(smokeRunner).toContain('METRO_PORT="${E2E_METRO_PORT:-8081}"');
+    expect(smokeRunner).toContain("ist bereits durch einen fremden Metro-Server belegt");
+    expect(smokeRunner).toContain("trap cleanup_metro EXIT");
+    expect(smokeRunner).toContain('kill "$METRO_PID"');
+    expect(smokeRunner).not.toContain("nohup bash scripts/e2e/app-start.sh");
+
+    // The port guard has to run before the environment is brought up, otherwise a refused run
+    // still leaves a half-started Supabase behind.
+    expect(smokeRunner.indexOf("fremden Metro-Server belegt"))
+      .toBeLessThan(smokeRunner.indexOf("bash scripts/e2e/env-up.sh"));
+
+    // Device hosts stay platform specific and the deep link is generated, not hand-encoded.
+    expect(smokeRunner).toContain('METRO_DEVICE_HOST="127.0.0.1"');
+    expect(smokeRunner).toContain('METRO_DEVICE_HOST="10.0.2.2"');
+    expect(smokeRunner).toContain("dev-client-url.mjs");
+    expect(smokeRunner).not.toContain("http%3A%2F%2F");
+  });
+
+  it("refuses to run when a foreign server already listens on the Metro port", () => {
+    const port = 8099;
+    // The stub runs as a real child process rather than inside the Jest worker: the guard is a
+    // subprocess talking to a socket, and only a genuinely external listener reproduces that.
+    const stub = spawn("node", [
+      "-e",
+      `require("http").createServer((_q, s) => s.end("packager-status:running")).listen(${port}, "127.0.0.1");`
+    ], { stdio: "ignore" });
+
+    try {
+      let reachable = false;
+      for (let attempt = 0; attempt < 50 && !reachable; attempt += 1) {
+        reachable = spawnSync("curl", [
+          "--fail", "--silent", "--max-time", "2", `http://127.0.0.1:${port}/status`
+        ], { encoding: "utf8" }).status === 0;
+        if (!reachable) spawnSync("sleep", ["0.1"], { encoding: "utf8" });
+      }
+      // Without a reachable stub this would silently degrade into a slow Docker run instead of
+      // the regression it is meant to be.
+      expect(reachable).toBe(true);
+
+      const result = spawnSync("bash", [path.resolve(repoRoot, "scripts/e2e/smoke.sh"), "ios"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        env: { ...process.env, E2E_METRO_PORT: String(port) }
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`Port ${port} ist bereits durch einen fremden Metro-Server belegt.`);
+      // Fail fast: the guard must trip before Supabase or Metro are touched.
+      expect(result.stdout).not.toContain("supabase");
+    } finally {
+      stub.kill();
+    }
   });
 
   it("recovers the local auth gateway after a Supabase reset before validating seed users", () => {

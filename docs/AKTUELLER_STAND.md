@@ -132,6 +132,29 @@ Der Nachweis gehört in den Laufzeit-Smoke (WLAN-Seite und Worker-Aufrufe) und s
 Stufe noch aus. Es wurde nichts an den Aufrufstellen geändert — eine Anpassung ohne Laufzeitbefund
 wäre geraten, nicht belegt.
 
+### Review-Nachtrag: SecureStore operativ geprüft, E2E-Metro versionsrein
+
+Zwei Review-Befunde sind behoben.
+
+**SecureStore.** `isAvailableAsync()` belegt nur, dass das native Modul gelinkt ist — nicht, dass
+ein Keychain-Zugriff gelingt. Ein fehlendes Entitlement oder ein gesperrtes Gerät lässt den
+ersten echten Zugriff werfen, während die Verfügbarkeitsprüfung weiterhin `true` meldet. Der
+gemeinsame Probe `lib/security/secureStoreAvailability.ts` führt deshalb zusätzlich einen echten
+`getItemAsync` aus. Auth-Token werden zuerst in den flüchtigen Speicher geschrieben und nur bei
+erfolgreichem Probe zusätzlich in SecureStore; jeder einzelne `getItemAsync`/`setItemAsync`/
+`deleteItemAsync` ist abgefangen und fällt ausschließlich auf den Arbeitsspeicher zurück. Kein
+Token erreicht AsyncStorage, SQLite, Dateien oder Logging — maschinengeprüft. Für Inventarschlüssel
+gilt die strengere Regel: Ohne funktionierenden sicheren Speicher entsteht **kein** verschlüsselter
+SQLite-Snapshot; das Repository meldet `volatile`, die Synchronisierung bleibt blockiert und die UI
+weist auf „Nur flüchtiger Speicher" hin.
+
+**E2E-Metro.** `e2e:app:*` baut und installiert nur noch die native App (`--no-bundler`);
+`e2e:smoke` startet seinen eigenen Metro und beendet ihn per `trap` wieder. Ein bereits belegter
+Port führt zu Exit 1, bevor Supabase hochgefahren wird — ein fremder Server stammt aus einer
+unbekannten Revision und könnte ein veraltetes Bundle ausliefern. Die Dev-Client-URL wird von
+`scripts/e2e/dev-client-url.mjs` erzeugt statt von Hand prozentkodiert, womit auch IPv6-Literale
+und abweichende Ports korrekt sind.
+
 ### Hermes v1 — bekanntes, nicht schließbares Risiko dieser Stufe
 
 - SDK 56 aktiviert **Hermes v1 standardmäßig**. Genau diese Konfiguration wird hier verwendet:
