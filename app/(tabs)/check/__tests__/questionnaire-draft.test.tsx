@@ -42,7 +42,7 @@ jest.mock("react-native", () => {
   };
 });
 
-jest.mock("@expo/vector-icons", () => ({ Ionicons: () => require("react").createElement("Ionicons") }));
+jest.mock("@expo/vector-icons/Ionicons", () => ({ __esModule: true, default: () => require("react").createElement("Ionicons") }));
 jest.mock("expo-router", () => ({ router: { push: () => undefined } }));
 jest.mock("@/components/ui/AnimatedButton", () => {
   const React = require("react");
