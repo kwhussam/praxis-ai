@@ -125,7 +125,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
 
   it("keeps the current SDK, architecture and native platform floors explicit", () => {
     expect(baseline.current).toMatchObject({
-      expoSdk: "56",
+      expoSdk: "57",
       expo: packageLock.packages["node_modules/expo"].version,
       reactNative: packageLock.packages["node_modules/react-native"].version,
       react: packageLock.packages["node_modules/react"].version,
@@ -154,10 +154,10 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
   });
 
-  it("keeps the mandatory New Architecture renderer on Expo's SDK 56 SVG line", () => {
+  it("keeps the mandatory New Architecture renderer on Expo's SDK 57 SVG line", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const svgVersion = packageLock.packages["node_modules/react-native-svg"].version;
-    expect(reactNativeVersion).toBe("0.85.3");
+    expect(reactNativeVersion).toBe("0.86.3");
     expect(svgVersion).toBe("15.15.4");
     expect(packageJson.dependencies["react-native-svg"]).toBe("15.15.4");
     expect(existsSync(resolve(
@@ -166,10 +166,10 @@ describe("SP3-01B mobile upgrade baseline", () => {
     ))).toBe(true);
   });
 
-  it("keeps RN 0.85 on the SDK 56 screens line with the content-wrapper parent fix", () => {
+  it("keeps RN 0.86 on the SDK 57 screens line with the content-wrapper parent fix", () => {
     const reactNativeVersion = packageLock.packages["node_modules/react-native"].version;
     const screensVersion = packageLock.packages["node_modules/react-native-screens"].version;
-    expect(reactNativeVersion).toBe("0.85.3");
+    expect(reactNativeVersion).toBe("0.86.3");
     expect(screensVersion).toBe("4.26.2");
     expect(packageJson.dependencies["react-native-screens"]).toBe("~4.26.0");
 
@@ -216,10 +216,10 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("56.2.20");
-    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("56.0.5");
-    expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~56.0.0");
-    expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("56.0.20");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.18");
+    expect(packageLock.packages["node_modules/jest-expo"].version).toBe("57.0.5");
+    expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~57.0.0");
+    expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("57.0.10");
     // SDK 56 forked React Navigation into expo-router. A direct @react-navigation dependency
     // is incompatible and must not silently return.
     expect(packageJson.dependencies["@react-navigation/native"]).toBe(undefined);
@@ -388,25 +388,21 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("documents the SDK-56 Doctor expectation that the executable gate enforces", () => {
+  it("documents the clean SDK-57 Doctor result that the executable gate enforces", () => {
     // This test only checks that the expectation is written down and internally consistent.
     // It does NOT catch a Doctor regression on its own - a recorded literal always agrees with
     // itself. Enforcement lives in scripts/gate-expo-doctor.mjs, which runs the pinned Doctor
-    // and blocks on any undocumented or stale finding; see the secure-sdlc-config suite.
+    // and blocks on any undocumented finding; see the secure-sdlc-config suite.
     expect(baseline.current.expoDoctor.version).toBe("1.20.4");
     expect(baseline.current.expoDoctor.passed).toBe(21);
-    expect(baseline.current.expoDoctor.total).toBe(22);
+    expect(baseline.current.expoDoctor.total).toBe(21);
     expect(baseline.current.expoDoctor.reactNativeDirectory).toBe("passed");
-    expect(baseline.current.expoDoctor.expectedFailedChecks).toEqual([
-      "Check for Expo SDK versions affected by Hermes V1 regressions"
-    ]);
-    expect(
-      baseline.current.expoDoctor.passed + baseline.current.expoDoctor.expectedFailedChecks.length
-    ).toBe(baseline.current.expoDoctor.total);
+    // SDK 57 closed the Hermes V1 regression, so there is no documented exception left. An
+    // empty list is the strictest possible state: every finding is now undocumented and blocks.
+    expect(baseline.current.expoDoctor.expectedFailedChecks).toEqual([]);
+    expect(baseline.current.expoDoctor.passed).toBe(baseline.current.expoDoctor.total);
+    expect(baseline.current.expoDoctor.expectedOpenFinding).toBe(null);
     expect(baseline.goldenCommands).toContain("npm run security:expo-doctor");
-    expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("Hermes V1");
-    expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("0.86.2");
-    expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("not released to production");
     expect(baseline.sources.length).toBeGreaterThanOrEqual(7);
     for (const source of baseline.sources) {
       expect(source).toMatch(

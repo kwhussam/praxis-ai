@@ -167,7 +167,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(workflow).toContain("pull_request:\n    branches: [main]");
   });
 
-  it("keeps the xmldom override compatible with every SDK 56 plist installation", () => {
+  it("keeps the xmldom override compatible with every SDK 57 plist installation", () => {
     const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const installedPlists = Object.entries(packageLock.packages)
@@ -176,7 +176,14 @@ describe("SP3-01 secure SDLC configuration", () => {
       ) as Array<[string, { version: string }]>;
 
     expect(packageJson.overrides["@xmldom/xmldom"]).toBe("^0.9.11");
-    expect(packageLock.packages["node_modules/@xmldom/xmldom"].version).toBe("0.9.11");
+    // The security property is the floor, not one exact patch: @expo/plist still declares the
+    // unpatched ^0.8.8 line, so the override must keep the resolution on 0.9 at >= 0.9.11.
+    // Dropping the override would resolve back to 0.8.x and fail here; lowering the floor would
+    // fail too. Pinning the resolved patch instead would contradict the caret range.
+    const xmldomVersion = packageLock.packages["node_modules/@xmldom/xmldom"].version as string;
+    const [xmldomMajor, xmldomMinor, xmldomPatch] = xmldomVersion.split(".").map(Number);
+    expect([xmldomMajor, xmldomMinor]).toEqual([0, 9]);
+    expect(xmldomPatch).toBeGreaterThanOrEqual(11);
     expect(packageJson.scripts.postinstall).toBe("node scripts/apply-vendor-hardening.mjs");
     expect(packageJson.devDependencies["patch-package"]).toBe(undefined);
     // SDK 56 no longer hoists @expo/plist to the project root; it is installed once per
@@ -184,7 +191,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     // forces xmldom 0.9 while @expo/plist itself still declares the ^0.8.8 API.
     expect(installedPlists.length).toBeGreaterThan(0);
     for (const [packagePath, metadata] of installedPlists) {
-      expect(metadata.version).toBe("0.7.0");
+      expect(metadata.version).toBe("0.8.1");
       expect(readFileSync(join(repositoryRoot, packagePath, "build/parse.js"), "utf8"))
         .toContain('parseFromString(xml.trimStart(), "text/xml")');
     }
@@ -200,7 +207,7 @@ describe("SP3-01 secure SDLC configuration", () => {
     `)).toEqual({});
   });
 
-  it("keeps every SDK 56 Android permission lookup fail-closed", () => {
+  it("keeps every SDK 57 Android permission lookup fail-closed", () => {
     const packageLock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8"));
     const corePaths = Object.entries(packageLock.packages)
       .filter(([packagePath]) =>
@@ -210,7 +217,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(existsSync(vendorHardening)).toBe(true);
     expect(corePaths).toHaveLength(1);
-    expect(corePaths[0][1].version).toBe("56.0.25");
+    expect(corePaths[0][1].version).toBe("57.0.15");
     const installedSource = readFileSync(join(
       repositoryRoot,
       corePaths[0][0],
@@ -241,10 +248,11 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(verifyStep).toBeGreaterThan(-1);
     expect(ci.indexOf("run: npm run security:expo-doctor")).toBeLessThan(verifyStep);
     expect(doctor.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(doctor.expectedFailedChecks).toEqual([
-      "Check for Expo SDK versions affected by Hermes V1 regressions"
-    ]);
-    expect(doctor.passed + doctor.expectedFailedChecks.length).toBe(doctor.total);
+    // SDK 57 closed the Hermes V1 regression: React Native 0.86.3 ships hermes-compiler
+    // 250829098.0.17, past the 250829098.0.16 fix, and Doctor reports a clean run. There is
+    // therefore no documented exception left, and every finding is now undocumented.
+    expect(doctor.expectedFailedChecks).toEqual([]);
+    expect(doctor.passed).toBe(doctor.total);
 
     const fixtureRoot = mkdtempSync(join(tmpdir(), "praxisshield-doctor-gate-"));
     try {
@@ -259,26 +267,31 @@ describe("SP3-01 secure SDLC configuration", () => {
           cwd: repositoryRoot
         });
 
-      const documented = write("documented.txt",
-        `Running ${doctor.total} checks on your project...\n` +
-        `${doctor.passed}/${doctor.total} checks passed. 1 checks failed.\n\n` +
-        `\u2716 ${doctor.expectedFailedChecks[0]}\n`);
-      expect(run(documented)).toContain("Expo Doctor gate passed");
-
-      // An additional regression must block even though the documented finding is still there.
-      const regression = write("regression.txt",
-        `Running ${doctor.total} checks on your project...\n` +
-        `${doctor.passed - 1}/${doctor.total} checks passed. 2 checks failed.\n\n` +
-        `\u2716 ${doctor.expectedFailedChecks[0]}\n` +
-        "\u2716 Check that packages match versions required by installed Expo SDK\n");
-      expect(() => run(regression)).toThrow();
-
-      // A documented finding that silently disappears makes the baseline stale and must block
-      // too, so the expectation cannot outlive the problem it describes.
-      const stale = write("stale.txt",
+      const clean = write("clean.txt",
         `Running ${doctor.total} checks on your project...\n` +
         `${doctor.total}/${doctor.total} checks passed. No issues detected!\n`);
-      expect(() => run(stale)).toThrow();
+      expect(run(clean)).toContain("Expo Doctor gate passed");
+
+      // The Hermes V1 regression coming back must block. This is the specific reason the SDK 56
+      // exception existed; once removed from the baseline it can never pass again unnoticed.
+      const hermesAgain = write("hermes-again.txt",
+        `Running ${doctor.total} checks on your project...\n` +
+        `${doctor.total - 1}/${doctor.total} checks passed. 1 checks failed.\n\n` +
+        "\u2716 Check for Expo SDK versions affected by Hermes V1 regressions\n");
+      expect(() => run(hermesAgain)).toThrow();
+
+      // Any other new finding must block just the same.
+      const otherRegression = write("regression.txt",
+        `Running ${doctor.total} checks on your project...\n` +
+        `${doctor.total - 1}/${doctor.total} checks passed. 1 checks failed.\n\n` +
+        "\u2716 Check that packages match versions required by installed Expo SDK\n");
+      expect(() => run(otherRegression)).toThrow();
+
+      // A changed check count means Doctor itself moved; re-review instead of silent drift.
+      const countDrift = write("count-drift.txt",
+        `Running ${doctor.total + 1} checks on your project...\n` +
+        `${doctor.total + 1}/${doctor.total + 1} checks passed. No issues detected!\n`);
+      expect(() => run(countDrift)).toThrow();
 
       // Unparsable output means Doctor did not really report; never treat that as success.
       expect(() => run(write("broken.txt", "Doctor crashed\n"))).toThrow();
@@ -415,6 +428,22 @@ function dependencyAudit(): {
   };
 }
 
+// The dependency gate compares an allowlist entry against the versions actually installed, so
+// the fixture has to name the real postcss version. Hardcoding it turned into a maintenance trap
+// that broke on every lockfile refresh; deriving it keeps the fixture truthful while the gate
+// logic under test stays untouched.
+function installedPostcssVersion(): string {
+  const lock = JSON.parse(readFileSync(join(repositoryRoot, "package-lock.json"), "utf8")) as {
+    packages: Record<string, { version?: string }>;
+  };
+  const version = Object.entries(lock.packages)
+    .filter(([path]) => path === "node_modules/postcss" || path.endsWith("/node_modules/postcss"))
+    .map(([, value]) => value.version)
+    .find((value): value is string => typeof value === "string");
+  if (!version) throw new Error("postcss is not installed; the dependency-gate fixture needs it");
+  return version;
+}
+
 function dependencyAllowlist(expiresAt: string) {
   return {
     schemaVersion: 1,
@@ -425,7 +454,7 @@ function dependencyAllowlist(expiresAt: string) {
       url: "https://github.com/advisories/GHSA-2345-6789-cfgh",
       affectedRange: "<2.0.0",
       scope: "build-toolchain",
-      observedVersions: ["8.5.26"],
+      observedVersions: [installedPostcssVersion()],
       dependencyPaths: ["builder > postcss"],
       owner: "Security Owner",
       reason: "A sufficiently detailed fixture reason for a temporary toolchain exception.",
