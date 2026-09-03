@@ -44,6 +44,16 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-public-anon-placeholder
           EXPO_PUBLIC_API_BASE_URL: https://api.ci-placeholder.invalid
+      - name: Expo Doctor gate
+        # Runs the pinned Doctor for real and blocks on any finding that is not the one
+        # documented in security/mobile-upgrade-baseline.json. Must run before the test suite
+        # so an SDK incompatibility fails the job on its own evidence, not on a recorded number.
+        run: npm run security:expo-doctor
+        env:
+          EXPO_PUBLIC_APP_ENV: production
+          EXPO_PUBLIC_SUPABASE_URL: https://ci-placeholder.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-public-anon-placeholder
+          EXPO_PUBLIC_API_BASE_URL: https://api.ci-placeholder.invalid
       - name: Verify
         run: npm run verify
         env:

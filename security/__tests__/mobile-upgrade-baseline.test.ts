@@ -83,6 +83,7 @@ type UpgradeBaseline = {
       passed: number;
       total: number;
       reactNativeDirectory: string;
+      expectedFailedChecks: string[];
       expectedOpenFinding: string | null;
     };
   };
@@ -385,15 +386,22 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(baseline.goldenCommands.some((command: string) => command.startsWith("xcodebuild"))).toBe(true);
   });
 
-  it("keeps the exact SDK-56 Doctor result and its single expected finding explicit", () => {
-    // SDK 56 has exactly one unresolvable Doctor finding: the Hermes V1 memory regression,
-    // whose fix first ships in React Native 0.86.2 / SDK 57. Recording it as the expected open
-    // finding keeps it visible instead of silencing the check, and any *additional* regression
-    // still breaks this assertion.
+  it("documents the SDK-56 Doctor expectation that the executable gate enforces", () => {
+    // This test only checks that the expectation is written down and internally consistent.
+    // It does NOT catch a Doctor regression on its own - a recorded literal always agrees with
+    // itself. Enforcement lives in scripts/gate-expo-doctor.mjs, which runs the pinned Doctor
+    // and blocks on any undocumented or stale finding; see the secure-sdlc-config suite.
     expect(baseline.current.expoDoctor.version).toBe("1.20.4");
     expect(baseline.current.expoDoctor.passed).toBe(21);
     expect(baseline.current.expoDoctor.total).toBe(22);
     expect(baseline.current.expoDoctor.reactNativeDirectory).toBe("passed");
+    expect(baseline.current.expoDoctor.expectedFailedChecks).toEqual([
+      "Check for Expo SDK versions affected by Hermes V1 regressions"
+    ]);
+    expect(
+      baseline.current.expoDoctor.passed + baseline.current.expoDoctor.expectedFailedChecks.length
+    ).toBe(baseline.current.expoDoctor.total);
+    expect(baseline.goldenCommands).toContain("npm run security:expo-doctor");
     expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("Hermes V1");
     expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("0.86.2");
     expect(baseline.current.expoDoctor.expectedOpenFinding).toContain("not released to production");

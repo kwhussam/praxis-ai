@@ -22,6 +22,7 @@ const sarifGate = join(repositoryRoot, "scripts/gate-sarif.mjs");
 const dependencyGate = join(repositoryRoot, "scripts/gate-dependencies.mjs");
 const dependencyAllowlistPath = join(repositoryRoot, "security/dependency-allowlist.json");
 const vendorHardening = join(repositoryRoot, "scripts/apply-vendor-hardening.mjs");
+const doctorGate = join(repositoryRoot, "scripts/gate-expo-doctor.mjs");
 const actionInventoryPath = join(repositoryRoot, "security/github-action-inventory.json");
 const actionInventory = JSON.parse(readFileSync(actionInventoryPath, "utf8")) as {
   schemaVersion: number;
@@ -219,6 +220,71 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(installedSource).not.toContain("requestedPermissions!!.contains(permission)");
     expect(execFileSync("node", [vendorHardening], { encoding: "utf8", cwd: repositoryRoot }))
       .toContain("Vendor hardening verified");
+  });
+
+  it("runs Expo Doctor for real and blocks every undocumented finding", () => {
+    const baseline = JSON.parse(
+      readFileSync(join(repositoryRoot, "security/mobile-upgrade-baseline.json"), "utf8")
+    ) as { current: { expoDoctor: { version: string; passed: number; total: number; expectedFailedChecks: string[] } } };
+    const doctor = baseline.current.expoDoctor;
+    const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
+    const ci = readFileSync(join(workflowsDir, "ci.yml"), "utf8");
+
+    // The gate must exist, be pinned through the baseline, and actually run in CI before the
+    // test suite. Recording a Doctor result without executing it proves nothing.
+    expect(existsSync(doctorGate)).toBe(true);
+    expect(packageJson.scripts["security:expo-doctor"]).toBe("node scripts/gate-expo-doctor.mjs");
+    expect(ci).toContain("npm run security:expo-doctor");
+    // Compare against the exact "Verify" step, not the substring: "npm run verify:native-config"
+    // also contains "npm run verify" and would make this ordering check pass for the wrong reason.
+    const verifyStep = ci.indexOf("run: npm run verify\n");
+    expect(verifyStep).toBeGreaterThan(-1);
+    expect(ci.indexOf("run: npm run security:expo-doctor")).toBeLessThan(verifyStep);
+    expect(doctor.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(doctor.expectedFailedChecks).toEqual([
+      "Check for Expo SDK versions affected by Hermes V1 regressions"
+    ]);
+    expect(doctor.passed + doctor.expectedFailedChecks.length).toBe(doctor.total);
+
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "praxisshield-doctor-gate-"));
+    try {
+      const write = (name: string, contents: string) => {
+        const path = join(fixtureRoot, name);
+        writeFileSync(path, contents, "utf8");
+        return path;
+      };
+      const run = (path: string) =>
+        execFileSync("node", [doctorGate, "--report-file", path], {
+          encoding: "utf8",
+          cwd: repositoryRoot
+        });
+
+      const documented = write("documented.txt",
+        `Running ${doctor.total} checks on your project...\n` +
+        `${doctor.passed}/${doctor.total} checks passed. 1 checks failed.\n\n` +
+        `\u2716 ${doctor.expectedFailedChecks[0]}\n`);
+      expect(run(documented)).toContain("Expo Doctor gate passed");
+
+      // An additional regression must block even though the documented finding is still there.
+      const regression = write("regression.txt",
+        `Running ${doctor.total} checks on your project...\n` +
+        `${doctor.passed - 1}/${doctor.total} checks passed. 2 checks failed.\n\n` +
+        `\u2716 ${doctor.expectedFailedChecks[0]}\n` +
+        "\u2716 Check that packages match versions required by installed Expo SDK\n");
+      expect(() => run(regression)).toThrow();
+
+      // A documented finding that silently disappears makes the baseline stale and must block
+      // too, so the expectation cannot outlive the problem it describes.
+      const stale = write("stale.txt",
+        `Running ${doctor.total} checks on your project...\n` +
+        `${doctor.total}/${doctor.total} checks passed. No issues detected!\n`);
+      expect(() => run(stale)).toThrow();
+
+      // Unparsable output means Doctor did not really report; never treat that as success.
+      expect(() => run(write("broken.txt", "Doctor crashed\n"))).toThrow();
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it("accepts only exact, active build-toolchain dependency exceptions", () => {

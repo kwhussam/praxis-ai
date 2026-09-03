@@ -143,6 +143,12 @@ wäre geraten, nicht belegt.
 - Das Risiko ist **innerhalb von SDK 56 strukturell nicht lösbar**. Es ist der Grund, warum diese
   Stufe eine Übergangsstufe bleibt und **nicht produktiv freigegeben** wird. Die abschließende
   Neubewertung erfolgt in der SDK-57-Stufe.
+- **Durchgesetzt wird das von `scripts/gate-expo-doctor.mjs`**, nicht von einer notierten Zahl.
+  Das Gate startet den über die Baseline gepinnten Doctor (`expo-doctor@1.20.4`) wirklich,
+  vergleicht das echte Ergebnis und blockt fail-closed in beide Richtungen: bei jedem
+  zusätzlichen Befund **und** wenn der dokumentierte Befund verschwindet, weil die Baseline dann
+  veraltet ist. Es läuft im `quality`-Job **vor** `npm run verify` und ist über
+  `npm run security:expo-doctor` auch lokal ausführbar.
 - Bewusst wurde **kein** Opt-out gesetzt: SDK 57 wird ebenfalls auf Hermes v1 laufen (dann
   gefixt). Auf Hermes v0 auszuweichen würde genau die Laufzeit verbergen, die die Zielstufe
   verwendet, statt sie früh zu prüfen. Grüne Unit-Tests sind ausdrücklich **keine**
@@ -179,7 +185,8 @@ wäre geraten, nicht belegt.
 | `npm ci` | grün | frischer Install; beide Vendor-Härtungen fail-closed reproduziert |
 | `npm run verify` | grün: 487 bestanden, 6 übersprungen | Lint, TypeScript 6.0.3 und Jest; identische Testanzahl wie SDK 55, kein Test verloren |
 | `npm run security:dependencies` | grün | **0 aktive High-/Critical-Ausnahmen**; keine neue Ausnahme eingetragen |
-| `npx expo-doctor@latest` 1.20.4 | **21/22** | einziger Befund ist die Hermes-v1-Regression; als `expectedOpenFinding` hinterlegt, nicht stummgeschaltet |
+| `npm run security:expo-doctor` | grün | führt den gepinnten `expo-doctor@1.20.4` aus und wertet das echte Ergebnis aus: **21/22**, einziger Befund ist die Hermes-v1-Regression |
+| Doctor-Gate blockt nachweislich | grün | fixture-getestet: zusätzlicher Befund, verschwundener Befund und unlesbare Ausgabe führen jeweils zu Exit 1 |
 | `git diff --check` | grün | keine Whitespace-Fehler |
 | Clean Prebuild | grün | `npx expo prebuild --clean --no-install` erzeugt Android und iOS reproduzierbar |
 | `npm run verify:native-config` | grün | Entitlements, Backup-Regeln, Berechtigungen und Release-Stripping unverändert |

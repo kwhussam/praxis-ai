@@ -21,6 +21,9 @@
       "passed": 21,
       "total": 22,
       "reactNativeDirectory": "passed",
+      "expectedFailedChecks": [
+        "Check for Expo SDK versions affected by Hermes V1 regressions"
+      ],
       "expectedOpenFinding": "Hermes V1 250829098.0.10 shipped with React Native 0.85.3 is affected by the documented memory regression that also hits react-native-worklets and react-native-reanimated. The fix first ships in Hermes V1 250829098.0.16 / React Native 0.86.2, so it is structurally unresolvable inside SDK 56 and is the reason this stage stays transitional and is not released to production."
     }
   },
@@ -334,6 +337,7 @@
   ],
   "goldenCommands": [
     "npm run verify",
+    "npm run security:expo-doctor",
     "EXPO_DOCTOR_ENABLE_DIRECTORY_CHECK=1 npx expo-doctor@latest --verbose",
     "npx expo prebuild --clean --no-install",
     "npm run verify:native-config",

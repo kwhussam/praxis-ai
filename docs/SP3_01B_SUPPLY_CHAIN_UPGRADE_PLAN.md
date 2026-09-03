@@ -265,12 +265,21 @@ früher ausgenommenen Advisories nicht installiert sind. Der Regressionstest pr�
 nicht mehr die überholte Abwesenheit von `metro-config`, sondern direkt und auf jeder
 Verschachtelungsebene die Abwesenheit von `image-size`.
 
-SDK 56 bleibt ausdrücklich eine Übergangsstufe. Expo Doctor meldet fail-closed die dokumentierte
+SDK 56 bleibt ausdrücklich eine Übergangsstufe. Expo Doctor meldet die dokumentierte
 Hermes-v1-Speicherregression (installiert `250829098.0.10`, gefixt erst ab `250829098.0.16` /
-React Native 0.86.2). Sie ist innerhalb von SDK 56 nicht lösbar und ist als
-`expectedOpenFinding` in `security/mobile-upgrade-baseline.json` hinterlegt, damit jede
-*zusätzliche* Doctor-Regression den Test weiterhin bricht. Eine Produktionsfreigabe erfolgt auf
-dieser Stufe nicht; die abschließende Bewertung gehört in die SDK-57-Stufe.
+React Native 0.86.2). Sie ist innerhalb von SDK 56 nicht lösbar.
+
+Die Erwartung ist nicht nur notiert, sondern ausführbar durchgesetzt. Ein Review deckte auf, dass
+die reine Baseline-Notiz nichts belegt: Ein fest eingetragener Wert stimmt immer mit sich selbst
+überein, und die CI führte Doctor überhaupt nicht aus. `scripts/gate-expo-doctor.mjs` startet
+deshalb den über die Baseline gepinnten `expo-doctor@1.20.4` wirklich, vergleicht das echte
+Ergebnis mit `current.expoDoctor` und blockt fail-closed in beide Richtungen: bei jedem
+undokumentierten Befund, bei geänderter Prüfungsanzahl, bei unlesbarer Ausgabe und auch dann,
+wenn der dokumentierte Befund verschwindet — analog zur Behandlung veralteter Einträge im
+Dependency-Gate. Das Gate läuft im `quality`-Job vor `npm run verify`.
+
+Eine Produktionsfreigabe erfolgt auf dieser Stufe nicht; die abschließende Bewertung gehört in die
+SDK-57-Stufe.
 
 ## Primärquellen
 
