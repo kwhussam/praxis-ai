@@ -10,12 +10,16 @@ tags:
 - tapOn:
     id: auth-email
 - inputText: "${output.registrationEmail}"
-- tapOn:
-    id: auth-password
+# The email return action focuses the password input explicitly. This avoids an
+# iOS 26 accessibility-coordinate issue that left the email field focused.
+- pressKey: Enter
 - inputText: "${TEST_PASSWORD}"
-- hideKeyboard
+- pressKey: Enter
+# A clean iOS 26 keychain asks to save the newly created password and covers the
+# onboarding accessibility tree until the system sheet is dismissed.
 - tapOn:
-    id: auth-submit
+    text: "Später|Not Now"
+    optional: true
 - extendedWaitUntil:
     visible:
       id: onboarding-screen

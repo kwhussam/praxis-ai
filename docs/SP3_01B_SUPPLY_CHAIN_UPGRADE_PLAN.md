@@ -26,8 +26,8 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist `released` (PR #40, Merge `9a75507`) mit grünen GitHub-Läufen `CI` und `Secure SDLC`; SDK 56 und 57 stehen weiterhin aus |
-| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – **0 aktive High-/Critical-Ausnahmen**: SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`, die 2 transitiven `image-size`-Ausnahmen sind durch die Dependency-Wartung (PR #47, Merge `8282ae1`) geschlossen. Offen bleiben nur der `@xmldom/xmldom`-Override und die Vendor-Härtung; sie werden mit SDK 56/57 neu bewertet |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist `released` (PR #40, Merge `9a75507`); SDK 56 ist migriert und in Verifikation (Branch `codex/sp3-01b-sdk56`) und bleibt als Übergangsstufe ohne Produktionsfreigabe; SDK 57 steht weiterhin aus |
+| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – **0 aktive High-/Critical-Ausnahmen**: SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`, die 2 transitiven `image-size`-Ausnahmen sind durch die Dependency-Wartung (PR #47, Merge `8282ae1`) geschlossen. Der `@xmldom/xmldom`-Override und beide Vendor-Härtungen wurden in der SDK-56-Stufe gegen die Upstream-Quellen neu bewertet und bleiben **nachweislich erforderlich**; sie werden mit SDK 57 erneut geprüft |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
 ## Technische Leitplanken
@@ -233,10 +233,59 @@ SDK 55 ist damit abgeschlossen und als PR [`#40`](https://github.com/kwhussam/pr
 (Merge `9a75507`) gemergt; die nachgelagerten GitHub-Läufe `CI` und `Secure SDLC` waren grün.
 SDK 56 bleibt als nicht produktiv freizugebende Übergangsstufe und SDK 57 als Zielstufe offen.
 
+## Phase 3 – SDK-56-Zwischenstand
+
+Der sechste isolierte Migrationsschritt steht auf Expo 56.0.21, React Native 0.85.3 und
+React/React DOM 19.2.3. Ausgangspunkt ist `origin/main` am Stand
+`b5b33b621dc26431d43473ab7ce7be90f34a5c7a` nach PR #49. Die New Architecture bleibt
+verpflichtend aktiv, Android bleibt auf minSdk 24 und compileSdk/targetSdk 36, das iOS
+Deployment Target steigt auf die von SDK 56 erzwungenen 16.4.
+
+Drei SDK-56-Bruchstellen trafen das Projekt konkret. Erstens entkoppelt SDK 56 Expo Router von
+React Navigation; das verwaiste `@react-navigation/native` wurde nach belegter Nichtnutzung
+entfernt. Zweitens hoistet SDK 56 `@expo/config-plugins` nicht mehr ins Wurzelverzeichnis,
+weshalb alle drei eigenen Config-Plugins auf den von Expo exportierten Pfad
+`expo/config-plugins` umgestellt wurden. Drittens deprecatet TypeScript 6 die Option `baseUrl`;
+sie wurde entfernt statt stummgeschaltet, weil `paths` seit TS 4.1 ohnehin relativ zur
+`tsconfig.json` auflöst.
+
+Die beiden Vendor-Härtungen wurden gegen die installierten SDK-56-Quellen neu bewertet.
+`@expo/plist` 0.7.0 ruft `parseFromString` weiterhin einargumentig auf und
+`expo-modules-core` 56.0.25 wertet `requestedPermissions` weiterhin mit erzwungener
+Nicht-null-Auswertung aus. Beide Probleme sind upstream **nicht** behoben, deshalb wurden beide
+Härtungen portiert und die fail-closed Versionsprüfung beibehalten. Der `@xmldom/xmldom`-Override
+bleibt zwingend: Unter dem erzwungenen xmldom 0.9 wirft der ungepatchte Ein-Argument-Aufruf, die
+Härtung ist damit Voraussetzung für funktionierendes Plist-Parsing und nicht bloß eine
+Verschönerung.
+
+Das Dependency-Gate bleibt bei **0 aktiven Ausnahmen**. React Native 0.85 bringt
+`@react-native/metro-config` als echte Abhängigkeit von `react-native-worklets` und dem
+Community-CLI-Plugin zurück; Metro 0.84 hängt jedoch nicht mehr an `image-size`, sodass die
+früher ausgenommenen Advisories nicht installiert sind. Der Regressionstest prüft deshalb
+nicht mehr die überholte Abwesenheit von `metro-config`, sondern direkt und auf jeder
+Verschachtelungsebene die Abwesenheit von `image-size`.
+
+SDK 56 bleibt ausdrücklich eine Übergangsstufe. Expo Doctor meldet die dokumentierte
+Hermes-v1-Speicherregression (installiert `250829098.0.10`, gefixt erst ab `250829098.0.16` /
+React Native 0.86.2). Sie ist innerhalb von SDK 56 nicht lösbar.
+
+Die Erwartung ist nicht nur notiert, sondern ausführbar durchgesetzt. Ein Review deckte auf, dass
+die reine Baseline-Notiz nichts belegt: Ein fest eingetragener Wert stimmt immer mit sich selbst
+überein, und die CI führte Doctor überhaupt nicht aus. `scripts/gate-expo-doctor.mjs` startet
+deshalb den über die Baseline gepinnten `expo-doctor@1.20.4` wirklich, vergleicht das echte
+Ergebnis mit `current.expoDoctor` und blockt fail-closed in beide Richtungen: bei jedem
+undokumentierten Befund, bei geänderter Prüfungsanzahl, bei unlesbarer Ausgabe und auch dann,
+wenn der dokumentierte Befund verschwindet — analog zur Behandlung veralteter Einträge im
+Dependency-Gate. Das Gate läuft im `quality`-Job vor `npm run verify`.
+
+Eine Produktionsfreigabe erfolgt auf dieser Stufe nicht; die abschließende Bewertung gehört in die
+SDK-57-Stufe.
+
 ## Primärquellen
 
 - Expo SDK 55: <https://expo.dev/changelog/sdk-55>
 - Expo SDK 56: <https://expo.dev/changelog/sdk-56>
+- Upgrade auf SDK 56: <https://expo.dev/blog/upgrading-to-sdk-56>
 - Expo SDK 57 / aktuelle Versionsmatrix: <https://docs.expo.dev/versions/latest/>
 - Expo New Architecture: <https://docs.expo.dev/guides/new-architecture/>
 - Expo SDK 53: <https://expo.dev/changelog/sdk-53>

@@ -1,6 +1,7 @@
 const mockValues = new Map<string, string>();
 let mockAvailable = true;
 let mockManifestDelays: number[] = [];
+let mockOperationError: Error | null = null;
 
 declare const jest: {
   mock(moduleName: string, factory: () => unknown): void;
@@ -10,8 +11,12 @@ declare function beforeEach(fn: () => void): void;
 jest.mock("expo-secure-store", () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
   isAvailableAsync: async () => mockAvailable,
-  getItemAsync: async (key: string) => mockValues.get(key) ?? null,
+  getItemAsync: async (key: string) => {
+    if (mockOperationError) throw mockOperationError;
+    return mockValues.get(key) ?? null;
+  },
   setItemAsync: async (key: string, value: string) => {
+    if (mockOperationError) throw mockOperationError;
     if (key.endsWith(".manifest")) {
       const delay = mockManifestDelays.shift() ?? 0;
       if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -19,6 +24,7 @@ jest.mock("expo-secure-store", () => ({
     mockValues.set(key, value);
   },
   deleteItemAsync: async (key: string) => {
+    if (mockOperationError) throw mockOperationError;
     mockValues.delete(key);
   }
 }));
@@ -35,6 +41,7 @@ describe("questionnaireDraftStorage", () => {
     mockValues.clear();
     mockAvailable = true;
     mockManifestDelays = [];
+    mockOperationError = null;
   });
 
   it("round-trips a practice-bound draft through SecureStore chunks", async () => {
@@ -52,6 +59,15 @@ describe("questionnaireDraftStorage", () => {
   it("never persists when SecureStore is unavailable", async () => {
     mockAvailable = false;
     expect(await saveQuestionnaireDraft("practice-a", DEFAULT_QUESTIONNAIRE_ANSWERS)).toBe(false);
+    expect(mockValues.size).toBe(0);
+  });
+
+  it("keeps the draft volatile when a linked SecureStore denies real operations", async () => {
+    mockOperationError = new Error("errSecMissingEntitlement");
+
+    expect(await saveQuestionnaireDraft("practice-a", DEFAULT_QUESTIONNAIRE_ANSWERS)).toBe(false);
+    expect(await loadQuestionnaireDraft("practice-a")).toBeNull();
+    await deleteQuestionnaireDraft("practice-a");
     expect(mockValues.size).toBe(0);
   });
 

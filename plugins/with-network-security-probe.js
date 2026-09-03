@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { withDangerousMod, withXcodeProject } = require("@expo/config-plugins");
+const { withDangerousMod, withXcodeProject } = require("expo/config-plugins");
 
 const IOS_PROBE_FILES = ["PraxisShieldNetworkProbe.swift", "PraxisShieldNetworkProbeBridge.m"];
 

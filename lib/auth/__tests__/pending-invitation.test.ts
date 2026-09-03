@@ -2,12 +2,22 @@ declare const jest: { mock(moduleName: string, factory: () => unknown): void };
 
 const mockValues = new Map<string, string>();
 let mockAvailable = true;
+let mockOperationError: Error | null = null;
 jest.mock("expo-secure-store", () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: "device-only",
   isAvailableAsync: async () => mockAvailable,
-  getItemAsync: async (key: string) => mockValues.get(key) ?? null,
-  setItemAsync: async (key: string, value: string) => { mockValues.set(key, value); },
-  deleteItemAsync: async (key: string) => { mockValues.delete(key); }
+  getItemAsync: async (key: string) => {
+    if (mockOperationError) throw mockOperationError;
+    return mockValues.get(key) ?? null;
+  },
+  setItemAsync: async (key: string, value: string) => {
+    if (mockOperationError) throw mockOperationError;
+    mockValues.set(key, value);
+  },
+  deleteItemAsync: async (key: string) => {
+    if (mockOperationError) throw mockOperationError;
+    mockValues.delete(key);
+  }
 }));
 
 import { clearPendingInvitationCode, getPendingInvitationCode, normalizeInvitationCode, savePendingInvitationCode } from "@/lib/auth/pending-invitation";
@@ -37,5 +47,17 @@ describe("pending invitation handoff", () => {
 
     expect(await getPendingInvitationCode()).toBeNull();
     expect(mockValues.size).toBe(0);
+  });
+
+  it("keeps a valid handoff volatile when the linked native store is not operable", async () => {
+    mockOperationError = new Error("errSecMissingEntitlement");
+
+    await savePendingInvitationCode("ABCDEFGHJK");
+
+    expect(await getPendingInvitationCode()).toBe("ABCDEFGHJK");
+    expect(mockValues.size).toBe(0);
+    await clearPendingInvitationCode();
+    expect(await getPendingInvitationCode()).toBeNull();
+    mockOperationError = null;
   });
 });

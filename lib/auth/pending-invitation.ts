@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
+import { canOperateSecureStore } from "@/lib/security/secureStoreAvailability";
+
 const KEY = "praxisshield.pending-invitation.v1";
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{10}$/;
 let memoryCode: string | null = null;
@@ -12,26 +14,43 @@ export async function savePendingInvitationCode(raw: string) {
   const code = normalizeInvitationCode(raw);
   if (!CODE_PATTERN.test(code)) throw new Error("invalid_invitation_code");
   memoryCode = code;
-  if (await secureStoreAvailable()) await SecureStore.setItemAsync(KEY, code, options());
+  const storeOptions = options();
+  if (!(await canOperateSecureStore(storeOptions))) return;
+  try {
+    await SecureStore.setItemAsync(KEY, code, storeOptions);
+  } catch {
+    // The handoff remains available for this process only. Never persist an invitation
+    // code through an unprotected fallback when Keychain/Keystore access fails.
+  }
 }
 
 export async function getPendingInvitationCode() {
   if (memoryCode) return memoryCode;
-  if (!(await secureStoreAvailable())) return null;
-  const value = await SecureStore.getItemAsync(KEY, options());
-  if (!value) return null;
-  if (!CODE_PATTERN.test(value)) {
-    await SecureStore.deleteItemAsync(KEY, options());
+  const storeOptions = options();
+  if (!(await canOperateSecureStore(storeOptions))) return null;
+  try {
+    const value = await SecureStore.getItemAsync(KEY, storeOptions);
+    if (!value) return null;
+    if (!CODE_PATTERN.test(value)) {
+      await SecureStore.deleteItemAsync(KEY, storeOptions);
+      return null;
+    }
+    memoryCode = value;
+    return value;
+  } catch {
     return null;
   }
-  memoryCode = value;
-  return value;
 }
 
 export async function clearPendingInvitationCode() {
   memoryCode = null;
-  if (await secureStoreAvailable()) await SecureStore.deleteItemAsync(KEY, options());
+  const storeOptions = options();
+  if (!(await canOperateSecureStore(storeOptions))) return;
+  try {
+    await SecureStore.deleteItemAsync(KEY, storeOptions);
+  } catch {
+    // Volatile state is already cleared; a native store error must not block the handoff reset.
+  }
 }
 
 function options() { return { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }; }
-function secureStoreAvailable() { return SecureStore.isAvailableAsync().catch(() => false); }

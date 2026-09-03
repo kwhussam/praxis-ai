@@ -20,6 +20,12 @@ tags:
     id: inventory-name-input
 - inputText: E2E-Persistenz-A
 - pressKey: Enter
+- scrollUntilVisible:
+    element:
+      id: inventory-add-item
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
 - tapOn:
     id: inventory-add-item
 - extendedWaitUntil:
@@ -97,6 +103,12 @@ tags:
     id: inventory-name-input
 - inputText: E2E-Persistenz-B
 - pressKey: Enter
+- scrollUntilVisible:
+    element:
+      id: inventory-add-item
+    direction: DOWN
+    timeout: 30000
+    visibilityPercentage: 50
 - tapOn:
     id: inventory-add-item
 - extendedWaitUntil:

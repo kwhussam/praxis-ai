@@ -72,7 +72,12 @@ export class EncryptedInventoryRepository implements InventoryRepository {
     try {
       key = await this.keys.load(practiceId);
     } catch {
-      return { status: "error", reason: "storage_failed" };
+      // A probe can succeed and the very next Keychain read still fail. Distinguish a broken
+      // secure store from any other storage error, so the inventory degrades to volatile
+      // instead of surfacing as a generic, retryable failure.
+      return (await this.secureStoreBroken())
+        ? { status: "volatile", reason: "secure_store_unavailable" }
+        : { status: "error", reason: "storage_failed" };
     }
     if (!key) return { status: "error", reason: "key_missing" };
 
@@ -107,7 +112,12 @@ export class EncryptedInventoryRepository implements InventoryRepository {
     try {
       key = await this.loadOrCreateKey(snapshot.practiceId);
     } catch {
-      return { status: "error", reason: "storage_failed" };
+      // Without a key from a working secure store there must be no encrypted snapshot at all:
+      // return volatile so the caller keeps the inventory in memory and blocks synchronisation,
+      // rather than persisting anything under an unprotected key.
+      return (await this.secureStoreBroken())
+        ? { status: "volatile", reason: "secure_store_unavailable" }
+        : { status: "error", reason: "storage_failed" };
     }
 
     let envelope: LocalInventoryEnvelope;
@@ -147,12 +157,22 @@ export class EncryptedInventoryRepository implements InventoryRepository {
       await this.blobs.delete(practiceId);
       return { status: "deleted" };
     } catch {
-      return { status: "error", reason: "storage_failed" };
+      return (await this.secureStoreBroken())
+        ? { status: "volatile", reason: "secure_store_unavailable" }
+        : { status: "error", reason: "storage_failed" };
     }
   }
 
   private async loadOrCreateKey(practiceId: string) {
     return (await this.keys.load(practiceId)) ?? this.keys.create(practiceId);
+  }
+
+  private async secureStoreBroken() {
+    try {
+      return !(await this.keys.isAvailable());
+    } catch {
+      return true;
+    }
   }
 
   private enqueue<T>(practiceId: string, operation: () => Promise<T>): Promise<T> {

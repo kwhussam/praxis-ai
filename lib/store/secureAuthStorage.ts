@@ -1,5 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
+import { canOperateSecureStore } from "@/lib/security/secureStoreAvailability";
+
 type AuthStorage = {
   getItem: (key: string) => Promise<string | null>;
   setItem: (key: string, value: string) => Promise<void>;
@@ -15,30 +17,37 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
     async getItem(key) {
       const webStorage = getWebSessionStorage();
       if (webStorage) return webStorage.getItem(webStorageKey(namespace, key));
-      if (!(await canUseSecureStore())) {
+      const options = secureStoreOptions(namespace);
+      if (!(await canOperateSecureStore(options))) {
         return memoryFallback.get(key) ?? null;
       }
 
       const storeKey = secureStoreKey(namespace, key);
-      const options = secureStoreOptions(namespace);
-      const storedValue = await SecureStore.getItemAsync(storeKey, options);
-      const chunkCount = parseChunkCount(storedValue);
+      // Even after a successful probe an individual read can still throw, for example when the
+      // device locks between the probe and the read. Any such failure degrades to the volatile
+      // in-memory value; the token is never written to a less protected store.
+      try {
+        const storedValue = await SecureStore.getItemAsync(storeKey, options);
+        const chunkCount = parseChunkCount(storedValue);
 
-      if (chunkCount === null) {
-        return storedValue ?? memoryFallback.get(key) ?? null;
-      }
+        if (chunkCount === null) {
+          return storedValue ?? memoryFallback.get(key) ?? null;
+        }
 
-      const chunks = await Promise.all(
-        Array.from({ length: chunkCount }, (_, index) =>
-          SecureStore.getItemAsync(chunkKey(storeKey, index), options)
-        )
-      );
+        const chunks = await Promise.all(
+          Array.from({ length: chunkCount }, (_, index) =>
+            SecureStore.getItemAsync(chunkKey(storeKey, index), options)
+          )
+        );
 
-      if (chunks.some((chunk) => chunk === null)) {
+        if (chunks.some((chunk) => chunk === null)) {
+          return memoryFallback.get(key) ?? null;
+        }
+
+        return chunks.join("");
+      } catch {
         return memoryFallback.get(key) ?? null;
       }
-
-      return chunks.join("");
     },
     async setItem(key, value) {
       const webStorage = getWebSessionStorage();
@@ -46,30 +55,38 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
         webStorage.setItem(webStorageKey(namespace, key), value);
         return;
       }
+      // The volatile copy is written first so the session keeps working for this process even
+      // when secure storage is unusable. It is deliberately the only fallback: no AsyncStorage,
+      // no file, no SQLite and no logging ever sees an auth token.
       memoryFallback.set(key, value);
-      if (!(await canUseSecureStore())) return;
+
+      const options = secureStoreOptions(namespace);
+      if (!(await canOperateSecureStore(options))) return;
 
       const storeKey = secureStoreKey(namespace, key);
-      const options = secureStoreOptions(namespace);
-      const previousValue = await SecureStore.getItemAsync(storeKey, options);
-      const previousChunkCount = parseChunkCount(previousValue) ?? 0;
-      const chunks = splitIntoChunks(value);
+      try {
+        const previousValue = await SecureStore.getItemAsync(storeKey, options);
+        const previousChunkCount = parseChunkCount(previousValue) ?? 0;
+        const chunks = splitIntoChunks(value);
 
-      if (chunks.length === 1) {
-        await SecureStore.setItemAsync(storeKey, value, options);
-        await deleteChunks(storeKey, previousChunkCount, options);
-        return;
-      }
+        if (chunks.length === 1) {
+          await SecureStore.setItemAsync(storeKey, value, options);
+          await deleteChunks(storeKey, previousChunkCount, options);
+          return;
+        }
 
-      await Promise.all(
-        chunks.map((chunk, index) =>
-          SecureStore.setItemAsync(chunkKey(storeKey, index), chunk, options)
-        )
-      );
-      await SecureStore.setItemAsync(storeKey, `${CHUNK_MARKER}${chunks.length}`, options);
+        await Promise.all(
+          chunks.map((chunk, index) =>
+            SecureStore.setItemAsync(chunkKey(storeKey, index), chunk, options)
+          )
+        );
+        await SecureStore.setItemAsync(storeKey, `${CHUNK_MARKER}${chunks.length}`, options);
 
-      if (previousChunkCount > chunks.length) {
-        await deleteChunks(storeKey, previousChunkCount, options, chunks.length);
+        if (previousChunkCount > chunks.length) {
+          await deleteChunks(storeKey, previousChunkCount, options, chunks.length);
+        }
+      } catch {
+        // Persisting failed after a successful probe. The token stays volatile in RAM only.
       }
     },
     async removeItem(key) {
@@ -79,15 +96,20 @@ export function createSecureAuthStorage(namespace: string): AuthStorage {
         return;
       }
       memoryFallback.delete(key);
-      if (!(await canUseSecureStore())) return;
+
+      const options = secureStoreOptions(namespace);
+      if (!(await canOperateSecureStore(options))) return;
 
       const storeKey = secureStoreKey(namespace, key);
-      const options = secureStoreOptions(namespace);
-      const storedValue = await SecureStore.getItemAsync(storeKey, options);
-      const chunkCount = parseChunkCount(storedValue) ?? 0;
+      try {
+        const storedValue = await SecureStore.getItemAsync(storeKey, options);
+        const chunkCount = parseChunkCount(storedValue) ?? 0;
 
-      await deleteChunks(storeKey, chunkCount, options);
-      await SecureStore.deleteItemAsync(storeKey, options);
+        await deleteChunks(storeKey, chunkCount, options);
+        await SecureStore.deleteItemAsync(storeKey, options);
+      } catch {
+        // The volatile copy is already gone; a failed keychain delete must not break sign-out.
+      }
     }
   };
 }
@@ -102,10 +124,6 @@ function getWebSessionStorage(): Storage | null {
 
 function webStorageKey(namespace: string, key: string) {
   return `${namespace}.${key}`;
-}
-
-async function canUseSecureStore() {
-  return SecureStore.isAvailableAsync().catch(() => false);
 }
 
 function secureStoreOptions(namespace: string) {

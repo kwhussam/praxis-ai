@@ -54,8 +54,21 @@ npm run e2e:smoke
 
 Use `npm run e2e:smoke:android` for Android. The smoke runner starts with
 `e2e:env:up`, so every complete suite run receives a fresh database, all
-migrations, and the shared seed. It then starts Metro when necessary and runs
-all flows sequentially while continuing after individual failures.
+migrations, and the shared seed. It then starts **its own** Metro server and
+runs all flows sequentially while continuing after individual failures.
+
+Metro is owned by the smoke run and never shared:
+
+- `e2e:app:ios` / `e2e:app:android` build and install the native app only
+  (`--no-bundler`). They no longer leave a bundler behind.
+- If the Metro port is already in use, the run aborts with exit code 1 instead
+  of attaching to it. A foreign server was started from an unknown revision and
+  could serve a stale bundle, which would invalidate the whole smoke silently.
+  Stop that server first, or set `E2E_METRO_PORT` to a free port.
+- The Metro server the run starts is terminated again when it exits, on success
+  and on failure alike.
+- Metro listens with `--host lan`; the device reaches it through `127.0.0.1` on
+  iOS and `10.0.2.2` on the Android emulator.
 
 For a focused iOS rerun of the WLAN runtime-evidence gate, use
 `npm run e2e:wlan:ios`. This uses the same self-contained backend/Worker/Metro
@@ -136,7 +149,8 @@ Android Emulator:
 npm run e2e:app:android
 ```
 
-These commands build/install the native development app and start Metro with:
+These commands build and install the native development app **without** starting
+a bundler. They configure the build with:
 
 - `EXPO_PUBLIC_APP_ENV=test`
 - `EXPO_PUBLIC_EXTERNAL_CHECK_ENABLED=false`
@@ -145,8 +159,10 @@ These commands build/install the native development app and start Metro with:
 - `EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8787` on iOS
 - `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8787` on Android
 
-After the native app is installed, Metro can be restarted without rebuilding via
-`npm run e2e:metro:ios` or `npm run e2e:metro:android`.
+`npm run e2e:smoke` starts and stops Metro itself, so nothing needs to be running
+beforehand. For manual work on an already installed app, start Metro explicitly
+via `npm run e2e:metro:ios` or `npm run e2e:metro:android` — but stop it again
+before running a smoke suite, otherwise the run aborts on the occupied port.
 
 ## Seed accounts
 

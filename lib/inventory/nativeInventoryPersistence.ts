@@ -12,13 +12,17 @@ import {
   bytesToBase64Url,
   LOCAL_INVENTORY_KEY_BYTES
 } from "@/lib/inventory/localInventoryCrypto";
+import { canOperateSecureStore } from "@/lib/security/secureStoreAvailability";
 
 const KEY_NAMESPACE = "praxisshield-inventory-key-v1";
 const DATABASE_NAME = "praxisshield-inventory-v1.db";
 
 export class SecureStoreInventoryKeyStore implements LocalInventoryKeyStore {
   async isAvailable() {
-    return SecureStore.isAvailableAsync().catch(() => false);
+    // Operational probe, not just a module-linked check: without a usable Keychain/Keystore
+    // there is no safe key, and EncryptedInventoryRepository must keep the inventory volatile
+    // instead of writing an encrypted snapshot under an unprotected key.
+    return canOperateSecureStore(options());
   }
 
   async load(practiceId: string): Promise<LocalInventoryKey | null> {

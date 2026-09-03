@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
@@ -14,6 +14,7 @@ import { loadAccessiblePracticeForUser, useSessionStore } from "@/lib/store/sess
 
 export default function LoginScreen() {
   const router = useRouter();
+  const passwordInputRef = useRef<TextInput>(null);
   const { mode: requestedMode } = useLocalSearchParams<{ mode?: string }>();
   const setPractice = useSessionStore((store) => store.setPractice);
   const setSession = useSessionStore((store) => store.setSession);
@@ -164,8 +165,10 @@ export default function LoginScreen() {
           keyboardType="email-address"
           onBlur={() => setEmailTouched(true)}
           onChangeText={setEmail}
+          onSubmitEditing={() => passwordInputRef.current?.focus()}
           placeholder="team@praxis.de"
           placeholderTextColor={colors.muted}
+          returnKeyType="next"
           style={styles.input}
           testID="auth-email"
           value={email}
@@ -185,6 +188,7 @@ export default function LoginScreen() {
           }}
           placeholder="Mindestens 8 Zeichen"
           placeholderTextColor={colors.muted}
+          ref={passwordInputRef}
           returnKeyType="go"
           secureTextEntry
           style={styles.input}
