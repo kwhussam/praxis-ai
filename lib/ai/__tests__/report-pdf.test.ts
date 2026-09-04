@@ -6,6 +6,7 @@ const mockFileCreateCalls: Array<{ uri: string; options: Record<string, unknown>
 const mockDeleteCalls: string[] = [];
 const mockShareCalls: Array<{ path: string; options: Record<string, unknown> }> = [];
 let mockSharingAvailable = true;
+let mockWriteShouldFail = false;
 // Entries the fake filesystem currently holds; drives the idempotent-delete contract.
 const mockExisting = new Set<string>();
 
@@ -62,6 +63,7 @@ jest.mock("expo-file-system", () => {
       mockExisting.add(this.uri);
     }
     write(bytes: Uint8Array) {
+      if (mockWriteShouldFail) throw new Error("disk_write_failed");
       mockWriteCalls.push({ uri: this.uri, bytes: Array.from(bytes) });
       mockExisting.add(this.uri);
     }
@@ -102,6 +104,7 @@ describe("exportReportPdf", () => {
     mockDeleteCalls.length = 0;
     mockShareCalls.length = 0;
     mockSharingAvailable = true;
+    mockWriteShouldFail = false;
     mockExisting.clear();
   });
 
@@ -184,6 +187,18 @@ describe("exportReportPdf", () => {
 
     await expect(shareReportPdf({ practiceId, reportId })).rejects.toThrow("kein sicherer PDF-Teilen-Dialog");
 
+    expect(mockShareCalls).toHaveLength(0);
+    expect(mockDeleteCalls).toContain(pdfPath);
+    expect(mockExisting.has(pdfPath)).toBe(false);
+  });
+
+  it("löscht ein erzeugtes Klartextartefakt wenn das Schreiben fehlschlägt", async () => {
+    mockWriteShouldFail = true;
+    mockResponse = new Response("%PDF-1.4\nfixture", { headers: { "content-type": "application/pdf" } });
+
+    await expect(shareReportPdf({ practiceId, reportId })).rejects.toThrow("disk_write_failed");
+
+    expect(mockFileCreateCalls).toEqual([{ uri: pdfPath, options: { overwrite: true } }]);
     expect(mockShareCalls).toHaveLength(0);
     expect(mockDeleteCalls).toContain(pdfPath);
     expect(mockExisting.has(pdfPath)).toBe(false);

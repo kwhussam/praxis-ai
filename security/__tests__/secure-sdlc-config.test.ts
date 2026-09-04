@@ -140,7 +140,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(allowlist.policy.decision).toContain("No active High/Critical dependency exceptions");
     expect(allowlist.policy.remediationPlan).toBe("docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md");
-    expect(allowlist.policy.nextStage).toBe("sdk57");
+    expect(allowlist.policy.nextStage).toBe("production_device_gates");
     expect(allowlist.policy.targetDate).toBe("2026-09-07");
     expect(allowlist.policy.hardExpiry).toBe("2026-09-13");
     expect(existsSync(resolve(repositoryRoot, allowlist.policy.remediationPlan))).toBe(true);
@@ -186,8 +186,8 @@ describe("SP3-01 secure SDLC configuration", () => {
     expect(xmldomPatch).toBeGreaterThanOrEqual(11);
     expect(packageJson.scripts.postinstall).toBe("node scripts/apply-vendor-hardening.mjs");
     expect(packageJson.devDependencies["patch-package"]).toBe(undefined);
-    // SDK 56 no longer hoists @expo/plist to the project root; it is installed once per
-    // consumer. Every single installation must carry the hardening, because the override
+    // SDK 57 installs @expo/plist once per consumer rather than relying on root hoisting.
+    // Every single installation must carry the hardening, because the override
     // forces xmldom 0.9 while @expo/plist itself still declares the ^0.8.8 API.
     expect(installedPlists.length).toBeGreaterThan(0);
     for (const [packagePath, metadata] of installedPlists) {
@@ -217,7 +217,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(existsSync(vendorHardening)).toBe(true);
     expect(corePaths).toHaveLength(1);
-    expect(corePaths[0][1].version).toBe("57.0.15");
+    expect(corePaths[0][1].version).toBe("57.0.16");
     const installedSource = readFileSync(join(
       repositoryRoot,
       corePaths[0][0],

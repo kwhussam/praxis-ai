@@ -15,7 +15,7 @@ const packageLock = JSON.parse(
 // ("the provided mimeType \"undefined\" is not valid"), so this hardening is what makes
 // plist parsing work at all while the override keeps the parser on the patched line.
 //
-// expo-modules-core@57.0.15 still evaluates requestedPermissions!!.contains(permission).
+// expo-modules-core@57.0.16 still evaluates requestedPermissions!!.contains(permission).
 // A package without requested permissions makes the forced non-null assertion throw
 // inside the manifest permission check.
 //
@@ -33,7 +33,7 @@ const hardenings = [
   },
   {
     packageName: "expo-modules-core",
-    expectedVersion: "57.0.15",
+    expectedVersion: "57.0.16",
     relativeFile:
       "android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt",
     vulnerable: "return requestedPermissions!!.contains(permission)",

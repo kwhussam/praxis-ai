@@ -79,10 +79,18 @@ async function exportReportPdfFile({ practiceId, reportId }: ExportOptions) {
   directory.create({ intermediates: true, idempotent: true });
 
   const file = new File(directory, `PraxisShield-Bericht-${reportId}.pdf`);
-  // The new API writes the raw bytes directly; the previous base64 round-trip is gone.
-  file.create({ overwrite: true });
-  file.write(bytes);
-  return file;
+  try {
+    // The new API writes the raw bytes directly; the previous base64 round-trip is gone.
+    file.create({ overwrite: true });
+    file.write(bytes);
+    return file;
+  } catch (error) {
+    // create() succeeds before write() starts. A storage error must therefore remove an empty or
+    // partially written plaintext artifact even though shareReportPdf() has not entered its own
+    // cleanup block yet.
+    deleteIfPresent(file);
+    throw error;
+  }
 }
 
 function reportCacheDirectory(practiceId: string) {

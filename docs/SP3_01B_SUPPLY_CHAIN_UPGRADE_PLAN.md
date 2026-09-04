@@ -283,27 +283,28 @@ SDK-57-Stufe.
 
 ## Phase 3 – SDK-57-Abschluss der Migrationskette
 
-Der siebte und letzte geplante Migrationsschritt steht auf Expo 57.0.19, React Native 0.86.3 und
+Der siebte und letzte geplante Migrationsschritt steht auf Expo 57.0.20, React Native 0.86.3 und
 React/React DOM 19.2.3. Ausgangspunkt ist `origin/main` am Stand
 `c2472b7024d6dd47c043b619119f0cfce9427644` nach PR #50. Alle Versionen stammen aus
 `npx expo install`; die anschließende Kompatibilitätsprüfung meldet „Dependencies are up to date".
 
-SDK 57 verlangt iOS 16.4 und Android minSdk 21. Das Projekt liegt mit iOS 16.4 und minSdk 24
-bereits darauf oder strenger; compileSdk und targetSdk bleiben 36. Die New Architecture bleibt
+SDK 57 verlangt iOS 16.4 und Android 7/API 24. Das Projekt liegt auf diesen Grenzen;
+compileSdk und targetSdk bleiben 36. Die New Architecture bleibt
 verpflichtend aktiv. Eine Plattformänderung war nicht erforderlich.
 
-Der **Hermes-v1-Rückstand ist geschlossen und an der Runtime belegt**: React Native 0.86.3 liefert
+Der **Hermes-v1-Rückstand ist auf Artefakt-Ebene geschlossen**: React Native 0.86.3 liefert
 `hermes-compiler 250829098.0.17`, während SDK 56 auf `250829098.0.10` stand und der Fix bei
 `250829098.0.16` beginnt. Expo Doctor meldet real 21/21 ohne Befund. Bemerkenswert ist der Weg
 dorthin: Das in der SDK-56-Stufe eingeführte Doctor-Gate hat die Drift zuerst fail-closed gemeldet —
 geänderte Prüfungsanzahl und veraltete Erwartung — und damit die Neubewertung erzwungen, statt sie
 zu überspringen. `expectedFailedChecks` ist jetzt leer und `expectedOpenFinding` `null`; das ist der
 strengste Zustand, weil damit jeder Befund undokumentiert ist und blockt. Der Regressionstest
-belegt ausdrücklich, dass ein erneutes Auftreten des Hermes-Befunds blockiert.
+belegt ausdrücklich, dass ein erneutes Auftreten des Hermes-Befunds blockiert. Das ist kein Ersatz
+für den noch offenen App-Boot-, Navigations- und Animations-Smoke auf SDK 57.
 
 Die beiden Vendor-Härtungen wurden gegen die installierten SDK-57-Quellen neu bewertet und bleiben
 erforderlich: `@expo/plist` 0.8.1 ruft `parseFromString` weiterhin einargumentig auf und
-`expo-modules-core` 57.0.15 wertet `requestedPermissions` weiterhin mit erzwungener
+`expo-modules-core` 57.0.16 wertet `requestedPermissions` weiterhin mit erzwungener
 Nicht-null-Auswertung aus. Der `@xmldom/xmldom`-Override bleibt zwingend, weil `@expo/plist` selbst
 noch `^0.8.8` deklariert; der ungepatchte Aufruf wirft unter dem erzwungenen xmldom 0.9.12
 nachweislich. Der zugehörige Test prüft nun die Sicherheitsuntergrenze der 0.9-Linie statt eines
@@ -311,8 +312,9 @@ exakten Patches, der der Caret-Range widersprach.
 
 Zwei Altlasten sind zusätzlich geschlossen. Der PDF-Cache nutzt nicht mehr
 `expo-file-system/legacy`, dessen Wurzelmethoden in SDK 57 zur Laufzeit werfen; Exporte liegen
-unverändert ausschließlich im nicht-persistenten, nicht backupfähigen Cache und die Bereinigung ist
-gegen die nun werfende Löschsemantik idempotent abgesichert. Die Icon-Migration auf die scoped
+unverändert ausschließlich im nicht-persistenten, nicht backupfähigen Cache. Die Bereinigung ist
+gegen die nun werfende Löschsemantik sowie Fehler nach bereits erfolgreichem `create()` abgesichert.
+Die Icon-Migration auf die scoped
 `@react-native-vector-icons`-Pakete ist unter SDK 57 **nicht erforderlich**; stattdessen wurde der
 Barrel-Import beseitigt, der alle 24 Familien einzog, obwohl nur Ionicons verwendet wird.
 

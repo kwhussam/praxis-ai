@@ -4,11 +4,11 @@
   "baseCommit": "c2472b7024d6dd47c043b619119f0cfce9427644",
   "current": {
     "expoSdk": "57",
-    "expo": "57.0.19",
+    "expo": "57.0.20",
     "reactNative": "0.86.3",
     "react": "19.2.3",
     "newArchitecture": "required",
-    "node": "22.x",
+    "node": ">=22.13.0 <23",
     "npm": "10.9.2",
     "platforms": {
       "androidMinSdk": 24,
@@ -92,10 +92,10 @@
     "@react-native-community/netinfo": "12.0.1",
     "@supabase/supabase-js": "2.115.0",
     "@tanstack/react-query": "5.102.8",
-    "expo": "57.0.19",
+    "expo": "57.0.20",
     "expo-asset": "57.0.16",
     "expo-blur": "57.0.2",
-    "expo-build-properties": "57.0.16",
+    "expo-build-properties": "57.0.17",
     "expo-constants": "57.0.17",
     "expo-crypto": "57.0.2",
     "expo-dev-client": "57.0.18",
@@ -106,10 +106,10 @@
     "expo-linear-gradient": "57.0.1",
     "expo-linking": "57.0.9",
     "expo-network": "57.0.1",
-    "expo-notifications": "57.0.16",
-    "expo-router": "57.0.18",
+    "expo-notifications": "57.0.17",
+    "expo-router": "57.0.19",
     "expo-secure-store": "57.0.3",
-    "expo-sharing": "57.0.17",
+    "expo-sharing": "57.0.18",
     "expo-sqlite": "57.0.2",
     "expo-status-bar": "57.0.1",
     "hono": "4.13.5",
@@ -175,11 +175,11 @@
     {
       "id": "custom_network_probe_bridge",
       "severity": "high",
-      "status": "ios_interop_proven_android_device_proof_deferred",
+      "status": "sdk57_runtime_revalidation_required",
       "packages": [
         "react-native"
       ],
-      "reason": "Persisted measured TCP and SSDP evidence proves the Swift/Objective-C legacy bridge through the New Architecture interop layer on an iOS simulator, now on React Native 0.85. Runtime proof for the Kotlin bridge remains deferred to the physical Android device gate."
+      "reason": "The Swift/Objective-C bridge was proven through the New Architecture interop layer on React Native 0.85. SDK 57 now runs React Native 0.86.3, so the iOS simulator proof must be repeated and the Kotlin bridge still requires the physical Android device gate."
     },
     {
       "id": "wifi_collection",
@@ -207,45 +207,45 @@
     {
       "id": "file_and_pdf_lifecycle",
       "severity": "high",
-      "status": "legacy_api_still_exported_migration_deferred_to_sdk57",
+      "status": "sdk57_file_api_migrated_runtime_proof_required",
       "packages": [
         "expo-file-system",
         "expo-sharing"
       ],
-      "reason": "SDK 56 makes copy() and move() asynchronous, but PraxisShield calls neither and reads the PDF cache through the still-exported expo-file-system/legacy entry point. The migration off the deprecated legacy API remains open for the SDK 57 stage."
+      "reason": "SDK 57 uses the current File, Directory and Paths API and unit tests cover tenant-scoped cache placement, cleanup and failed writes. The native share dialog and cache lifecycle still require the SDK 57 simulator and device runtime gates."
     },
     {
       "id": "router_navigation_split",
       "severity": "high",
-      "status": "resolved_in_sdk56_router_decoupled",
+      "status": "sdk57_router_line_static_gates_passed_runtime_proof_required",
       "packages": [
         "expo-router",
         "react-native-gesture-handler",
         "react-native-screens"
       ],
-      "reason": "SDK 56 decoupled Expo Router from React Navigation; expo-router 56 builds on its own standard-navigation fork. The orphaned @react-navigation/native direct dependency was removed after proving no application module imported it and no other package required it. Expo Doctor's dedicated check now passes."
+      "reason": "Expo Router 57 remains decoupled from the removed @react-navigation/native dependency and passes static compatibility gates. Navigation behavior on React Native 0.86.3 still requires the SDK 57 boot and full Maestro runtime proof."
     },
     {
       "id": "animation_runtime",
       "severity": "high",
-      "status": "sdk56_hermes_v1_regression_open_fix_in_sdk57",
+      "status": "resolved_in_sdk57_runtime_smoke_required",
       "packages": [
         "moti",
         "react-native-reanimated"
       ],
-      "reason": "SDK 56 enables Hermes V1 by default and Expo Doctor confirms the installed Hermes V1 250829098.0.10 is affected by the documented memory regression with react-native-worklets and react-native-reanimated. The fix first ships in Hermes V1 250829098.0.16 / React Native 0.86.2, so it cannot be closed inside SDK 56. This is the reason SDK 56 stays transitional and is not released to production."
+      "reason": "SDK 57 with React Native 0.86.3 installs hermes-compiler 250829098.0.17, beyond the documented 250829098.0.16 fix boundary. Package and bundle evidence close the vulnerable version finding, while application startup and animation behavior still require runtime smoke evidence."
     },
     {
       "id": "icon_migration",
       "severity": "medium",
-      "status": "explicit_direct_dependency_migration_deferred_to_sdk57",
+      "status": "expo_vector_icons_direct_family_import_retained",
       "packages": [
         "@expo/vector-icons",
         "expo-font",
         "react-native-svg",
         "lucide-react-native"
       ],
-      "reason": "SDK 56 removed @expo/vector-icons from the expo package's own dependencies; PraxisShield already declares it directly, so rendering is unaffected. Migrating to the scoped @react-native-vector-icons packages remains open before the final target."
+      "reason": "SDK 57 supports the explicitly declared @expo/vector-icons 15 line, and PraxisShield imports only the Ionicons family subpath to avoid the barrel. A scoped-package migration is not required for this target; visual runtime verification remains part of the SDK 57 smoke."
     },
     {
       "id": "minimum_platform_bump",
@@ -255,7 +255,7 @@
         "react-native",
         "expo-build-properties"
       ],
-      "reason": "The migration keeps Android 7/API 24 and raises the iOS deployment target to 16.4, which expo-build-properties enforces fail-closed in SDK 56. Android compileSdk and targetSdk stay at 36."
+      "reason": "The SDK 57 target keeps Android 7/API 24 and iOS 16.4 as explicit project floors. expo-build-properties enforces them fail-closed, while Android compileSdk and targetSdk remain at 36."
     }
   ],
   "configPlugins": [
@@ -354,6 +354,7 @@
     "https://expo.dev/changelog/sdk-54",
     "https://expo.dev/changelog/sdk-55",
     "https://expo.dev/changelog/sdk-56",
+    "https://expo.dev/changelog/sdk-57",
     "https://docs.swmansion.com/react-native-reanimated/docs/guides/compatibility/",
     "https://reactnative.dev/blog/2024/10/23/release-0.76-new-architecture",
     "https://reactnative.dev/blog/2026/04/07/react-native-0.85"

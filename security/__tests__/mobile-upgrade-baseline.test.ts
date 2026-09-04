@@ -152,6 +152,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     });
     expect(appConfig.newArchEnabled).toBe(undefined);
     expect(packageJson.expo?.install?.exclude ?? []).toEqual([]);
+    expect(packageJson.engines.node).toBe(">=22.13.0 <23");
   });
 
   it("keeps the mandatory New Architecture renderer on Expo's SDK 57 SVG line", () => {
@@ -216,11 +217,11 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.18");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.19");
     expect(packageLock.packages["node_modules/jest-expo"].version).toBe("57.0.5");
     expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~57.0.0");
     expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("57.0.10");
-    // SDK 56 forked React Navigation into expo-router. A direct @react-navigation dependency
+    // Expo Router 57 retains the SDK 56 navigation split. A direct @react-navigation dependency
     // is incompatible and must not silently return.
     expect(packageJson.dependencies["@react-navigation/native"]).toBe(undefined);
     expect(packageLock.packages["node_modules/@react-navigation/native"]).toBe(undefined);
@@ -248,7 +249,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(bootstrap.slice(continueRecovery, finalAuthAssertion)).toContain('point: "94%,7%"');
   });
 
-  it("keeps SDK-56 auth smokes deterministic on iOS 26", () => {
+  it("keeps SDK-57 auth smokes deterministic on iOS 26", () => {
     const registration = readFileSync(
       resolve(repositoryRoot, ".maestro/flows/01-registration.yaml"),
       "utf8"
@@ -363,11 +364,18 @@ describe("SP3-01B mobile upgrade baseline", () => {
     const nativeProbeRisk = baseline.riskRegister.find(
       (risk) => risk.id === "custom_network_probe_bridge"
     );
-    expect(nativeProbeRisk?.status).toBe(
-      "ios_interop_proven_android_device_proof_deferred"
-    );
+    expect(nativeProbeRisk?.status).toBe("sdk57_runtime_revalidation_required");
     expect(nativeProbeRisk?.reason).toContain("iOS simulator");
     expect(nativeProbeRisk?.reason).toContain("physical Android device gate");
+
+    const riskStates = Object.fromEntries(
+      baseline.riskRegister.map((risk) => [risk.id, risk.status])
+    );
+    expect(riskStates.file_and_pdf_lifecycle).toBe(
+      "sdk57_file_api_migrated_runtime_proof_required"
+    );
+    expect(riskStates.animation_runtime).toBe("resolved_in_sdk57_runtime_smoke_required");
+    expect(riskStates.icon_migration).toBe("expo_vector_icons_direct_family_import_retained");
   });
 
   it("keeps every golden security contract attached to executable tests", () => {

@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-03 (SDK-57-Stufe)
+Stand: 2026-09-04 (SDK-57-Stufe, Review-Korrekturen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -34,10 +34,10 @@ anschließend „Dependencies are up to date":
 
 | Paket | SDK 56 | SDK 57 |
 |---|---|---|
-| `expo` | 56.0.21 | **57.0.19** |
+| `expo` | 56.0.21 | **57.0.20** |
 | `react-native` | 0.85.3 | **0.86.3** |
 | `react` / `react-dom` | 19.2.3 | 19.2.3 (unverändert) |
-| `expo-router` | 56.2.20 | **57.0.18** |
+| `expo-router` | 56.2.20 | **57.0.19** |
 | `react-native-reanimated` | 4.3.1 | 4.5.1 |
 | `react-native-worklets` | 0.8.3 | 0.10.1 |
 | `react-native-gesture-handler` | 2.31.2 | 2.32.0 |
@@ -48,8 +48,8 @@ anschließend „Dependencies are up to date":
 | `babel-preset-expo` | 56.0.20 | 57.0.10 |
 | `typescript` | 6.0.3 | 6.0.3 (unverändert) |
 
-**Plattform unverändert:** SDK 57 verlangt iOS 16.4 und Android minSdk 21. Das Projekt liegt mit
-iOS 16.4 und minSdk 24 bereits darauf oder strenger; compileSdk und targetSdk bleiben 36. Die New
+**Plattform unverändert:** SDK 57 verlangt iOS 16.4 und Android 7/API 24. Das Projekt liegt mit
+iOS 16.4 und minSdk 24 auf diesen Grenzen; compileSdk und targetSdk bleiben 36. Die New
 Architecture bleibt verpflichtend aktiv.
 
 **Lockfile:** Die stufenweise Auflösung von `expo install --fix` lief in einen ERESOLVE-Konflikt,
@@ -57,11 +57,13 @@ weil `jest-expo@56` das `@react-native/jest-preset` der 0.85-Linie pinnt. Statt 
 `--legacy-peer-deps` wurden die von Expo selbst gemeldeten Dev-Versionen gesetzt und das Lockfile
 aus dem dann kohärenten Manifest neu aufgelöst.
 
-### Hermes-v1-Rückstand geschlossen — an der Runtime belegt
+### Hermes-v1-Rückstand auf Artefakt-Ebene geschlossen
 
 - React Native 0.86.3 liefert **`hermes-compiler 250829098.0.17`**. SDK 56 hatte
   `250829098.0.10`, der Fix beginnt bei `250829098.0.16`. Die Regression ist damit real behoben,
   nicht bloß aus der Doctor-Ausgabe verschwunden.
+- Das belegt die korrigierte Runtime-Komponente im Build, aber noch keinen erfolgreichen Start der
+  SDK-57-App. Boot-, Animations- und Navigationsverhalten bleiben bis zum Simulator-Smoke offen.
 - Expo Doctor meldet real **21/21 ohne Befund** (die Hermes-Prüfung selbst entfällt upstream,
   daher 21 statt 22 Prüfungen).
 - Das Gate hat die Drift zuvor korrekt **fail-closed gemeldet** — geänderte Prüfungsanzahl *und*
@@ -75,7 +77,7 @@ aus dem dann kohärenten Manifest neu aufgelöst.
 - `@expo/plist` 0.7.0 → **0.8.1** ruft `parseFromString` weiterhin einargumentig auf. Der
   ungepatchte Aufruf **wirft** unter dem erzwungenen xmldom 0.9.12 nachweislich; die Härtung ist
   also weiterhin Voraussetzung für funktionierendes Plist-Parsing.
-- `expo-modules-core` 56.0.25 → **57.0.15** wertet weiterhin `requestedPermissions!!` aus.
+- `expo-modules-core` 56.0.25 → **57.0.16** wertet weiterhin `requestedPermissions!!` aus.
 - Der **`@xmldom/xmldom`-Override bleibt nötig**, weil `@expo/plist` selbst noch `^0.8.8`
   deklariert. Der Test prüft jetzt die Sicherheitsuntergrenze (0.9-Linie, `>= 0.9.11`) statt eines
   exakten Patches, der der Caret-Range widersprach.
@@ -90,8 +92,9 @@ Exporte liegen unverändert ausschließlich unter `Paths.cache` — nicht persis
 backupfähig; fällt der Cache aus, wird abgelehnt statt auf das Dokumentverzeichnis auszuweichen.
 Weil die neue API beim Löschen fehlender Einträge wirft, sind Logout, Praxiswechsel und die
 Bereinigung nach fehlgeschlagenem Teilen über eine Existenzprüfung idempotent. Die
-PDF-Signaturprüfung läuft jetzt **vor** jedem Dateisystemzugriff, damit eine fehlerhafte
-Serverantwort ein kontrollierter Fehler bleibt und kein Teilartefakt zurücklässt. Tests von 6 auf 10.
+PDF-Signaturprüfung läuft jetzt **vor** jedem Dateisystemzugriff. Schlägt nach erfolgreichem
+`create()` das Schreiben fehl, wird auch das leere oder teilweise geschriebene Klartextartefakt
+entfernt. Tests von 6 auf 11.
 
 ### Icons: Migration nicht erforderlich, Barrel-Import trotzdem beseitigt
 
@@ -295,9 +298,9 @@ und abweichende Ports korrekt sind.
 | `npm ci` | grün | frischer Install; beide Vendor-Härtungen fail-closed reproduziert |
 | `npm run lint` | grün | keine Warnungen (`--max-warnings=0`) |
 | `npm run typecheck` | grün | TypeScript 6.0.3 |
-| `npm test -- --runInBand` / `npm run verify` | grün: **504 bestanden**, 6 übersprungen | +4 gegenüber SDK 56 durch die erweiterten PDF-Tests |
-| `npm run security:dependencies` | grün | **0 aktive High-/Critical-Ausnahmen**, keine neue Ausnahme |
-| `npm audit` | grün | keine High-/Critical-Befunde; 14 moderate, keine davon Laufzeit-relevant allowlistet |
+| `npm test -- --runInBand` / `npm run verify` | grün: **505 bestanden**, 6 übersprungen | +1 Regressionstest für Cleanup nach fehlgeschlagenem PDF-Schreiben |
+| `npm run security:dependencies` | erneuter Lauf extern blockiert | npm-Registry liefert `503`; Gate bleibt korrekt fail-closed. Vor dem Patchupdate waren **0 aktive Ausnahmen** belegt, der aktualisierte Graph muss in CI erneut bestätigt werden. |
+| `npm audit` | erneuter Lauf extern blockiert | kein negatives Sicherheitsergebnis, sondern kein gültiger Registry-Report; darf bis zum erfolgreichen Retry nicht als bestanden gelten |
 | `npm run security:expo-doctor` | grün | echter Lauf des gepinnten `expo-doctor@1.20.4`: **21/21, kein Befund** |
 | Doctor-Gate blockt nachweislich | grün | fixture-getestet: Wiederauftreten des Hermes-Befunds, jeder andere neue Befund, geänderte Prüfungsanzahl und unlesbare Ausgabe geben Exit 1 |
 | `git diff --check` | grün | keine Whitespace-Fehler |
@@ -413,25 +416,24 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 ### Technische Rückstände außerhalb dieses SDK-Schritts
 
-- Migration des PDF-Caches von `expo-file-system/legacy` auf die neue API;
-- React Test Renderer `19.0` als reine Test-Infrastruktur;
-- Icon-Migration vor dem endgültigen SDK-57-Ziel;
+- Ablösung des von React als veraltet markierten React Test Renderer 19.2.3 in der Test-Infrastruktur;
+- physische iOS-/Android-Gerätematrix als Produktions-Gate.
 
 ## Als Nächstes
 
-1. Den SDK-57-Branch pushen und einen Pull Request gegen `main` erstellen. **Nicht selbst mergen.**
-2. GitHub-CI und Secure SDLC grün prüfen. Entscheidend sind der Job `android-release-compile`
-   samt `verify:android-release-manifest` und das neue Doctor-Gate, das in CI dieselbe 21/21-Lage
-   liefern muss wie lokal.
-3. Den vollständigen seriellen 15-Flow-Maestro-Lauf nachholen, sobald Docker und Speicherplatz
+1. Die Review-Korrekturen in den bestehenden PR `#51` pushen und GitHub-CI sowie Secure SDLC
+   erneut vollständig grün prüfen. Entscheidend sind `android-release-compile` samt
+   `verify:android-release-manifest`, das Doctor-Gate mit 21/21 und das Dependency-Gate ohne aktive
+   Ausnahme.
+2. Den vollständigen seriellen 15-Flow-Maestro-Lauf nachholen, sobald Docker und Speicherplatz
    verfügbar sind: `npm run e2e:env:up`, danach `npm run e2e:smoke`. Die vier zuletzt
    empfindlichen Flows `01-registration`, `06-wlan-scan`, `08-report-generation-error` und
    `13-inventory-persistence` sind dabei ausdrücklich zu kontrollieren, ebenso der PDF-Export
    samt nativer Share-UI und Klartext-Cache-Bereinigung — Letzterer hat sich durch die
    Dateisystem-Migration inhaltlich geändert und ist deshalb der wichtigste Runtime-Nachweis
    dieser Stufe.
-4. Android-Smoke (`npm run e2e:smoke:android`) nachziehen, sobald ein Emulator verfügbar ist.
-5. Nach grünem Review und Merge: physische iOS-/Android-Gerätematrix als Produktions-Gate planen.
+3. Android-Smoke (`npm run e2e:smoke:android`) nachziehen, sobald ein Emulator verfügbar ist.
+4. Nach grünem Review und Merge: physische iOS-/Android-Gerätematrix als Produktions-Gate planen.
    Damit endet die Migrationskette; SDK 57 ist die Zielstufe.
 
 ## Bewusste Grenzen
@@ -461,9 +463,8 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 ## Abnahmekriterium für den nächsten Schritt
 
 - `npm ci`, `npm run verify` und `npm run security:dependencies` grün;
-- Expo Doctor ohne **zusätzlichen** Befund neben der als `expectedOpenFinding` hinterlegten
-  Hermes-v1-Regression;
-- Vendor-Härtung fail-closed grün für `@expo/plist@0.7.0` und `expo-modules-core@56.0.25`;
+- Expo Doctor **21/21 ohne Befund**; `expectedFailedChecks` leer und `expectedOpenFinding` `null`;
+- Vendor-Härtung fail-closed grün für `@expo/plist@0.8.1` und `expo-modules-core@57.0.16`;
 - GitHub-CI und Secure SDLC grün, insbesondere `android-release-compile` samt Manifest-Prüfung;
 - vollständiger serieller 15-Flow-Maestro-Lauf grün;
 - Dependency-Gate, Clean Prebuild und Native-Config grün;
