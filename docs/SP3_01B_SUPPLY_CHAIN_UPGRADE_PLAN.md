@@ -1,6 +1,6 @@
 # SP3-01B – Supply-Chain-Bereinigung
 
-Stand: 2026-09-02
+Stand: 2026-09-03
 
 Status: `in_progress`
 
@@ -26,8 +26,8 @@ Gesamtaufwand: hoch, weil Expo SDK 55+ ausschließlich die React-Native-New-Arch
 |---|---|---|---|
 | 1 – CI-Laufzeit | `checkout`, `setup-node`, `upload-artifact` und Gitleaks auf geprüfte Node-24-Releases aktualisieren; vollständige SHAs und Regressionstest | lokale Gesamtverifikation und grüne GitHub-CI/Secure-SDLC-Läufe ohne Node-20-Warnung | `released` |
 | 2 – Upgrade-Baseline | SDK-/Native-/Plugin-Inventar, New-Architecture-Kompatibilität, Golden-Builds, Android-/iOS-Mindestversionen und Breaking-Changes erfassen | freigegebene Migrationsmatrix; unveränderte Funktions-, Crypto-, SQLite-, Permission- und Coverage-Baseline | `released` |
-| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist `released` (PR #40, Merge `9a75507`); SDK 56 ist migriert und in Verifikation (Branch `codex/sp3-01b-sdk56`) und bleibt als Übergangsstufe ohne Produktionsfreigabe; SDK 57 steht weiterhin aus |
-| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – **0 aktive High-/Critical-Ausnahmen**: SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`, die 2 transitiven `image-size`-Ausnahmen sind durch die Dependency-Wartung (PR #47, Merge `8282ae1`) geschlossen. Der `@xmldom/xmldom`-Override und beide Vendor-Härtungen wurden in der SDK-56-Stufe gegen die Upstream-Quellen neu bewertet und bleiben **nachweislich erforderlich**; sie werden mit SDK 57 erneut geprüft |
+| 3 – Gestufte SDK-Migration | SDK 52, 53 und 54 einzeln stabilisieren; New Architecture auf SDK 54 separat aktivieren; danach SDK 55 und 56 als Übergangsstufen sowie SDK 57 / React Native 0.86 / React 19.2.3 als Ziel migrieren | je Stufe `expo-doctor`, Clean-Prebuild, TypeScript/Jest, Android Release und iOS Release Build grün | `in_progress` – SDK 52, 53, 54 Legacy und 54 New Architecture sind `released` (PR #39, Merge `165fea5`); SDK 55 ist `released` (PR #40, Merge `9a75507`); SDK 56 ist `released` (PR #50, Merge `c2472b7`); SDK 57 ist migriert und in Verifikation (Branch `claude/sp3-01b-sdk57`) und schließt den Hermes-v1-Rückstand |
+| 4 – Ausnahmen entfernen | Abhängigkeitsgraph neu auditieren; `@xmldom/xmldom`-Override, Vendor-Härtung und alle behobenen Allowlist-Einträge entfernen | kein unbekannter oder ausgenommener High/Critical-Befund; SBOM und Lockfile reproduzierbar | `in_progress` – **0 aktive High-/Critical-Ausnahmen**: SDK 55 entfernt 2 PostCSS-Ausnahmen und `patch-package`, die 2 transitiven `image-size`-Ausnahmen sind durch die Dependency-Wartung (PR #47, Merge `8282ae1`) geschlossen. Der `@xmldom/xmldom`-Override und beide Vendor-Härtungen wurden in der SDK-57-Stufe erneut gegen die Upstream-Quellen geprüft und bleiben **nachweislich erforderlich**; upstream ist keines der beiden Probleme behoben |
 | 5 – Plattformnachweis | physische Android-/iOS-Smokes, verschlüsselte Inventarpersistenz, WLAN/Permissions, PDF-Cache, Logout/Praxiswechsel sowie signierte Testreleases prüfen | Device-Matrix, Store-Signing und Attestation unabhängig bestätigt; SP3-01B `released` | `pending` |
 
 ## Technische Leitplanken
@@ -281,11 +281,53 @@ Dependency-Gate. Das Gate läuft im `quality`-Job vor `npm run verify`.
 Eine Produktionsfreigabe erfolgt auf dieser Stufe nicht; die abschließende Bewertung gehört in die
 SDK-57-Stufe.
 
+## Phase 3 – SDK-57-Abschluss der Migrationskette
+
+Der siebte und letzte geplante Migrationsschritt steht auf Expo 57.0.20, React Native 0.86.3 und
+React/React DOM 19.2.3. Ausgangspunkt ist `origin/main` am Stand
+`c2472b7024d6dd47c043b619119f0cfce9427644` nach PR #50. Alle Versionen stammen aus
+`npx expo install`; die anschließende Kompatibilitätsprüfung meldet „Dependencies are up to date".
+
+SDK 57 verlangt iOS 16.4 und Android 7/API 24. Das Projekt liegt auf diesen Grenzen;
+compileSdk und targetSdk bleiben 36. Die New Architecture bleibt
+verpflichtend aktiv. Eine Plattformänderung war nicht erforderlich.
+
+Der **Hermes-v1-Rückstand ist auf Artefakt-Ebene geschlossen**: React Native 0.86.3 liefert
+`hermes-compiler 250829098.0.17`, während SDK 56 auf `250829098.0.10` stand und der Fix bei
+`250829098.0.16` beginnt. Expo Doctor meldet real 21/21 ohne Befund. Bemerkenswert ist der Weg
+dorthin: Das in der SDK-56-Stufe eingeführte Doctor-Gate hat die Drift zuerst fail-closed gemeldet —
+geänderte Prüfungsanzahl und veraltete Erwartung — und damit die Neubewertung erzwungen, statt sie
+zu überspringen. `expectedFailedChecks` ist jetzt leer und `expectedOpenFinding` `null`; das ist der
+strengste Zustand, weil damit jeder Befund undokumentiert ist und blockt. Der Regressionstest
+belegt ausdrücklich, dass ein erneutes Auftreten des Hermes-Befunds blockiert. Das ist kein Ersatz
+für den noch offenen App-Boot-, Navigations- und Animations-Smoke auf SDK 57.
+
+Die beiden Vendor-Härtungen wurden gegen die installierten SDK-57-Quellen neu bewertet und bleiben
+erforderlich: `@expo/plist` 0.8.1 ruft `parseFromString` weiterhin einargumentig auf und
+`expo-modules-core` 57.0.16 wertet `requestedPermissions` weiterhin mit erzwungener
+Nicht-null-Auswertung aus. Der `@xmldom/xmldom`-Override bleibt zwingend, weil `@expo/plist` selbst
+noch `^0.8.8` deklariert; der ungepatchte Aufruf wirft unter dem erzwungenen xmldom 0.9.12
+nachweislich. Der zugehörige Test prüft nun die Sicherheitsuntergrenze der 0.9-Linie statt eines
+exakten Patches, der der Caret-Range widersprach.
+
+Zwei Altlasten sind zusätzlich geschlossen. Der PDF-Cache nutzt nicht mehr
+`expo-file-system/legacy`, dessen Wurzelmethoden in SDK 57 zur Laufzeit werfen; Exporte liegen
+unverändert ausschließlich im nicht-persistenten, nicht backupfähigen Cache. Die Bereinigung ist
+gegen die nun werfende Löschsemantik sowie Fehler nach bereits erfolgreichem `create()` abgesichert.
+Die Icon-Migration auf die scoped
+`@react-native-vector-icons`-Pakete ist unter SDK 57 **nicht erforderlich**; stattdessen wurde der
+Barrel-Import beseitigt, der alle 24 Familien einzog, obwohl nur Ionicons verwendet wird.
+
+Das Dependency-Gate bleibt bei 0 aktiven Ausnahmen und `npm audit` meldet keine High-/Critical-
+Befunde. Offen bleiben der Android-Release-Compile samt Manifest-Prüfung als GitHub-CI-Gate und der
+vollständige 15-Flow-Maestro-Lauf.
+
 ## Primärquellen
 
 - Expo SDK 55: <https://expo.dev/changelog/sdk-55>
 - Expo SDK 56: <https://expo.dev/changelog/sdk-56>
 - Upgrade auf SDK 56: <https://expo.dev/blog/upgrading-to-sdk-56>
+- Expo SDK 57: <https://expo.dev/changelog/sdk-57>
 - Expo SDK 57 / aktuelle Versionsmatrix: <https://docs.expo.dev/versions/latest/>
 - Expo New Architecture: <https://docs.expo.dev/guides/new-architecture/>
 - Expo SDK 53: <https://expo.dev/changelog/sdk-53>
