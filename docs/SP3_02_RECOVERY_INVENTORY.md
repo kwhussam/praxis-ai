@@ -328,6 +328,25 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   in dem **niemand** Zugriff auf eine Praxis hat und der Trigger die Korrektur blockiert.
   **Gap G-11.**
 
+#### A-12 `partner_plan_pricing`
+
+- **Beleg:** `supabase/migrations/20260624150000_initial_schema.sql`; RLS und Partnerbindung
+  ebendort.
+- **Datenklasse:** D1 – Tarifname, Preis, Abrechnungsintervall und Aktivstatus sind betriebliche
+  Vertrags-/Konfigurationsdaten ohne technischen Praxisidentifikator.
+- **Plattform:** `SB-DB` · **Technischer Owner:** `owner_required`
+- **Backupautorität / -stand:** `unknown`
+- **Verschlüsselung:** keine; **Schlüsselabhängigkeit:** keine.
+- **Wiederherstellungsreihenfolge:** R4, nach `white_label_partners` und vor der Freigabe von
+  Partnerfunktionen.
+- **Abhängigkeiten:** `partner_id` verweist auf `white_label_partners`; die RLS-Policy bindet den
+  Zugriff an den angemeldeten Partner.
+- **Retention/Löschung:** kein eigenständiger Retention- oder Löschpfad dokumentiert; der Bestand
+  folgt dem Lebenszyklus des Partnerkontos.
+- **Nachweisstatus:** Schema/RLS `configured`; Backup/Restore `unknown`
+- **Risiko:** kein eigener P1-/P2-Befund, aber Bestandteil des Vollständigkeits- und
+  Reconciliation-Nachweises im Restore-Drill.
+
 ### 5.B Supabase Auth
 
 #### B-01 `auth.users`, `auth.identities`, MFA-Faktoren
@@ -348,9 +367,12 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   wertlos werden.
 - **Retention/Löschung:** `complete_privacy_deletion` löscht **keinen** `auth.users`-Eintrag.
 - **Nachweisstatus:** `unknown`
-- **Risiko:** Der Verlust oder Wechsel des Auth-Schemas beziehungsweise des JWT-Secrets ist ein
-  vollständiger Zugriffsverlust auf sonst intakte Daten, weil RLS auf `auth.uid()` aufsetzt.
-  **Gap G-04.**
+- **Risiko:** Fehlen `auth.users`, `auth.identities` oder erforderliche GoTrue-Konfiguration, sind
+  Identitäten, Fremdschlüssel und Anmeldepfade nicht wiederhergestellt. Ein **geändertes**
+  JWT-Secret invalidiert dagegen zunächst bestehende Sessions; es verhindert nicht automatisch
+  eine erneute Anmeldung, wenn Auth-Daten und GoTrue-Konfiguration korrekt wiederhergestellt sind.
+  Auth-Datenrestore, Auth-Konfiguration und Sessionkontinuität müssen deshalb getrennt geprüft
+  werden. **Gap G-04.**
 
 ### 5.C Supabase Storage
 
@@ -464,13 +486,14 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   zeitlich begrenzt für Legacy-Reads bestehen bleibt. Der Zielzustand (praxisgebundene DEKs unter
   versioniertem KEK) ist **nicht implementiert**.
 - **Nachweisstatus:** Verwendung `configured`; Verwahrung, Escrow und Rotierbarkeit `unknown`
-- **Risiko:** **P1.** Verlust von K-01 bedeutet den unwiederbringlichen Verlust aller Berichte,
-  Assessment-Snapshots und verschlüsselten Checkpayloads sämtlicher Mandanten – unabhängig davon,
-  wie gut die Datenbank gesichert ist. Kompromittierung von K-01 bedeutet umgekehrt den Verlust der
-  Vertraulichkeit über **alle** Mandanten gleichzeitig, weil keine Mandantentrennung im
-  Schlüsselmaterial existiert. Eine Rotation ist heute technisch nicht durchführbar, da das
-  Envelope keine Version trägt und damit kein Mischzustand aus altem und neuem Schlüssel lesbar
-  wäre. **Gap G-15, G-16.**
+- **Risiko:** **P1.** Verlust von K-01 macht die verschlüsselten Vollberichte,
+  Assessment-Snapshots und verschlüsselten Checkpayloads sämtlicher Mandanten dauerhaft unlesbar;
+  insbesondere können kanonische PDFs nicht mehr reproduziert werden. Datenbankzeilen und bewusst
+  gespeicherte Klartextzusammenfassungen werden dadurch nicht vernichtet. Kompromittierung von K-01
+  bedeutet umgekehrt den Verlust der Vertraulichkeit über **alle** verschlüsselten Mandantendaten,
+  weil keine Mandantentrennung im Schlüsselmaterial existiert. Eine Rotation ist heute technisch
+  nicht durchführbar, da das Envelope keine Version trägt und damit kein Mischzustand aus altem und
+  neuem Schlüssel lesbar wäre. **Gap G-15, G-16.**
 
 #### E-03 K-02 `SUPABASE_SERVICE_ROLE_KEY`, K-03 `SUPABASE_URL` / `SUPABASE_ANON_KEY`
 
@@ -592,7 +615,11 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 - **Bemerkenswert:** Der **lokale** Kryptovertrag ist damit deutlich strenger als der
   **Cloud**-Vertrag aus E-02 – lokal existieren AAD und Versionsfelder, im Worker nicht.
 - **Datenklasse:** D2 (verschlüsselt) · **Plattform:** `MOB`
-- **Backupautorität:** keine (siehe M-01)
+- **Backupautorität:** Android: durch `allowBackup="false"` und die Ausschlussregeln bewusst keine.
+  iOS: `WHEN_UNLOCKED_THIS_DEVICE_ONLY` verhindert die Migration des DEK, belegt aber keinen
+  Backupausschluss der SQLite-Datei selbst. Der Backupstatus des verschlüsselten SQLite-Ciphertexts
+  ist deshalb `unknown`; ein auf ein anderes Gerät restaurierter Ciphertext bleibt ohne den lokalen
+  DEK unlesbar.
 - **Nachweisstatus:** `configured`; SQLite extern klartextfrei geprüft in SP2-01A `measured`
 - **Risiko:** ohne funktionsfähigen SecureStore entsteht kein Snapshot; das Repository meldet
   `volatile` und blockiert die Synchronisierung. Fail-closed und korrekt.
@@ -638,8 +665,8 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 #### H-01 Android-Signing
 
 - **Beleg:** `.github/workflows/release-android.yml` – `environment: production-android`,
-  Secrets `ANDROID_KEYSTORE_BASE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
-  `ANDROID_KEY_PASSWORD`, `ANDROID_SIGNING_CERT_SHA`; Verifikation über
+  Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+  `ANDROID_KEY_PASSWORD`, `ANDROID_SIGNING_CERT_SHA256`; Verifikation über
   `scripts/verify-android-release-signature.mjs`; Debug-Signing ist aus dem Release-Buildtyp
   entfernt (`docs/ARCHITECTURE.md`, „Native release contract (SP2-06)").
 - **Datenklasse:** D3 · **Plattform:** `GH-ENV` · **Technischer Owner:** `owner_required`
@@ -657,8 +684,8 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 #### H-02 Apple-Signing
 
 - **Beleg:** `.github/workflows/release-ios.yml` – `environment: production-ios`, Secrets
-  `APPLE_CERTIFICATE_BASE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE`,
-  `APPLE_PROVISIONING_PROFILE_NAME`, `APPLE_SIGNING_CERT_SHA`, `APPLE_TEAM_ID`,
+  `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`,
+  `APPLE_PROVISIONING_PROFILE_NAME`, `APPLE_SIGNING_CERT_SHA256`, `APPLE_TEAM_ID`,
   `IOS_CI_KEYCHAIN_PASSWORD`; temporäre Runner-Keychain (`security create-keychain` bis
   `security delete-keychain` im Cleanup, Zeilen 65–70 und 141).
 - **Datenklasse:** D3 · **Plattform:** `GH-ENV` · **Technischer Owner:** `owner_required`
@@ -673,9 +700,10 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 - **Beleg:** `PRODUCTION_API_BASE_URL`, `PRODUCTION_SUPABASE_URL`,
   `PRODUCTION_SUPABASE_ANON_KEY` als Environment-Secrets beider Release-Workflows.
-- **Recoverybedeutung:** Ändert ein Restore die Supabase-Projekt-URL, sind **alle ausgelieferten
-  Binaries auf die alte URL gepinnt**. Ein Restore in ein neues Projekt ist damit kein reiner
-  Datenvorgang, sondern erzwingt einen Appstore-Release mit dessen Reviewdauer.
+- **Recoverybedeutung:** Die beim Build gesetzte URL ist in ausgelieferten Binaries gebunden.
+  Ändert ein Restore die von ihnen verwendete URL und existiert kein stabiler eigener Hostname,
+  Proxy-, Alias- oder Failoverpfad, ist ein Appstore-Release mit dessen Reviewdauer erforderlich.
+  Ob ein solcher stabiler Umschaltpfad produktiv existiert, ist im Repository nicht belegbar.
 - **Nachweisstatus:** `configured` (Verwendung) / `unknown` (Werte, Wechselpfad)
 - **Risiko:** **P1 für RTO.** Dieser Punkt begrenzt jede realistische RTO-Zusage stärker als die
   Datenbankwiederherstellung selbst und muss in die RPO/RTO-Entscheidung D-01 einfließen.
@@ -765,17 +793,18 @@ statt eines stillen Teilzustands.
 |---|---|---|
 | **R0** | Schlüssel und Secrets beschaffen: K-01 `DATA_ENCRYPTION_KEY`, K-02 Service Role, K-04 Invite-HMAC | Ein Datenrestore liefert dauerhaft unlesbare Chiffrate (K-01) oder einen Worker ohne Schreibrecht (K-02) |
 | **R1** | Repository und Toolchain: Git-Stand, Supabase-CLI-Version, Migrationsliste | Kein reproduzierbares Schema |
-| **R2** | Schema: Extension `pgcrypto`, Migrationen in exakter Reihenfolge, RLS, `force RLS`, Grants, 54 RPCs, Trigger | Daten ohne Mandantengrenze; Grants fehlen still |
-| **R3** | `auth.users`, `auth.identities`, MFA-Faktoren, JWT-Secret | FKs verletzt; niemand kann sich anmelden |
+| **R2** | Schema: Extension `pgcrypto`, Migrationen in exakter Reihenfolge, RLS, `force RLS`, Grants, 54 öffentliche Funktionen einschließlich RPCs und Triggerfunktionen | Daten ohne Mandantengrenze; Grants fehlen still |
+| **R3** | `auth.users`, `auth.identities`, MFA-Faktoren und erforderliche GoTrue-Konfiguration; JWT-Signaturschlüssel separat behandeln | ohne Auth-Daten brechen FKs und Anmeldepfade; ein geänderter Signaturschlüssel invalidiert bestehende Sessions und erzwingt eine Neuanmeldung |
 | **R4** | Mandantenkern A-01 und Backoffice-Autorisierung A-11 | Alle praxisgebundenen FKs verletzt |
 | **R5a–e** | Praxisdaten in FK-Reihenfolge: a `security_checks`, b `assessment_manifests` und `reports`, c `monitoring_*` und `wlan_scans`, d Inventar/Router/Targets, e `consent_log` **in Ereignisreihenfolge** | Zusammengesetzte FK `reports_assessment_manifest_practice_fkey` bricht; `consent_log`-Kette bricht an `on delete restrict` |
 | **R6** | Audit- und Löschzustandsdaten A-08/A-09, Realtime-Publikation, danach **erst** Worker-Deployment und Cron-Trigger | Cron arbeitet auf halbem Datenstand; Monitoring-Tab ohne Livepfad |
 | **R7** | Quota-, Rate-Limit- und Idempotenzzustand A-10; K-05/K-06 Providerkeys | Coverage sinkt sichtbar (gewolltes Verhalten), keine Datenverluste |
 | **R8** | Unabhängiger Pfad: Release-Signing H-01/H-02, CI-Evidenz I-02/I-03 | Kein neuer Release möglich – blockiert H-03-abhängige Szenarien |
 
-**Der kritische Pfad für eine RTO-Aussage ist nicht R2 bis R5, sondern R0 und H-03.** Ein Restore in
-ein neues Supabase-Projekt erzwingt neue `PRODUCTION_SUPABASE_URL`-Werte in bereits ausgelieferten
-Binaries und damit einen Store-Release. Jede RTO-Schätzung, die das ausblendet, ist unrealistisch.
+**Der kritische Pfad für eine RTO-Aussage umfasst neben R2 bis R5 auch R0 und H-03.** Falls ein
+Restore einen neuen, nicht über einen stabilen Endpoint umschaltbaren Supabase-Host erfordert,
+benötigen bereits ausgelieferte Binaries einen Store-Release. Jede RTO-Schätzung muss diesen
+bedingten, aber potenziell dominanten Pfad ausdrücklich bewerten.
 
 ## 7. Priorisierte Gap-Liste
 
@@ -785,13 +814,13 @@ Priorität: **P1** Datenverlust, Mandantenbruch oder Rechtsverstoß unmittelbar 
 
 | ID | P | Risiko | Betroffener Bestandteil | Benötigter Owner | Empfohlener Folgeschritt | Überprüfbares Abnahmekriterium |
 |---|---|---|---|---|---|---|
-| **G-15** | P1 | Verlust von K-01 vernichtet **alle** Berichte, Snapshots und verschlüsselten Checkpayloads aller Mandanten; es existiert kein Escrow und kein Wiederbeschaffungspfad | E-02 `DATA_ENCRYPTION_KEY` | Operations + Security | Verwahrung, Escrow und Zugriffsvierauge für K-01 entscheiden und dokumentieren (D-05) | Ein dokumentierter, mindestens einmal geprobter Beschaffungspfad existiert; der Drill weist nach, dass ein Restore **ohne** K-01 fail-closed abbricht statt leere Berichte zu liefern |
+| **G-15** | P1 | Verlust von K-01 macht verschlüsselte Vollberichte, Snapshots und Checkpayloads aller Mandanten unlesbar und verhindert die kanonische PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben vorhanden, aber es existiert kein belegter Escrow- oder Wiederbeschaffungspfad | E-02 `DATA_ENCRYPTION_KEY` | Operations + Security | Verwahrung, Escrow und Zugriffsvierauge für K-01 entscheiden und dokumentieren (D-05) | Ein dokumentierter, mindestens einmal geprobter Beschaffungspfad existiert; der Drill weist nach, dass ein Restore **ohne** K-01 fail-closed abbricht statt leere Berichte zu liefern |
 | **G-16** | P1 | K-01 ist global, ohne Keyversion und ohne AAD; eine Rotation ist technisch nicht durchführbar, eine Kompromittierung trifft alle Mandanten gleichzeitig | E-02, F-01 | Security + Technical Owner | Versioniertes Envelope nach ADR-001 Abschnitt 6.3 **planen**, nicht implementieren, bis D-05/D-06 entschieden sind | Ein Entwurf bindet Keyversion und AAD an bestehende Envelopes und benennt den Lesepfad für Altdaten; Rotation bleibt bis dahin ausdrücklich als Blocker geführt |
 | **G-01** | P1 | `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht; nach Praxislöschung bleiben MAC, SSID, Hostname, Firewallregeln und Monitoringziele erhalten | A-06 | Datenschutz + Technical Owner | Löschumfang erweitern (bereits ADR-001-Blocker vor M5) und Löschzustand prüfbar machen | pgTAP-Test weist nach, dass nach `complete_privacy_deletion` in allen sechs Tabellen **null Zeilen** der Praxis verbleiben |
 | **G-19** | P1 | Release-Signing-Recovery ist vollständig unbelegt; ein verlorener App-Signing-Key kann Updates für bestehende Installationen dauerhaft verhindern | H-01, H-02 | Operations + Product | Klären und dokumentieren, ob Play App Signing aktiv ist und wie Apple-Accountrecovery abläuft (D-08) | Dokumentierter Wiederbeschaffungspfad je Plattform mit benanntem Kontoinhaber und Zweitzugang; ohne Nachweis bleibt SP3-02 `blocked_by_owner_decisions` |
-| **G-20** | P1 | Ein Restore in ein neues Supabase-Projekt erzwingt einen Store-Release, weil ausgelieferte Binaries auf die alte URL gepinnt sind | H-03, B-01 | Operations + Product | RTO-Entscheidung D-01 muss diesen Pfad explizit enthalten; Notfallpfad ohne Projektwechsel prüfen | Die RTO-Entscheidung benennt getrennte Werte für „Restore im selben Projekt" und „Restore in neues Projekt" |
+| **G-20** | P1 | Wenn ein Restore einen neuen Supabase-Host benötigt und kein stabiler Proxy-/Alias-/Failoverpfad existiert, erfordert die eingebettete URL einen Store-Release | H-03, B-01 | Operations + Product | RTO-Entscheidung D-01 muss diesen Pfad explizit enthalten und das Vorhandensein eines stabilen Endpoints klären | Die RTO-Entscheidung benennt getrennte Werte für „Restore am bestehenden Endpoint" und „Endpointwechsel mit erforderlichem App-Release" |
 | **G-02** | P1 | `wlan_scans.network_info` und `vulnerabilities` liegen im Klartext; ein Backupzugriff legt die vollständige Netztopologie offen | A-05 | Security + Datenschutz | SP2-02 beziehungsweise ADR-001 M1 bis M5 abwarten; bis dahin Backupzugriff wie Produktionsdatenzugriff behandeln | Backupzugriffsrechte sind dokumentiert und auf denselben Personenkreis begrenzt wie Produktionszugriff |
-| **G-04** | P1 | Backupumfang des `auth`-Schemas und Verhalten des JWT-Secrets sind unbelegt; ohne sie ist eine intakte Datenbank unzugänglich | B-01 | Operations | Beim Provider verifizieren, ob Backups `auth` und das JWT-Secret umfassen (D-02) | Schriftliche Providerauskunft liegt vor; der Drill prüft Anmeldung **nach** dem Restore |
+| **G-04** | P1 | Backupumfang des `auth`-Schemas sowie Wiederherstellung der GoTrue-Konfiguration sind unbelegt; ein geänderter JWT-Signaturschlüssel invalidiert bestehende Sessions, während fehlende Auth-Daten Identitäten und Anmeldepfade zerstören | B-01 | Operations | Beim Provider getrennt verifizieren, welche Auth-Daten im Backup liegen und wie Auth-Konfiguration beziehungsweise Signaturschlüssel nach einem Restore behandelt werden (D-02) | Schriftliche Providerauskunft liegt vor; der Drill prüft Neuanmeldung nach dem Restore und dokumentiert die erwartete Invalidierung alter Sessions |
 | **G-03** | P2 | Ein Restore auf einen Zeitpunkt vor einer Löschung stellt gelöschte D2-Daten wieder her, während `deletion_requests` sie als `completed` führt | A-08, A-09 | Datenschutz + Operations | Post-Restore-Reconciliation definieren: offene `deletion_requests` nach jedem Restore erneut anwenden | Drill-Prüfpunkt P-06 schlägt fehl, wenn nach dem Restore eine als `completed` geführte Löschung nicht durchgesetzt ist |
 | **G-06** | P2 | `consent_log` ist append-only, `truncate` und `delete` sind auch `service_role` entzogen; ein wiederholter Restore in eine nicht leere Tabelle ist mit normalen Rollen unmöglich | A-07 | Technical Owner + Operations | Restore-Runbook um den Eigentümer-/Superuserpfad ergänzen; die Schutzmechanismen **nicht** abschwächen | Der Drill dokumentiert einen reproduzierbaren Wiederholungslauf, ohne Trigger oder Grants zu verändern |
 | **G-05** | P2 | `practices_create_default_avv` erzeugt beim Restore AVV-Datensätze mit `now()` und kollidiert anschließend mit den echten Zeilen | A-01 | Technical Owner | Restorereihenfolge und Triggerbehandlung festlegen | Drill-Prüfpunkt P-05 weist nach, dass `data_processing_agreements.accepted_at` nach dem Restore unverändert ist |
@@ -909,11 +938,11 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
 - **Recovery ist der unbelegteste Bereich des Produkts.** Für Backup und Restore existiert im
   gesamten Repository **kein einziger `measured`-Nachweis** und keine Konfiguration.
 - **Der Einzelpunkt mit dem größten Schadenspotenzial ist K-01.** Ein globaler, versionsloser,
-  AAD-freier Schlüssel entscheidet über die Lesbarkeit aller Berichte aller Mandanten und ist heute
-  weder rotierbar noch nachweislich verwahrt.
-- **Die längste Wiederherstellungszeit liegt nicht in der Datenbank**, sondern in H-03 und
-  H-01/H-02: Ein Projektwechsel erzwingt einen Store-Release, und der Signing-Recoverypfad ist
-  unbelegt.
+  AAD-freier Schlüssel entscheidet über die Lesbarkeit aller verschlüsselten Vollberichte und
+  Snapshots aller Mandanten und ist heute weder rotierbar noch nachweislich verwahrt.
+- **Die längste Wiederherstellungszeit kann außerhalb der Datenbank liegen**, insbesondere in
+  H-03 und H-01/H-02: Benötigt ein Projektwechsel ohne stabilen Endpoint einen Store-Release, wird
+  dessen Reviewdauer Teil des RTO; parallel ist der Signing-Recoverypfad unbelegt.
 - **Sechs D2-Tabellen sind vom Löschpfad nicht erfasst.** Dies ist bereits als ADR-001-Blocker
   geführt und wird durch die Restorebetrachtung bestätigt, nicht neu entdeckt.
 

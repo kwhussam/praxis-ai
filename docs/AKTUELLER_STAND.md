@@ -22,7 +22,8 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **Aktuelles Arbeitspaket:** `SP3-02 – Restore-, Schlüsselrotations- und Incident-Tabletop`.
   Der isolierte Branch `codex/sp3-02-recovery-tabletop` basiert direkt auf `origin/main` bei
   `af8d579`.
-- **SP3-02 Phase A ist abgeschlossen; SP3-02 steht auf `blocked_by_owner_decisions`.**
+- **SP3-02 Phase A ist abgeschlossen; Phase B ist lokal startbereit.** Das Arbeitspaket bleibt für
+  Produktionsübertragbarkeit und Release auf `blocked_by_owner_decisions`.
   `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert alle Daten-, Schlüssel-, Secret-, Signing- und
   Artefaktpfade am tatsächlichen Code und leitet daraus 24 priorisierte Lücken sowie den Entwurf des
   synthetischen Zwei-Mandanten-Restore-Drills ab. `docs/SP3_02_DECISION_LOG.md` führt zehn offene
@@ -445,21 +446,21 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **Owner-Entscheidungen einholen.** SP3-02 ist ab hier nicht mehr technisch, sondern
-   organisatorisch blockiert. Für Phase B genügen zunächst zwei Entscheidungen aus
-   `docs/SP3_02_DECISION_LOG.md`: **D-02** (Backup- und Restoreverfahren – ohne sie übt der Drill
-   ein Verfahren, das produktiv möglicherweise nicht existiert) und **D-05** (Verwahrung von
-   `DATA_ENCRYPTION_KEY`). Die übrigen acht Entscheidungen blocken Phase C, D und jede
-   Außenkommunikation.
+1. **Phase B lokal beginnen.** Der isolierte synthetische Restore-Drill verwendet einen klar als
+   Testverfahren gekennzeichneten logischen Dump und ausschließlich Testschlüssel. D-02 und D-05
+   blockieren seine technische Durchführung nicht; sie blockieren die Übertragung auf Produktion,
+   produktive Claims und Phase C.
 2. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
-     den unwiederbringlichen Verlust aller Berichte aller Mandanten.
+     die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
+     der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
    - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
-   - `G-04` – umfasst das Supabase-Backup das `auth`-Schema und das JWT-Secret?
+   - `G-04` – welche Auth-Daten umfasst das Supabase-Backup, wie wird GoTrue rekonstruiert und wie
+     werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
    - `G-01` – `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht (bereits ADR-001-Blocker).
    - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
-3. Nach D-02/D-05 den in `docs/SP3_02_RECOVERY_INVENTORY.md` Abschnitt 8 entworfenen Phase-B-Drill
-   umsetzen: ausschließlich synthetische Zwei-Mandanten-Daten, isolierte lokale Umgebung, keine
+3. Den in `docs/SP3_02_RECOVERY_INVENTORY.md` Abschnitt 8 entworfenen Phase-B-Drill umsetzen:
+   ausschließlich synthetische Zwei-Mandanten-Daten, isolierte lokale Umgebung, keine
    produktiven Daten, Secrets, Cloudkonfigurationen oder Schlüsselprovider verändern.
 4. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
@@ -499,9 +500,10 @@ Die Phase-A-Kriterien sind erfüllt:
 
 - [x] Phase-A-Inventar deckt alle Daten-, Secret-, Signing- und Schlüsselpfade ab und kennzeichnet
   jeden Nachweis als `measured`, `configured`, `documented` oder `unknown`
-  (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 5, elf Bestandsgruppen A bis J);
+  (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 5, zehn Bestandsgruppen A bis J);
 - [x] Gap-Liste enthält für jeden offenen Punkt Risiko, Owner, Priorität, Folgeschritt und ein
-  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 23 Einträge, davon 7 P1 und 8 P2);
+  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 24 Einträge, davon 7 P1, 8 P2, 6 P3 und
+  3 P4);
 - [x] der Restore-Drill ist als Entwurf definiert – ausschließlich synthetische
   Zwei-Mandanten-Daten, fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und
   Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde nicht ausgeführt.**

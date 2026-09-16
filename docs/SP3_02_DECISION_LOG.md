@@ -4,7 +4,8 @@
 - **Phase:** A – Istaufnahme und Entscheidungsregister
 - **Stand:** 2026-09-16
 - **Branch:** `codex/sp3-02-recovery-tabletop`
-- **Status:** `blocked_by_owner_decisions` – **alle** Entscheidungen offen
+- **Status:** Phase A `audit_completed`, lokaler Phase-B-Drill `ready`, Produktionsübertragbarkeit
+  und Release `blocked_by_owner_decisions` – **alle** Entscheidungen offen
 - **Grundlage:** `docs/SP3_02_RECOVERY_INVENTORY.md`, `docs/SP3_02_RECOVERY_TABLETOP_PLAN.md`,
   `docs/adr/ADR-001_INVENTORY_WLAN_DATA_PROTECTION.md` (Abschnitt 13),
   `docs/adr/ADR-001_VERIFICATION_PLAN.md` (Abschnitt 2)
@@ -38,10 +39,10 @@
 | ID | Thema | Status | Benötigter Owner | Blockt Phase B |
 |---|---|---|---|---|
 | D-01 | Verbindliche RPO-/RTO-Ziele | `open` / `owner_required` | Operations + Product | nein (aber blockt jede Aussage nach außen) |
-| D-02 | Backup- und Restoreprovider, Verfahren, Prüfzyklus | `open` / `owner_required` | Operations | **ja** |
+| D-02 | Backup- und Restoreprovider, Verfahren, Prüfzyklus | `open` / `owner_required` | Operations | nein für lokalen Drill; ja für Produktionsübertragbarkeit |
 | D-03 | Region und Datenresidenz | `open` / `owner_required` | Datenschutz + Operations | nein |
 | D-04 | Retention, Providerlöschfristen, Nachweisaufbewahrung | `open` / `owner_required` | Datenschutz | nein |
-| D-05 | KEK-/KMS-Provider und Verwahrung von K-01 | `open` / `owner_required` | Operations + Security | **ja** |
+| D-05 | KEK-/KMS-Provider und Verwahrung von K-01 | `open` / `owner_required` | Operations + Security | nein für lokalen Drill; ja für Produktionsübertragbarkeit und Phase C |
 | D-06 | DEK-/IIK-Rotationsmodell | `open` / `owner_required` | Security + Technical Owner | nein (blockt Phase C) |
 | D-07 | Rotation der Worker- und Provider-Secrets | `open` / `owner_required` | Security + Operations | nein (blockt Phase C) |
 | D-08 | Release-Signing-Recovery | `open` / `owner_required` | Operations + Product | nein (blockt Phase D, Szenario 4) |
@@ -70,11 +71,11 @@ frischem erfolgreichen Restorebeleg". Beides ist eine Anforderung, kein Wert.
 1. Getrennte RPO-Werte je Datenklasse – insbesondere: Gilt für `consent_log` und
    `deletion_requests` (sechs Jahre Aufbewahrung, rechtlich relevant) derselbe RPO wie für
    `monitoring_events`?
-2. **Zwei getrennte RTO-Werte**, nicht einer. Die Istaufnahme (`G-20`, Bestandteil H-03) belegt:
-   ein Restore *im selben* Supabase-Projekt ist ein Datenvorgang; ein Restore *in ein neues*
-   Projekt ändert `PRODUCTION_SUPABASE_URL` und erzwingt damit einen Store-Release mit
-   Apple-/Google-Reviewdauer, weil ausgelieferte Binaries auf die alte URL gepinnt sind. Ein
-   einzelner RTO-Wert verdeckt diesen Unterschied.
+2. **Zwei getrennte RTO-Szenarien**, nicht eines. Die Istaufnahme (`G-20`, Bestandteil H-03)
+   belegt: Ein Restore am bestehenden Endpoint ist primär ein Datenvorgang. Erfordert der Restore
+   einen neuen Host und existiert kein stabiler Proxy-/Alias-/Failoverpfad, benötigt die in
+   ausgelieferten Binaries gebundene URL einen Store-Release mit Apple-/Google-Reviewdauer. Ein
+   einzelner RTO-Wert verdeckt diesen bedingten Unterschied.
 3. Ab welchem Ausfall gilt welcher Wert, und wer stellt das fest.
 
 **Ausdrücklich nicht entschieden.** Dieses Dokument schlägt **keine Zahlenwerte vor**. Jeder Wert
@@ -90,10 +91,10 @@ Schlüsselbeschaffungszeit ist kein RTO bestimmbar), G-20, G-04.
 ## D-02 Backup- und Restoreprovider, Verfahren und Prüfzyklus
 
 - **Status:** `open` / `owner_required` · **Benötigter Owner:** Operations
-- **Blockt Phase B:** **ja** – für den Schritt „Backup erzeugen"
-  (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 8.3, Schritt 2) muss feststehen, welches
-  Verfahren der Drill nachbilden soll. Ohne diese Entscheidung übt der Drill ein Verfahren, das in
-  der Produktion möglicherweise gar nicht existiert.
+- **Blockt Phase B:** nein für den isolierten lokalen Drill. Dieser verwendet ausdrücklich einen
+  als Testverfahren gekennzeichneten vollständigen logischen Dump. Die Entscheidung blockiert die
+  Übertragung der Messwerte auf Produktion und jeden produktionsrepräsentativen Drill, nicht den
+  technischen Nachweis von Schema-, RLS-, Integritäts- und Löschverhalten.
 
 **Belegter Iststand.** Im Repository existiert **keinerlei** Backupkonfiguration: kein PITR-Setting,
 kein Dumpjob, kein Snapshotplan, kein Aufbewahrungsort, kein Wiederherstellungsskript. Vorhanden ist
@@ -106,9 +107,10 @@ Baustein.
 
 1. Wer ist Backupautorität für `SB-DB` – der Supabase-Managed-Backuppfad, ein eigener Dumpjob, oder
    beides? Wird PITR genutzt, und mit welchem Fenster?
-2. **Schließt das Backup das `auth`-Schema und das JWT-Secret ein?** Dies ist offen (`G-04`) und
-   entscheidet darüber, ob eine wiederhergestellte Datenbank überhaupt zugänglich ist, weil RLS auf
-   `auth.uid()` aufsetzt.
+2. Welche Auth-Tabellen und providerseitigen GoTrue-Einstellungen umfasst beziehungsweise
+   rekonstruiert das Verfahren? Der JWT-Signaturschlüssel ist getrennt von den Datenbankdaten zu
+   behandeln: Sein Wechsel invalidiert bestehende Sessions, während fehlende Auth-Daten
+   Identitäten, Fremdschlüssel und neue Anmeldepfade beeinträchtigen (`G-04`).
 3. Sind Backups verschlüsselt, und **mit welchem Schlüssel** – insbesondere, ob dieser Schlüssel
    von denselben Personen verwahrt wird wie K-01 (siehe D-05).
 4. Wer darf ein Backup lesen? Solange `wlan_scans` und die sechs Inventartabellen D2 im Klartext
@@ -205,8 +207,9 @@ dokumentierte Providerlöschfrist" – diese Dokumentation existiert nicht.
 
 - **Status:** `open` / `owner_required` · **Benötigter Owner:** Operations (Betrieb, Verwahrung) und
   Security (Kryptovertrag)
-- **Blockt Phase B:** **ja** – Prüfpunkt P-08 des Drills setzt voraus, dass klar ist, was ein
-  „Restore ohne K-01" betrieblich bedeutet.
+- **Blockt Phase B:** nein für den lokalen Drill. P-08 verwendet ausschließlich Testmaterial und
+  weist nach, dass ein fehlender Testschlüssel geschlossen scheitert. D-05 blockiert die
+  Übertragung dieses Ergebnisses auf Produktion, einen produktiven Recoverynachweis und Phase C.
 
 **Belegter Iststand.** `workers/hono/src/index.ts:2416-2451`: ein **einziger globaler**
 AES-256-GCM-Schlüssel (`DATA_ENCRYPTION_KEY`) für alle Mandanten, **ohne Keyversion im Envelope**,
@@ -223,8 +226,9 @@ KEK) – dieser ist **nicht implementiert**, und ADR-001 Abschnitt 13 führt das
 
 1. **Verwahrung von K-01 heute** – bevor irgendein Zielzustand gebaut wird. Wo liegt der Schlüssel
    außer in der Cloudflare-Secret-Bindung? Wer kommt an ihn heran? Existiert eine Zweitkopie? Diese
-   Frage ist dringender als der gesamte ADR-001-Zielzustand, weil ihr Verlust den vollständigen,
-   unwiederbringlichen Verlust aller Berichte aller Mandanten bedeutet (`G-15`).
+   Frage ist dringender als der gesamte ADR-001-Zielzustand, weil ihr Verlust sämtliche
+   verschlüsselten Vollberichte und Snapshots aller Mandanten unlesbar und kanonische PDFs nicht
+   reproduzierbar macht (`G-15`).
 2. Vierauge-/Zugriffsregel für die Beschaffung im Notfall.
 3. KEK-/KMS-Provider für den Zielzustand: Cloudflare-eigene Mechanismen, ein externes KMS, oder
    eine andere Lösung – einschließlich der Frage, ob der KEK-Provider in derselben Ausfalldomäne
@@ -285,7 +289,7 @@ Beides ist an ADR-001 M1 gebunden, das bis zu den Sign-offs aus ADR-001 Abschnit
 |---|---|---|
 | K-01 `DATA_ENCRYPTION_KEY` | **nein** | Rotation heute nicht durchführbar (D-06, `G-16`) |
 | K-02 `SUPABASE_SERVICE_ROLE_KEY` | **nein** (`G-17`) | umgeht RLS vollständig; Rotation bei Kompromittierung zwingend |
-| K-03 `SUPABASE_ANON_KEY` / `SUPABASE_URL` | nein | Änderung erzwingt Store-Release (H-03, `G-20`) |
+| K-03 `SUPABASE_ANON_KEY` / `SUPABASE_URL` | nein | Eine Hoständerung erfordert ohne stabilen Proxy-/Alias-/Failoverpfad einen Store-Release (H-03, `G-20`) |
 | K-04 `BACKOFFICE_INVITE_HMAC_SECRET` | **ja**, im Code kommentiert | invalidiert offene Einladungen – gewolltes Verhalten |
 | K-05 `ANTHROPIC_API_KEY` | nein | keine Wirkung auf Bestandsdaten |
 | K-06 Provider-Keys | nein | Coverage sinkt sichtbar auf `not_configured`, keine falsche Entwarnung |
@@ -414,7 +418,7 @@ existiert im Repository **nicht**.
 | Phase | Startbar? | Begründung |
 |---|---|---|
 | A – Istaufnahme | abgeschlossen | `docs/SP3_02_RECOVERY_INVENTORY.md` |
-| B – Restore-Drill | **nach D-02 und D-05** | Ohne Backupverfahren übt der Drill etwas, das produktiv eventuell nicht existiert; ohne geklärte K-01-Verwahrung ist Prüfpunkt P-08 nicht bewertbar. Der rein lokale, synthetische Aufbau ist technisch sicher vorbereitbar. |
+| B – lokaler Restore-Drill | **jetzt startbar** | Verwendet einen ausdrücklich nicht produktionsrepräsentativen logischen Testdump und Test-only K-01; D-02/D-05 blockieren nur die Übertragung auf Produktion, produktive Claims und produktionsnahe Drills. |
 | C – Rotationsdrill | **nach D-05, D-06, D-07** | Eine Cloud-Rotation ist am heutigen Stand technisch nicht durchführbar (D-06). |
 | D – Incident-Tabletop | **nach D-08, D-09, D-10** | Ein Tabletop ohne benannte Rollen übt Rollen, die nicht existieren. |
 | E – Abnahme | nach B bis D | Definition of Done aus `docs/SP3_02_RECOVERY_TABLETOP_PLAN.md`. |
