@@ -34,18 +34,18 @@ anschließend „Dependencies are up to date":
 
 | Paket | SDK 56 | SDK 57 |
 |---|---|---|
-| `expo` | 56.0.21 | **57.0.20** |
+| `expo` | 56.0.21 | **57.0.23** |
 | `react-native` | 0.85.3 | **0.86.3** |
 | `react` / `react-dom` | 19.2.3 | 19.2.3 (unverändert) |
-| `expo-router` | 56.2.20 | **57.0.19** |
+| `expo-router` | 56.2.20 | **57.0.21** |
 | `react-native-reanimated` | 4.3.1 | 4.5.1 |
 | `react-native-worklets` | 0.8.3 | 0.10.1 |
 | `react-native-gesture-handler` | 2.31.2 | 2.32.0 |
 | `react-native-screens` | 4.26.2 | 4.26.2 (unverändert) |
 | `react-native-svg` | 15.15.4 | 15.15.4 (unverändert) |
-| `expo-file-system` | 56.0.11 | 57.0.6 |
+| `expo-file-system` | 56.0.11 | 57.0.7 |
 | `jest-expo` | 56.0.5 | 57.0.5 |
-| `babel-preset-expo` | 56.0.20 | 57.0.10 |
+| `babel-preset-expo` | 56.0.20 | 57.0.12 |
 | `typescript` | 6.0.3 | 6.0.3 (unverändert) |
 
 **Plattform unverändert:** SDK 57 verlangt iOS 16.4 und Android 7/API 24. Das Projekt liegt mit
@@ -77,11 +77,22 @@ aus dem dann kohärenten Manifest neu aufgelöst.
 - `@expo/plist` 0.7.0 → **0.8.1** ruft `parseFromString` weiterhin einargumentig auf. Der
   ungepatchte Aufruf **wirft** unter dem erzwungenen xmldom 0.9.12 nachweislich; die Härtung ist
   also weiterhin Voraussetzung für funktionierendes Plist-Parsing.
-- `expo-modules-core` 56.0.25 → **57.0.16** wertet weiterhin `requestedPermissions!!` aus.
+- `expo-modules-core` 56.0.25 → **57.0.18** wertet weiterhin `requestedPermissions!!` aus.
 - Der **`@xmldom/xmldom`-Override bleibt nötig**, weil `@expo/plist` selbst noch `^0.8.8`
   deklariert. Der Test prüft jetzt die Sicherheitsuntergrenze (0.9-Linie, `>= 0.9.11`) statt eines
   exakten Patches, der der Caret-Range widersprach.
 - Nichts wurde entfernt, weil upstream nichts behoben ist. Die fail-closed Versionsprüfung bleibt.
+
+### Patch- und Advisory-Nachzug vom 16. September 2026
+
+- Die offiziellen SDK-57-Patchstände wurden innerhalb desselben Expo-Majors nachgezogen;
+  Expo Doctor läuft wieder **21/21 ohne Befund**.
+- Die Versionsanhebung von `expo-modules-core` auf **57.0.18** hat die bekannte erzwungene
+  Nicht-null-Auswertung nicht behoben. Die Härtung wurde deshalb gegen den neuen Upstream-Quellstand
+  erneut geprüft und fail-closed neu gebunden.
+- Wrangler **4.132.0** zieht Miniflare `5.20260915.0-alpha` und Sharp **0.35.4**. Damit ist
+  `GHSA-rgj7-g3m4-5g8c` repariert, ohne eine Ausnahme in die Dependency-Allowlist aufzunehmen.
+- Das Dependency-Gate ist wieder grün und akzeptiert weiterhin **0 temporäre Ausnahmen**.
 
 ### `expo-file-system` migriert
 
@@ -119,8 +130,8 @@ auf `@expo/vector-icons/Ionicons`. Die Produktionsbundles sind entsprechend klei
 ## Was in der Dependency-Wartung gemacht wurde (abgeschlossen, PR #47 und #48)
 
 - **Vier Dependabot-Updates konsolidiert:** Hono `4.13.5` (Security-Patch), Supabase JS
-  `2.112.4`, TanStack Query `5.102.8`, Wrangler `4.127.1` und Cloudflare Workers Types
-  `5.20260829.1` liegen gemeinsam in einem reproduzierbaren Lockfile.
+  `2.112.4`, TanStack Query `5.102.8`, Wrangler `4.132.0` und Cloudflare Workers Types
+  `5.20260916.1` liegen gemeinsam in einem reproduzierbaren Lockfile.
 - **Baseline synchronisiert:** Die exakt installierten Runtime-Versionen sind in
   `security/mobile-upgrade-baseline.json` nachgezogen; künftige Drift bleibt fail-closed.
 - **Zwei High-Ausnahmen geschlossen:** Die nicht benötigte optionale
@@ -128,7 +139,7 @@ auf `@expo/vector-icons/Ionicons`. Die Produktionsbundles sind entsprechend klei
   `image-size` und beide zugehörigen High-Advisories nicht mehr installiert; die aktive
   Allowlist ist leer, der historische Nachweis bleibt erhalten.
 - **Runtime-Verträglichkeit bewiesen:** Beide nativen Hermes-Produktionsbundles entstehen ohne
-  die optionale Peer-Kette; Wrangler `4.127.1` paketiert den Worker im Dry-Run erfolgreich.
+  die optionale Peer-Kette; Wrangler `4.132.0` paketiert den Worker im Dry-Run erfolgreich.
 - **Abgeschlossen:** PR [`#47`](https://github.com/kwhussam/praxis-ai/pull/47) ist als
   `8282ae1` gemergt. Der nachgezogene Dependabot-Gruppen-PR
   [`#48`](https://github.com/kwhussam/praxis-ai/pull/48) hebt `@cloudflare/workers-types` auf
@@ -363,7 +374,7 @@ Supabase.
 | iOS Release-Build | grün | signaturfreier Release-Build mit Xcode `26.6` / iOS SDK `26.5`: `BUILD SUCCEEDED` |
 | Android Release-Build | grün | PR-Job `android-release-compile` einschließlich Manifest-Verifikation bestanden |
 | iOS-/Android-Bundles | grün | beide Hermes-Produktionsbundles mit Expo Router und Worklets erzeugt |
-| Wrangler Worker-Dry-Run | grün | Wrangler `4.127.1` paketiert den Hono-Worker ohne Deployment |
+| Wrangler Worker-Dry-Run | grün | Wrangler `4.132.0` paketiert den Hono-Worker ohne Deployment |
 | iOS Simulator-Smoke | grün über kombinierte Nachweise | vollständiger Wiederholungslauf: 14/15 laut Terminalausgabe; anschließend Flow 15 fokussiert: 1/1 einschließlich nativer Share-UI und Klartext-Cache-Gate |
 | Physische Geräte-Smokes | zurückgestellt | iOS-/Android-Gerätematrix bleibt wie vereinbart ein späteres Release-Gate |
 
@@ -464,7 +475,7 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 - `npm ci`, `npm run verify` und `npm run security:dependencies` grün;
 - Expo Doctor **21/21 ohne Befund**; `expectedFailedChecks` leer und `expectedOpenFinding` `null`;
-- Vendor-Härtung fail-closed grün für `@expo/plist@0.8.1` und `expo-modules-core@57.0.16`;
+- Vendor-Härtung fail-closed grün für `@expo/plist@0.8.1` und `expo-modules-core@57.0.18`;
 - GitHub-CI und Secure SDLC grün, insbesondere `android-release-compile` samt Manifest-Prüfung;
 - vollständiger serieller 15-Flow-Maestro-Lauf grün;
 - Dependency-Gate, Clean Prebuild und Native-Config grün;

@@ -283,7 +283,7 @@ SDK-57-Stufe.
 
 ## Phase 3 – SDK-57-Abschluss der Migrationskette
 
-Der siebte und letzte geplante Migrationsschritt steht auf Expo 57.0.20, React Native 0.86.3 und
+Der siebte und letzte geplante Migrationsschritt steht auf Expo 57.0.23, React Native 0.86.3 und
 React/React DOM 19.2.3. Ausgangspunkt ist `origin/main` am Stand
 `c2472b7024d6dd47c043b619119f0cfce9427644` nach PR #50. Alle Versionen stammen aus
 `npx expo install`; die anschließende Kompatibilitätsprüfung meldet „Dependencies are up to date".
@@ -304,7 +304,7 @@ für den noch offenen App-Boot-, Navigations- und Animations-Smoke auf SDK 57.
 
 Die beiden Vendor-Härtungen wurden gegen die installierten SDK-57-Quellen neu bewertet und bleiben
 erforderlich: `@expo/plist` 0.8.1 ruft `parseFromString` weiterhin einargumentig auf und
-`expo-modules-core` 57.0.16 wertet `requestedPermissions` weiterhin mit erzwungener
+`expo-modules-core` 57.0.18 wertet `requestedPermissions` weiterhin mit erzwungener
 Nicht-null-Auswertung aus. Der `@xmldom/xmldom`-Override bleibt zwingend, weil `@expo/plist` selbst
 noch `^0.8.8` deklariert; der ungepatchte Aufruf wirft unter dem erzwungenen xmldom 0.9.12
 nachweislich. Der zugehörige Test prüft nun die Sicherheitsuntergrenze der 0.9-Linie statt eines
@@ -321,6 +321,12 @@ Barrel-Import beseitigt, der alle 24 Familien einzog, obwohl nur Ionicons verwen
 Das Dependency-Gate bleibt bei 0 aktiven Ausnahmen und `npm audit` meldet keine High-/Critical-
 Befunde. Offen bleiben der Android-Release-Compile samt Manifest-Prüfung als GitHub-CI-Gate und der
 vollständige 15-Flow-Maestro-Lauf.
+
+Am 16. September 2026 wurden die inzwischen veröffentlichten kompatiblen SDK-57-Patchstände
+nachgezogen. Expo Doctor läuft damit weiterhin 21/21. Wrangler 4.132.0 aktualisiert den
+Build-Werkzeugpfad auf Sharp 0.35.4 und schließt `GHSA-rgj7-g3m4-5g8c` ohne Allowlist-Ausnahme.
+Die Vendor-Härtung für `expo-modules-core` bleibt auch auf 57.0.18 erforderlich und ist an diesen
+Quellstand fail-closed gebunden.
 
 ## Primärquellen
 

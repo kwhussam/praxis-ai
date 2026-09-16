@@ -217,10 +217,10 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.19");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.21");
     expect(packageLock.packages["node_modules/jest-expo"].version).toBe("57.0.5");
     expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~57.0.0");
-    expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("57.0.10");
+    expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("57.0.12");
     // Expo Router 57 retains the SDK 56 navigation split. A direct @react-navigation dependency
     // is incompatible and must not silently return.
     expect(packageJson.dependencies["@react-navigation/native"]).toBe(undefined);

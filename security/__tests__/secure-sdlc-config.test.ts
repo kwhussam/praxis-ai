@@ -217,7 +217,7 @@ describe("SP3-01 secure SDLC configuration", () => {
 
     expect(existsSync(vendorHardening)).toBe(true);
     expect(corePaths).toHaveLength(1);
-    expect(corePaths[0][1].version).toBe("57.0.16");
+    expect(corePaths[0][1].version).toBe("57.0.18");
     const installedSource = readFileSync(join(
       repositoryRoot,
       corePaths[0][0],
