@@ -16,10 +16,6 @@ tags:
     visible:
       id: inventory-persistence-ready
     timeout: 30000
-- tapOn:
-    id: inventory-name-input
-- inputText: E2E-Persistenz-A
-- pressKey: Enter
 - scrollUntilVisible:
     element:
       id: inventory-add-item
@@ -27,11 +23,21 @@ tags:
     timeout: 30000
     visibilityPercentage: 50
 - tapOn:
+    id: inventory-name-input
+    # Keep the already-positioned form out of Maestro's post-tap settle phase.
+    # Otherwise the keyboard-driven FlatList relayout can outlive the native
+    # first-responder window on iOS 26 and sends the following text nowhere.
+    waitToSettleTimeoutMs: 0
+- inputText: E2EPersistenzA
+- tapOn: "Neuer Eintrag"
+- tapOn:
     id: inventory-add-item
-- extendedWaitUntil:
-    visible:
+- scrollUntilVisible:
+    element:
       id: inventory-persistence-ready
+    direction: UP
     timeout: 30000
+    visibilityPercentage: 50
 - assertVisible: "Geräte 1"
 
 # Ein Prozessneustart darf weder den verschluesselten SQLite-Snapshot noch
@@ -52,10 +58,7 @@ tags:
 
 # Logout leert nur den Arbeitsspeicher. Nach erneuter Anmeldung muss dieselbe
 # Praxis ihren lokalen Snapshot wieder entschluesseln koennen.
-- tapOn:
-    id: tab-dashboard
-- tapOn:
-    id: dashboard-settings
+- runFlow: ../subflows/open-settings.yaml
 - tapOn:
     id: settings-sign-out
 - extendedWaitUntil:
@@ -77,10 +80,7 @@ tags:
 
 # Praxis B darf den Snapshot von Praxis A nicht sehen und erhaelt einen
 # separaten praxisgebundenen Schluessel/Snapshot.
-- tapOn:
-    id: tab-dashboard
-- tapOn:
-    id: dashboard-settings
+- runFlow: ../subflows/open-settings.yaml
 - tapOn:
     id: settings-sign-out
 - extendedWaitUntil:
@@ -99,10 +99,6 @@ tags:
       id: inventory-persistence-ready
     timeout: 30000
 - assertVisible: "Geräte 0"
-- tapOn:
-    id: inventory-name-input
-- inputText: E2E-Persistenz-B
-- pressKey: Enter
 - scrollUntilVisible:
     element:
       id: inventory-add-item
@@ -110,19 +106,23 @@ tags:
     timeout: 30000
     visibilityPercentage: 50
 - tapOn:
+    id: inventory-name-input
+    waitToSettleTimeoutMs: 0
+- inputText: E2EPersistenzB
+- tapOn: "Neuer Eintrag"
+- tapOn:
     id: inventory-add-item
-- extendedWaitUntil:
-    visible:
+- scrollUntilVisible:
+    element:
       id: inventory-persistence-ready
+    direction: UP
     timeout: 30000
+    visibilityPercentage: 50
 - assertVisible: "Geräte 1"
 
 # Rueckkehr zu Praxis A beweist Isolation und Wiederverwendbarkeit beider
 # SecureStore-Schluessel ueber mehrere Sessionwechsel hinweg.
-- tapOn:
-    id: tab-dashboard
-- tapOn:
-    id: dashboard-settings
+- runFlow: ../subflows/open-settings.yaml
 - tapOn:
     id: settings-sign-out
 - extendedWaitUntil:

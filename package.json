@@ -40,6 +40,7 @@
     "e2e:smoke": "bash scripts/e2e/smoke.sh ios",
     "e2e:smoke:android": "bash scripts/e2e/smoke.sh android",
     "e2e:wlan:ios": "bash scripts/e2e/smoke.sh ios wlan",
+    "e2e:inventory:ios": "bash scripts/e2e/smoke.sh ios inventory",
     "e2e:pdf:ios": "bash scripts/e2e/smoke.sh ios pdf",
     "e2e:pdf:android": "bash scripts/e2e/smoke.sh android pdf",
     "security:expo-doctor": "node scripts/gate-expo-doctor.mjs"
