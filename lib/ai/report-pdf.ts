@@ -1,6 +1,7 @@
-// SDK 54 moved the classic API to expo-file-system/legacy; the new File/Directory
-// API is a separate migration and deliberately out of scope for this version bump.
-import * as FileSystem from "expo-file-system/legacy";
+// SDK 57 migration: the deprecated expo-file-system/legacy entry point is gone from this module.
+// The File/Directory API is synchronous, so the exported functions keep their async signatures
+// while the filesystem work itself no longer needs awaiting.
+import { Directory, File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
 import { apiResponse } from "@/lib/api/client";
@@ -18,6 +19,35 @@ const REPORT_CACHE_DIRECTORY = "praxisshield-report-cache";
  * No report content, timestamps or layout decisions are accepted from the app.
  */
 export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
+  return (await exportReportPdfFile({ practiceId, reportId })).uri;
+}
+
+/** Opens the native PDF share/view dialog and removes the plaintext temp file afterwards. */
+export async function shareReportPdf(options: ExportOptions) {
+  const file = await exportReportPdfFile(options);
+
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      throw new Error("Auf diesem Gerät ist kein sicherer PDF-Teilen-Dialog verfügbar.");
+    }
+    await Sharing.shareAsync(file.uri, {
+      mimeType: "application/pdf",
+      UTI: "com.adobe.pdf",
+      dialogTitle: "PraxisShield-Bericht öffnen oder teilen"
+    });
+  } finally {
+    // The receiving app owns any user-approved copy. PraxisShield retains no
+    // plaintext export after the native dialog has closed or failed.
+    deleteIfPresent(file);
+  }
+}
+
+/** Removes canonical PDF cache files for one tenant or for every tenant on logout. */
+export async function clearCachedReportPdfs(practiceId?: string) {
+  deleteIfPresent(practiceId ? reportCacheDirectory(practiceId) : reportCacheRoot());
+}
+
+async function exportReportPdfFile({ practiceId, reportId }: ExportOptions) {
   requireUuid(practiceId, "Practice-ID");
   requireUuid(reportId, "Report-ID");
 
@@ -31,10 +61,9 @@ export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
     throw new Error("Der Server hat kein gültiges PDF geliefert.");
   }
 
-  const directory = reportCacheDirectory(practiceId);
-  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-
   const bytes = new Uint8Array(await response.arrayBuffer());
+  // Verify the integrity of the server artifact before anything touches the filesystem, so a
+  // malformed response fails as a controlled, translated error instead of leaving a partial file.
   if (
     bytes.length < 5 ||
     bytes[0] !== 0x25 ||
@@ -46,60 +75,47 @@ export async function exportReportPdf({ practiceId, reportId }: ExportOptions) {
     throw new Error("Die PDF-Signatur der Serverantwort ist ungültig.");
   }
 
-  const filePath = `${directory}PraxisShield-Bericht-${reportId}.pdf`;
-  await FileSystem.writeAsStringAsync(filePath, bytesToBase64(bytes), {
-    encoding: FileSystem.EncodingType.Base64
-  });
-  return filePath;
-}
+  const directory = reportCacheDirectory(practiceId);
+  directory.create({ intermediates: true, idempotent: true });
 
-/** Opens the native PDF share/view dialog and removes the plaintext temp file afterwards. */
-export async function shareReportPdf(options: ExportOptions) {
-  const filePath = await exportReportPdf(options);
-
+  const file = new File(directory, `PraxisShield-Bericht-${reportId}.pdf`);
   try {
-    if (!(await Sharing.isAvailableAsync())) {
-      throw new Error("Auf diesem Gerät ist kein sicherer PDF-Teilen-Dialog verfügbar.");
-    }
-    await Sharing.shareAsync(filePath, {
-      mimeType: "application/pdf",
-      UTI: "com.adobe.pdf",
-      dialogTitle: "PraxisShield-Bericht öffnen oder teilen"
-    });
-  } finally {
-    // The receiving app owns any user-approved copy. PraxisShield retains no
-    // plaintext export after the native dialog has closed or failed.
-    await FileSystem.deleteAsync(filePath, { idempotent: true });
+    // The new API writes the raw bytes directly; the previous base64 round-trip is gone.
+    file.create({ overwrite: true });
+    file.write(bytes);
+    return file;
+  } catch (error) {
+    // create() succeeds before write() starts. A storage error must therefore remove an empty or
+    // partially written plaintext artifact even though shareReportPdf() has not entered its own
+    // cleanup block yet.
+    deleteIfPresent(file);
+    throw error;
   }
-}
-
-/** Removes canonical PDF cache files for one tenant or for every tenant on logout. */
-export async function clearCachedReportPdfs(practiceId?: string) {
-  const directory = practiceId ? reportCacheDirectory(practiceId) : reportCacheRoot();
-  await FileSystem.deleteAsync(directory, { idempotent: true });
 }
 
 function reportCacheDirectory(practiceId: string) {
   requireUuid(practiceId, "Practice-ID");
-  return `${reportCacheRoot()}${practiceId}/`;
+  return new Directory(reportCacheRoot(), practiceId);
 }
 
 function reportCacheRoot() {
-  if (!FileSystem.cacheDirectory) {
+  const cache = Paths.cache;
+  // Exported PDFs must never live in a persistent or backup-eligible location. If the platform
+  // cannot offer a cache directory, refuse instead of falling back to document storage.
+  if (!cache?.uri) {
     throw new Error("Auf diesem Gerät ist kein nicht-persistenter PDF-Cache verfügbar.");
   }
-  return `${FileSystem.cacheDirectory}${REPORT_CACHE_DIRECTORY}/`;
+  return new Directory(cache, REPORT_CACHE_DIRECTORY);
+}
+
+/**
+ * The SDK 57 API throws when deleting a missing entry. Cache cleanup on logout, practice switch
+ * and after a failed share must stay idempotent, so absence is a success, not an error.
+ */
+function deleteIfPresent(entry: File | Directory) {
+  if (entry.exists) entry.delete();
 }
 
 function requireUuid(value: string, label: string) {
   if (!UUID_RE.test(value)) throw new Error(`${label} ist ungültig.`);
-}
-
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
 }

@@ -15,11 +15,11 @@ export E2E_METRO_PORT="$METRO_PORT"
 export MAESTRO_DRIVER_STARTUP_TIMEOUT="${MAESTRO_DRIVER_STARTUP_TIMEOUT:-180000}"
 
 if [[ "$PLATFORM" != "ios" && "$PLATFORM" != "android" ]]; then
-  echo "Usage: smoke.sh <ios|android> [all|pdf]" >&2
+  echo "Usage: smoke.sh <ios|android> [all|pdf|wlan|inventory]" >&2
   exit 1
 fi
-if [[ "$SUITE" != "all" && "$SUITE" != "pdf" && "$SUITE" != "wlan" ]]; then
-  echo "Usage: smoke.sh <ios|android> [all|pdf|wlan]" >&2
+if [[ "$SUITE" != "all" && "$SUITE" != "pdf" && "$SUITE" != "wlan" && "$SUITE" != "inventory" ]]; then
+  echo "Usage: smoke.sh <ios|android> [all|pdf|wlan|inventory]" >&2
   exit 1
 fi
 
@@ -104,6 +104,8 @@ if [[ "$SUITE" == "pdf" ]]; then
   MAESTRO_TARGETS=(flows/15-pdf-export.yaml)
 elif [[ "$SUITE" == "wlan" ]]; then
   MAESTRO_TARGETS=(flows/06-wlan-scan.yaml)
+elif [[ "$SUITE" == "inventory" ]]; then
+  MAESTRO_TARGETS=(flows/13-inventory-persistence.yaml)
 fi
 
 if [[ "${#MAESTRO_TARGETS[@]}" -eq 0 ]]; then

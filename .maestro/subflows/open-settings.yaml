@@ -1,0 +1,26 @@
+appId: ai.praxisshield.app
+---
+# The Expo development launcher renders its floating tools button over the
+# dashboard settings button on iOS. Navigate through the app's real route so
+# the E2E flow does not accidentally open the dev-only overlay.
+- openLink:
+    link: "praxisshield:///settings"
+- tapOn:
+    text: "Open|Öffnen"
+    optional: true
+- runFlow:
+    when:
+      visible: "This is the developer menu.*"
+    commands:
+      - tapOn:
+          point: "50%,34%"
+- runFlow:
+    when:
+      visible: Reload
+    commands:
+      - tapOn:
+          point: "94%,7%"
+- extendedWaitUntil:
+    visible:
+      id: settings-sign-out
+    timeout: 30000

@@ -3,9 +3,9 @@
   "policy": {
     "scope": "build-toolchain",
     "maximumExceptionDays": 31,
-    "decision": "No active High/Critical dependency exceptions after the Expo SDK 56 migration; React Native 0.85 reintroduces @react-native/metro-config as a real dependency of react-native-worklets and the community CLI plugin, but Metro 0.84 no longer depends on image-size, so the previously excepted advisories stay uninstalled",
+    "decision": "No active High/Critical dependency exceptions on the final Expo SDK 57 dependency graph; all earlier build-toolchain exceptions remain resolved and no runtime dependency can be allowlisted by policy",
     "remediationPlan": "docs/SP3_01B_SUPPLY_CHAIN_UPGRADE_PLAN.md",
-    "nextStage": "sdk57",
+    "nextStage": "production_device_gates",
     "targetDate": "2026-09-07",
     "hardExpiry": "2026-09-13"
   },

@@ -229,6 +229,7 @@ override fun getPackages(): List<ReactPackage> =
     const login = read(".maestro/subflows/login.yaml");
     const onboardingLogin = read(".maestro/subflows/login-to-onboarding.yaml");
     const inventory = read(".maestro/flows/13-inventory-persistence.yaml");
+    const openSettings = read(".maestro/subflows/open-settings.yaml");
 
     expect(registration).not.toContain("hideKeyboard");
     expect(registration.match(/pressKey: Enter/g)).toHaveLength(2);
@@ -236,8 +237,11 @@ override fun getPackages(): List<ReactPackage> =
     expect(loginScreen).toContain('returnKeyType="next"');
     expect(login).not.toContain("id: auth-submit");
     expect(onboardingLogin).not.toContain("id: auth-submit");
-    expect(inventory.match(/scrollUntilVisible:/g)).toHaveLength(2);
+    expect(inventory.match(/scrollUntilVisible:/g)).toHaveLength(4);
     expect(inventory.match(/id: inventory-add-item/g)).toHaveLength(4);
+    expect(inventory.match(/runFlow: \.\.\/subflows\/open-settings\.yaml/g)).toHaveLength(3);
+    expect(openSettings).toContain('link: "praxisshield:///settings"');
+    expect(openSettings).toContain("id: settings-sign-out");
   });
 
   it("refuses to run when a foreign server already listens on the Metro port", () => {
