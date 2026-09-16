@@ -43,6 +43,7 @@
     "e2e:inventory:ios": "bash scripts/e2e/smoke.sh ios inventory",
     "e2e:pdf:ios": "bash scripts/e2e/smoke.sh ios pdf",
     "e2e:pdf:android": "bash scripts/e2e/smoke.sh android pdf",
+    "recovery:drill": "bash scripts/recovery/restore-drill.sh",
     "security:expo-doctor": "node scripts/gate-expo-doctor.mjs"
   },
   "engines": {

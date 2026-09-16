@@ -4,8 +4,9 @@
 - **Phase:** A – Istaufnahme und Entscheidungsregister
 - **Stand:** 2026-09-16
 - **Branch:** `codex/sp3-02-recovery-tabletop`
-- **Status:** Phase A `audit_completed`, lokaler Phase-B-Drill `ready`, Produktionsübertragbarkeit
-  und Release `blocked_by_owner_decisions` – **alle** Entscheidungen offen
+- **Status:** Phase A `audit_completed`, lokaler Phase-B-Drill `measured_blocked_by_G-01`,
+  Produktionsübertragbarkeit und Release `blocked_by_owner_decisions` – **alle** Entscheidungen
+  offen
 - **Grundlage:** `docs/SP3_02_RECOVERY_INVENTORY.md`, `docs/SP3_02_RECOVERY_TABLETOP_PLAN.md`,
   `docs/adr/ADR-001_INVENTORY_WLAN_DATA_PROTECTION.md` (Abschnitt 13),
   `docs/adr/ADR-001_VERIFICATION_PLAN.md` (Abschnitt 2)
@@ -418,7 +419,7 @@ existiert im Repository **nicht**.
 | Phase | Startbar? | Begründung |
 |---|---|---|
 | A – Istaufnahme | abgeschlossen | `docs/SP3_02_RECOVERY_INVENTORY.md` |
-| B – lokaler Restore-Drill | **jetzt startbar** | Verwendet einen ausdrücklich nicht produktionsrepräsentativen logischen Testdump und Test-only K-01; D-02/D-05 blockieren nur die Übertragung auf Produktion, produktive Claims und produktionsnahe Drills. |
+| B – lokaler Restore-Drill | **ausgeführt, durch G-01 blockiert** | Der nicht produktionsrepräsentative Testdump und Test-only K-01 bestanden 7/8 Prüfpunkte; P-06 bestätigte verbliebene D2-Zeilen nach abgeschlossener Löschung. D-02/D-05 blockieren weiterhin die Übertragung auf Produktion, produktive Claims und produktionsnahe Drills. |
 | C – Rotationsdrill | **nach D-05, D-06, D-07** | Eine Cloud-Rotation ist am heutigen Stand technisch nicht durchführbar (D-06). |
 | D – Incident-Tabletop | **nach D-08, D-09, D-10** | Ein Tabletop ohne benannte Rollen übt Rollen, die nicht existieren. |
 | E – Abnahme | nach B bis D | Definition of Done aus `docs/SP3_02_RECOVERY_TABLETOP_PLAN.md`. |

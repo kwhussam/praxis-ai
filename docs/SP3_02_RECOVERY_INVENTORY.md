@@ -39,8 +39,10 @@ Was dieses Dokument **nicht** ist:
 | `documented` | Nur in Dokumentation, ADR oder Plan beschrieben; nicht durch Code oder Konfiguration erzwungen. |
 | `unknown` | Im Repository nicht belegbar. Nur über Providerkonsolen, Verträge oder benannte Personen klärbar. |
 
-Ein `configured`-Eintrag ist ausdrücklich **kein** Recovery-Nachweis. Für Backup- und
-Restorefähigkeit ist im gesamten Repository derzeit **kein einziger `measured`-Eintrag** vorhanden.
+Ein `configured`-Eintrag ist ausdrücklich **kein** Recovery-Nachweis. Zum Abschluss der
+Phase-A-Istaufnahme war für Backup- und Restorefähigkeit im gesamten Repository noch kein
+`measured`-Eintrag vorhanden. Der spätere lokale Phase-B-Lauf ist separat in
+`docs/SP3_02_PHASE_B_RUNBOOK.md` dokumentiert und ändert keine der produktiven `unknown`-Wertungen.
 
 ## 3. Datenklassen
 
@@ -841,9 +843,11 @@ Priorität: **P1** Datenverlust, Mandantenbruch oder Rechtsverstoß unmittelbar 
 
 ## 8. Entwurf des Phase-B-Restore-Drills
 
-Dieser Abschnitt ist ein **Entwurf**. Er wurde in Phase A **nicht ausgeführt**. Phase B beginnt erst,
-wenn die in `docs/SP3_02_DECISION_LOG.md` als `blocking_for_phase_b` markierten Entscheidungen
-vorliegen.
+Dieser Abschnitt entstand in Phase A als Entwurf. Der daraus abgeleitete Drill ist inzwischen in
+`scripts/recovery/restore-drill.sh` implementiert und in
+`docs/SP3_02_PHASE_B_RUNBOOK.md` dokumentiert. Der Referenzlauf vom 16. September 2026 bestand
+P-01 bis P-05 sowie P-07 und P-08; P-06 bestätigte den Blocker G-01. Die folgenden Abschnitte
+bleiben als fachlicher Vertrag des Drills erhalten.
 
 ### 8.1 Geltungsbereich und Grenzen
 
@@ -935,8 +939,9 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
   mit erzwungener RLS, 242 pgTAP-Assertions, append-only Consent-Registry, transaktionale
   Berichtserzeugung, fail-closed Providerstatus, vollständiger Ausschluss mobiler Daten aus
   Gerätebackups.
-- **Recovery ist der unbelegteste Bereich des Produkts.** Für Backup und Restore existiert im
-  gesamten Repository **kein einziger `measured`-Nachweis** und keine Konfiguration.
+- **Recovery bleibt produktiv unbelegt.** Phase B liefert inzwischen einen lokalen synthetischen
+  `measured`-Nachweis mit 7/8 Prüfpunkten. Ein produktives Backup, dessen Providerkonfiguration
+  und ein produktionsrepräsentativer Restore bleiben weiterhin `unknown`.
 - **Der Einzelpunkt mit dem größten Schadenspotenzial ist K-01.** Ein globaler, versionsloser,
   AAD-freier Schlüssel entscheidet über die Lesbarkeit aller verschlüsselten Vollberichte und
   Snapshots aller Mandanten und ist heute weder rotierbar noch nachweislich verwahrt.

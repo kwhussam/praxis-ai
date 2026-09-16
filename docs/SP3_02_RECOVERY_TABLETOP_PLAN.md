@@ -1,7 +1,7 @@
 # SP3-02 – Restore, Schlüsselrotation und Incident-Tabletop
 
 Stand: 2026-09-16  
-Status: `planning`  
+Status: `phase_b_measured_blocked_by_G-01`
 Branch: `codex/sp3-02-recovery-tabletop`
 
 ## Ziel
@@ -102,8 +102,11 @@ SP3-02 kann erst `released` werden, wenn:
 6. offene produktive Provider-/KMS-/Signing-Entscheidungen ausdrücklich als Blocker dokumentiert
    bleiben und nicht durch lokale Simulation als gelöst gelten.
 
-## Erster Umsetzungsschritt
+## Aktueller Umsetzungsschritt
 
-Zuerst Phase A vollständig durchführen und daraus eine konkrete, nach Risiko priorisierte
-Gap-Liste sowie den minimal sicheren lokalen Restore-Drill für Phase B ableiten. Vor dieser
-Istaufnahme werden weder produktive Recoveryautomatisierung noch neue Schlüsselregistries gebaut.
+Phase A ist abgeschlossen. Der lokale Phase-B-Drill ist implementiert und wurde ausgeführt:
+P-01 bis P-05 sowie P-07 und P-08 bestanden, P-06 bestätigte G-01. Als Nächstes ist nach
+ausdrücklicher Owner-Freigabe der Löschumfang von `complete_privacy_deletion` um die sechs
+D2-Tabellen zu ergänzen und durch eine pgTAP-Regression zu sichern. Erst ein anschließender
+8/8-Lauf schließt Phase B technisch ab. Produktionsübertragbarkeit, RPO/RTO-Claims und Phase C
+bleiben unabhängig davon durch die offenen Owner-Entscheidungen gesperrt.

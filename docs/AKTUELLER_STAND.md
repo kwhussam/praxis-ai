@@ -22,16 +22,20 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **Aktuelles Arbeitspaket:** `SP3-02 – Restore-, Schlüsselrotations- und Incident-Tabletop`.
   Der isolierte Branch `codex/sp3-02-recovery-tabletop` basiert direkt auf `origin/main` bei
   `af8d579`.
-- **SP3-02 Phase A ist abgeschlossen; Phase B ist lokal startbereit.** Das Arbeitspaket bleibt für
-  Produktionsübertragbarkeit und Release auf `blocked_by_owner_decisions`.
+- **SP3-02 Phase A ist abgeschlossen; Phase B ist gemessen und durch G-01 blockiert.** Das
+  Arbeitspaket bleibt zusätzlich für Produktionsübertragbarkeit und Release auf
+  `blocked_by_owner_decisions`.
   `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert alle Daten-, Schlüssel-, Secret-, Signing- und
   Artefaktpfade am tatsächlichen Code und leitet daraus 24 priorisierte Lücken sowie den Entwurf des
   synthetischen Zwei-Mandanten-Restore-Drills ab. `docs/SP3_02_DECISION_LOG.md` führt zehn offene
   Entscheidungen (D-01 bis D-10) ohne erfundene Werte oder Owner.
-- **Wichtigste Evidenzaussage aus Phase A:** Für Backup und Restore existiert im gesamten
-  Repository **kein einziger `measured`-Nachweis** und keine Konfiguration. Phase A ist eine
-  Dokumentenprüfung am Code – **es wurde kein Restore durchgeführt**, kein Backup gelesen und kein
-  Schlüssel erzeugt, rotiert oder angezeigt. RPO und RTO bleiben ausdrücklich unbestimmt.
+- **Neue Phase-B-Evidenz:** `npm run recovery:drill` erzeugt einen logischen Dump ausschließlich
+  aus synthetischen Daten und stellt ihn in einer isolierten lokalen Datenbank wieder her. Der
+  Referenzlauf bestand 7/8 Prüfungen: Migrationen, 242 pgTAP-Assertions, RLS/Policies/Grants,
+  kanonische Report-/PDF-Hashes, Consent/Audit, Tenant-Isolation/Auth und der fehlende
+  Testschlüssel waren grün. P-06 bestätigte G-01 (`completed_deletion_not_enforced`). Gemessen
+  wurden lokal 234 ms Backup- und 491 ms Restorezeit; das sind keine Produktionsclaims. RPO und
+  RTO bleiben ausdrücklich unbestimmt.
 - **Wichtige Evidenzgrenze:** Der letzte vollständige SDK-57-Simulatorlauf bestand 13 von 15
   Flows; `13-inventory-persistence` und `15-pdf-export` wurden anschließend im Harness korrigiert,
   aber ein vollständiger 15/15-Wiederholungslauf nach diesen letzten Änderungen ist noch nicht
@@ -446,10 +450,11 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **Phase B lokal beginnen.** Der isolierte synthetische Restore-Drill verwendet einen klar als
-   Testverfahren gekennzeichneten logischen Dump und ausschließlich Testschlüssel. D-02 und D-05
-   blockieren seine technische Durchführung nicht; sie blockieren die Übertragung auf Produktion,
-   produktive Claims und Phase C.
+1. **G-01 nach ausdrücklicher Owner-Freigabe schließen.** Die produktionswirksame Migration muss
+   `complete_privacy_deletion` um `inventory_items`, `inventory_known_devices`,
+   `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules` und
+   `monitoring_targets` erweitern. Eine pgTAP-Regression muss die vollständige Löschung und die
+   unveränderten Legal-Retention-Datensätze belegen. Danach den Drill erneut ausführen; Ziel 8/8.
 2. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
@@ -459,9 +464,9 @@ spätere Produktions-Gate.
      werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
    - `G-01` – `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht (bereits ADR-001-Blocker).
    - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
-3. Den in `docs/SP3_02_RECOVERY_INVENTORY.md` Abschnitt 8 entworfenen Phase-B-Drill umsetzen:
-   ausschließlich synthetische Zwei-Mandanten-Daten, isolierte lokale Umgebung, keine
-   produktiven Daten, Secrets, Cloudkonfigurationen oder Schlüsselprovider verändern.
+3. Der Phase-B-Drill ist umgesetzt; nach dem G-01-Fix muss ein neuer Metadaten-only-Nachweis mit
+   8/8 grünen Prüfpunkten erzeugt werden. Die produktionsnahe Auth-/Provider-Wiederherstellung
+   bleibt an D-02 gebunden.
 4. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
@@ -485,10 +490,10 @@ spätere Produktions-Gate.
 - Der Rechner lief während dieser Stufe an der Speichergrenze; regenerierbare Build-Caches
   (Gradle, Xcode DerivedData, CocoaPods, npm) wurden nach Rücksprache geleert. Kein Worktree und
   kein Quellcode wurde entfernt.
-- **SP3-02 Phase A ist eine Istaufnahme am Code, kein getesteter Restore.** Es wurde keine
-  Datenbank wiederhergestellt, kein Backup gelesen oder erzeugt, kein Schlüssel erzeugt, rotiert,
-  widerrufen oder angezeigt und keine Cloudflare-, Supabase-, GitHub-Environment-, KMS- oder
-  Signing-Konfiguration verändert. Die Phase-A-Lieferung besteht ausschließlich aus Dokumentation.
+- **SP3-02 Phase B ist nur lokal und synthetisch gemessen.** Der Drill hat eine isolierte lokale
+  Datenbank wiederhergestellt und ausschließlich den bekannten Testschlüssel verwendet. Er hat
+  keine Produktionsdaten, produktiven Backups, Cloudflare-/Supabase-Cloudkonfigurationen,
+  GitHub-Environments, KMS- oder Signing-Konfigurationen gelesen oder verändert.
 - **`WHEN_UNLOCKED_THIS_DEVICE_ONLY` ist kein Backup.** Auth-Session, lokaler Inventar-DEK und die
   verschlüsselte SQLite-Persistenz sind bewusst nicht wiederherstellbar; Android schließt Cloud
   Backup und Gerätetransfer vollständig aus. Diese Bestände dürfen in keinem Runbook als
@@ -506,7 +511,8 @@ Die Phase-A-Kriterien sind erfüllt:
   3 P4);
 - [x] der Restore-Drill ist als Entwurf definiert – ausschließlich synthetische
   Zwei-Mandanten-Daten, fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und
-  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde nicht ausgeführt.**
+  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde ausgeführt: 7/8;
+  P-06 blockiert wegen G-01.**
 - [x] RPO/RTO-Werte wurden **nicht** vorgeschlagen; D-01 bleibt offen bis Messung und Freigabe;
 - [x] keine produktive Mutation; keine Secrets und keine D2/D3-Payloads in Git, Logs oder
   Artefakten.
@@ -515,7 +521,7 @@ Offen für den Abschluss von SP3-02:
 
 - Owner-Entscheidungen D-01 bis D-10 aus `docs/SP3_02_DECISION_LOG.md` – derzeit **null** davon
   `decided`;
-- ein tatsächlich ausgeführter, protokollierter Restore-Drill mit gemessenen Zeitspannen;
+- ein wiederholter Restore-Drill mit 8/8 Prüfpunkten nach dem ausdrücklich freigegebenen G-01-Fix;
 - Schlüsselrotationsnachweis (Phase C) und Incident-Tabletop (Phase D);
 - bestehende CI-/Secure-SDLC-Gates bleiben grün;
 - der separate SDK-57-Runtime-Gate wird mit einem dokumentierten 15/15-Lauf geschlossen.
