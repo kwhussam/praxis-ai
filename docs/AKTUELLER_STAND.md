@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-16 (SDK 57 gemergt, Start SP3-02)
+Stand: 2026-09-16 (SDK 57 gemergt, SP3-02 Phase A abgeschlossen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -22,6 +22,15 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **Aktuelles Arbeitspaket:** `SP3-02 – Restore-, Schlüsselrotations- und Incident-Tabletop`.
   Der isolierte Branch `codex/sp3-02-recovery-tabletop` basiert direkt auf `origin/main` bei
   `af8d579`.
+- **SP3-02 Phase A ist abgeschlossen; SP3-02 steht auf `blocked_by_owner_decisions`.**
+  `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert alle Daten-, Schlüssel-, Secret-, Signing- und
+  Artefaktpfade am tatsächlichen Code und leitet daraus 24 priorisierte Lücken sowie den Entwurf des
+  synthetischen Zwei-Mandanten-Restore-Drills ab. `docs/SP3_02_DECISION_LOG.md` führt zehn offene
+  Entscheidungen (D-01 bis D-10) ohne erfundene Werte oder Owner.
+- **Wichtigste Evidenzaussage aus Phase A:** Für Backup und Restore existiert im gesamten
+  Repository **kein einziger `measured`-Nachweis** und keine Konfiguration. Phase A ist eine
+  Dokumentenprüfung am Code – **es wurde kein Restore durchgeführt**, kein Backup gelesen und kein
+  Schlüssel erzeugt, rotiert oder angezeigt. RPO und RTO bleiben ausdrücklich unbestimmt.
 - **Wichtige Evidenzgrenze:** Der letzte vollständige SDK-57-Simulatorlauf bestand 13 von 15
   Flows; `13-inventory-persistence` und `15-pdf-export` wurden anschließend im Harness korrigiert,
   aber ein vollständiger 15/15-Wiederholungslauf nach diesen letzten Änderungen ist noch nicht
@@ -436,14 +445,26 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. SP3-02 Phase A gemäß `docs/SP3_02_RECOVERY_TABLETOP_PLAN.md` durchführen: Datenbestände,
-   Backuppfade, Schlüssel, Owner, Recovery-Abhängigkeiten und unbelegte Claims inventarisieren.
-2. Aus der Istaufnahme den minimalen synthetischen Zwei-Mandanten-Restore-Drill ableiten. Keine
+1. **Owner-Entscheidungen einholen.** SP3-02 ist ab hier nicht mehr technisch, sondern
+   organisatorisch blockiert. Für Phase B genügen zunächst zwei Entscheidungen aus
+   `docs/SP3_02_DECISION_LOG.md`: **D-02** (Backup- und Restoreverfahren – ohne sie übt der Drill
+   ein Verfahren, das produktiv möglicherweise nicht existiert) und **D-05** (Verwahrung von
+   `DATA_ENCRYPTION_KEY`). Die übrigen acht Entscheidungen blocken Phase C, D und jede
+   Außenkommunikation.
+2. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
+   - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
+     den unwiederbringlichen Verlust aller Berichte aller Mandanten.
+   - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
+   - `G-04` – umfasst das Supabase-Backup das `auth`-Schema und das JWT-Secret?
+   - `G-01` – `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht (bereits ADR-001-Blocker).
+   - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
+3. Nach D-02/D-05 den in `docs/SP3_02_RECOVERY_INVENTORY.md` Abschnitt 8 entworfenen Phase-B-Drill
+   umsetzen: ausschließlich synthetische Zwei-Mandanten-Daten, isolierte lokale Umgebung, keine
    produktiven Daten, Secrets, Cloudkonfigurationen oder Schlüsselprovider verändern.
-3. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
+4. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
-4. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
+5. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 
 ## Bewusste Grenzen
 
@@ -463,15 +484,36 @@ spätere Produktions-Gate.
 - Der Rechner lief während dieser Stufe an der Speichergrenze; regenerierbare Build-Caches
   (Gradle, Xcode DerivedData, CocoaPods, npm) wurden nach Rücksprache geleert. Kein Worktree und
   kein Quellcode wurde entfernt.
+- **SP3-02 Phase A ist eine Istaufnahme am Code, kein getesteter Restore.** Es wurde keine
+  Datenbank wiederhergestellt, kein Backup gelesen oder erzeugt, kein Schlüssel erzeugt, rotiert,
+  widerrufen oder angezeigt und keine Cloudflare-, Supabase-, GitHub-Environment-, KMS- oder
+  Signing-Konfiguration verändert. Die Phase-A-Lieferung besteht ausschließlich aus Dokumentation.
+- **`WHEN_UNLOCKED_THIS_DEVICE_ONLY` ist kein Backup.** Auth-Session, lokaler Inventar-DEK und die
+  verschlüsselte SQLite-Persistenz sind bewusst nicht wiederherstellbar; Android schließt Cloud
+  Backup und Gerätetransfer vollständig aus. Diese Bestände dürfen in keinem Runbook als
+  wiederherstellbar dargestellt werden.
 
 ## Abnahmekriterium für den nächsten Schritt
 
-- Phase-A-Inventar deckt alle Daten-, Secret-, Signing- und Schlüsselpfade ab und kennzeichnet
-  jeden Nachweis als `measured`, `configured`, `documented` oder `unknown`;
-- Gap-Liste enthält für jeden offenen Punkt Risiko, Owner, Priorität und Folgeschritt;
-- lokaler Restore-Drill verwendet ausschließlich synthetische Zwei-Mandanten-Daten und definiert
-  fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und Löschprüfungen;
-- vorgeschlagene RPO/RTO-Werte bleiben Entwurf, bis Operations und Product sie freigeben;
-- keine produktive Mutation und keine Secrets oder D2/D3-Payloads in Git, Logs oder Artefakten;
+Die Phase-A-Kriterien sind erfüllt:
+
+- [x] Phase-A-Inventar deckt alle Daten-, Secret-, Signing- und Schlüsselpfade ab und kennzeichnet
+  jeden Nachweis als `measured`, `configured`, `documented` oder `unknown`
+  (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 5, elf Bestandsgruppen A bis J);
+- [x] Gap-Liste enthält für jeden offenen Punkt Risiko, Owner, Priorität, Folgeschritt und ein
+  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 23 Einträge, davon 7 P1 und 8 P2);
+- [x] der Restore-Drill ist als Entwurf definiert – ausschließlich synthetische
+  Zwei-Mandanten-Daten, fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und
+  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde nicht ausgeführt.**
+- [x] RPO/RTO-Werte wurden **nicht** vorgeschlagen; D-01 bleibt offen bis Messung und Freigabe;
+- [x] keine produktive Mutation; keine Secrets und keine D2/D3-Payloads in Git, Logs oder
+  Artefakten.
+
+Offen für den Abschluss von SP3-02:
+
+- Owner-Entscheidungen D-01 bis D-10 aus `docs/SP3_02_DECISION_LOG.md` – derzeit **null** davon
+  `decided`;
+- ein tatsächlich ausgeführter, protokollierter Restore-Drill mit gemessenen Zeitspannen;
+- Schlüsselrotationsnachweis (Phase C) und Incident-Tabletop (Phase D);
 - bestehende CI-/Secure-SDLC-Gates bleiben grün;
 - der separate SDK-57-Runtime-Gate wird mit einem dokumentierten 15/15-Lauf geschlossen.
