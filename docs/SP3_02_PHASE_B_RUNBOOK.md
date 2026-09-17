@@ -66,8 +66,8 @@ Teil des späteren produktionsnäheren Drills nach D-02.
 
 ## Gemessener Stand
 
-Der Referenzlauf vom 17. September 2026 gegen den Arbeitsstand auf Basis von `715f3abd20ac`
-stellte den logischen Dump in 389 ms wieder her; die Dufferzeugung dauerte 308 ms. Diese Zeiten sind
+Der Referenzlauf vom 17. September 2026 gegen Commit `5705b6996482` stellte den logischen Dump in
+443 ms wieder her; die Dufferzeugung dauerte 291 ms. Diese Zeiten sind
 ausschließlich lokale Messwerte und kein RPO-/RTO-Claim. P-01 bis P-08 bestanden. P-02 führte alle
 14 pgTAP-Dateien mit 266 Assertions gegen den Restore aus.
 

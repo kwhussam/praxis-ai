@@ -37,7 +37,8 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   kanonische Report-/PDF-Hashes, Consent/Audit, Tenant-Isolation/Auth und der fehlende
   Testschlüssel waren grün. Die Migration `20260917120000_sp3_02_g01_privacy_deletion_scope.sql`
   löscht die sechs D2-Sammlungen atomar, erhält die Rechtsnachweise und macht sie vor der Löschung
-  vollständig exportierbar. Gemessen wurden lokal 308 ms Backup- und 389 ms Restorezeit; das sind
+  vollständig exportierbar. Der auf Commit `5705b69` wiederholte Lauf maß lokal 291 ms Backup-
+  und 443 ms Restorezeit; das sind
   keine Produktionsclaims. RPO und RTO bleiben ausdrücklich unbestimmt.
 - **Wichtige Evidenzgrenze:** Der letzte vollständige SDK-57-Simulatorlauf bestand 13 von 15
   Flows; `13-inventory-persistence` und `15-pdf-export` wurden anschließend im Harness korrigiert,
