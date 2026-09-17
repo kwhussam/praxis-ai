@@ -2625,8 +2625,22 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
   const access = await requirePracticeAccess(c, practiceId, "privacy_export", "manager");
   if (access instanceof Response) return access;
 
-  const [securityChecks, reports, assessmentManifests, monitoringEvents, consentLog, wlanScans, monitoringSnapshots, dataProcessingAgreements] =
-    await Promise.all([
+  const [
+    securityChecks,
+    reports,
+    assessmentManifests,
+    monitoringEvents,
+    consentLog,
+    wlanScans,
+    monitoringSnapshots,
+    dataProcessingAgreements,
+    inventoryItems,
+    inventoryKnownDevices,
+    inventoryAccessPoints,
+    routerWifiConfigurations,
+    routerFirewallRules,
+    monitoringTargets
+  ] = await Promise.all([
       supabaseRest<unknown[]>(
         c.env,
         `/rest/v1/security_checks?select=id,type,score,scoring_version,results,completed_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
@@ -2675,6 +2689,40 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
         c.env,
         `/rest/v1/data_processing_agreements?select=id,version,status,accepted_at,document_url,metadata&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
         { method: "GET" }
+      ),
+      // SP3-02/G-01: these D2 collections are hard-deleted by
+      // complete_privacy_deletion. They must therefore be exportable before
+      // erasure. Every query remains tenant-scoped and excludes no hidden
+      // cross-tenant lookup path.
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/inventory_items?select=id,type,name,detail,owner,criticality,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/inventory_known_devices?select=id,mac_address,hostname,device_type,location,owner,criticality,last_confirmed_at,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/inventory_access_points?select=id,ssid,bssid,location,vendor,channel,expected_encryption,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/router_wifi_configurations?select=wpa2_aes,wpa2_wpa3_mixed_mode,wpa3,tkip,open_wifi,wps,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/router_firewall_rules?select=id,name,source_view,direction,protocol,ports,source,destination,action,purpose,owner,enabled,last_reviewed_at,imported_at,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/monitoring_targets?select=id,target_type,value,enabled,leak_scan_allowed,consent_accepted_at,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
       )
     ]);
 
@@ -2689,7 +2737,13 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     consent_log: consentLog,
     wlan_scans: wlanScans,
     monitoring_snapshots: monitoringSnapshots,
-    data_processing_agreements: dataProcessingAgreements
+    data_processing_agreements: dataProcessingAgreements,
+    inventory_items: inventoryItems,
+    inventory_known_devices: inventoryKnownDevices,
+    inventory_access_points: inventoryAccessPoints,
+    router_wifi_configurations: routerWifiConfigurations,
+    router_firewall_rules: routerFirewallRules,
+    monitoring_targets: monitoringTargets
   };
   const signature = await sha256Json(exportData);
 
