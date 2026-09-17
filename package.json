@@ -78,7 +78,7 @@
     "expo-sharing": "~57.0.20",
     "expo-sqlite": "~57.0.3",
     "expo-status-bar": "~57.0.1",
-    "hono": "^4.13.5",
+    "hono": "^4.13.7",
     "lucide-react-native": "^0.520.0",
     "moti": "^0.29.0",
     "react": "19.2.3",
