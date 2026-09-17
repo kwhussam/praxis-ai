@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-04 (SDK-57-Stufe, Review-Korrekturen)
+Stand: 2026-09-16 (SDK 57 gemergt, SP3-02 Phase A abgeschlossen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -14,16 +14,32 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 ## Aktueller Arbeitskontext
 
-- Stufe: isolierte Migration von Expo SDK 56 auf **SDK 57** (Phase 3 des Umsetzungsplans).
-  SDK 57 ist die **Zielstufe** der Migrationskette und schließt den Hermes-v1-Rückstand.
-- Branch: `claude/sp3-01b-sdk57`, direkt von `origin/main` am Stand
-  `c2472b7024d6dd47c043b619119f0cfce9427644` abgezweigt (nach Merge von PR `#50`;
-  GitHub-CI und Secure SDLC auf `main` grün).
-- Ausgangspunkt: PR [`#49`](https://github.com/kwhussam/praxis-ai/pull/49)
-  (konsolidierte Actions-Wartung) ist gemergt und die Post-Merge-CI auf `main` ist grün.
-  Die überholten Dependabot-PRs `#44`, `#45` und `#46` sind geschlossen. Davor waren bereits
-  PR `#47` (Dependency-Wartung) und PR `#48` (`@cloudflare/workers-types`) gemergt; die aktive
-  Dependency-Allowlist ist leer.
+- **SDK-57-Migrationskette abgeschlossen und gemergt:** PR
+  [`#51`](https://github.com/kwhussam/praxis-ai/pull/51) wurde als Commit `af8d579` nach `main`
+  gemergt. Die Post-Merge-Läufe CI `35102657829` und Secure SDLC `35102657678` sind vollständig
+  grün. Expo SDK 57 ist die Zielstufe; der Hermes-v1-Rückstand und die High-Schwachstelle in
+  `sharp` sind ohne Dependency-Ausnahme geschlossen.
+- **Aktuelles Arbeitspaket:** `SP3-02 – Restore-, Schlüsselrotations- und Incident-Tabletop`.
+  Der isolierte Branch `codex/sp3-02-recovery-tabletop` basiert direkt auf `origin/main` bei
+  `af8d579`.
+- **SP3-02 Phase A ist abgeschlossen; Phase B ist gemessen und durch G-01 blockiert.** Das
+  Arbeitspaket bleibt zusätzlich für Produktionsübertragbarkeit und Release auf
+  `blocked_by_owner_decisions`.
+  `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert alle Daten-, Schlüssel-, Secret-, Signing- und
+  Artefaktpfade am tatsächlichen Code und leitet daraus 24 priorisierte Lücken sowie den Entwurf des
+  synthetischen Zwei-Mandanten-Restore-Drills ab. `docs/SP3_02_DECISION_LOG.md` führt zehn offene
+  Entscheidungen (D-01 bis D-10) ohne erfundene Werte oder Owner.
+- **Neue Phase-B-Evidenz:** `npm run recovery:drill` erzeugt einen logischen Dump ausschließlich
+  aus synthetischen Daten und stellt ihn in einer isolierten lokalen Datenbank wieder her. Der
+  Referenzlauf bestand 7/8 Prüfungen: Migrationen, 242 pgTAP-Assertions, RLS/Policies/Grants,
+  kanonische Report-/PDF-Hashes, Consent/Audit, Tenant-Isolation/Auth und der fehlende
+  Testschlüssel waren grün. P-06 bestätigte G-01 (`completed_deletion_not_enforced`). Gemessen
+  wurden lokal 234 ms Backup- und 491 ms Restorezeit; das sind keine Produktionsclaims. RPO und
+  RTO bleiben ausdrücklich unbestimmt.
+- **Wichtige Evidenzgrenze:** Der letzte vollständige SDK-57-Simulatorlauf bestand 13 von 15
+  Flows; `13-inventory-persistence` und `15-pdf-export` wurden anschließend im Harness korrigiert,
+  aber ein vollständiger 15/15-Wiederholungslauf nach diesen letzten Änderungen ist noch nicht
+  dokumentiert. Die grünen GitHub-Gates ersetzen diesen Runtime-Nachweis nicht.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
 
@@ -310,8 +326,8 @@ und abweichende Ports korrekt sind.
 | `npm run lint` | grün | keine Warnungen (`--max-warnings=0`) |
 | `npm run typecheck` | grün | TypeScript 6.0.3 |
 | `npm test -- --runInBand` / `npm run verify` | grün: **505 bestanden**, 6 übersprungen | +1 Regressionstest für Cleanup nach fehlgeschlagenem PDF-Schreiben |
-| `npm run security:dependencies` | erneuter Lauf extern blockiert | npm-Registry liefert `503`; Gate bleibt korrekt fail-closed. Vor dem Patchupdate waren **0 aktive Ausnahmen** belegt, der aktualisierte Graph muss in CI erneut bestätigt werden. |
-| `npm audit` | erneuter Lauf extern blockiert | kein negatives Sicherheitsergebnis, sondern kein gültiger Registry-Report; darf bis zum erfolgreichen Retry nicht als bestanden gelten |
+| `npm run security:dependencies` | grün lokal und in GitHub | **0 aktive Ausnahmen**; Sharp 0.35.4 schließt `GHSA-rgj7-g3m4-5g8c` ohne Allowlist |
+| Dependency-/SBOM-Gate | grün | Secure SDLC `35083477998` auf dem PR sowie Post-Merge-Lauf `35102657678` bestanden |
 | `npm run security:expo-doctor` | grün | echter Lauf des gepinnten `expo-doctor@1.20.4`: **21/21, kein Befund** |
 | Doctor-Gate blockt nachweislich | grün | fixture-getestet: Wiederauftreten des Hermes-Befunds, jeder andere neue Befund, geänderte Prüfungsanzahl und unlesbare Ausgabe geben Exit 1 |
 | `git diff --check` | grün | keine Whitespace-Fehler |
@@ -322,14 +338,15 @@ und abweichende Ports korrekt sind.
 | iOS-Produktionsbundle | grün | Hermes-Bytecode **8.3 MB** (SDK 56: 8.4 MB) |
 | Android-Produktionsbundle | grün | Hermes-Bytecode **8.5 MB** (SDK 56: 8.6 MB) |
 | Wrangler Worker-Dry-Run | grün | 296.74 KiB / gzip 67.71 KiB, Bindings unverändert |
-| **Android Unsigned Release Compile** | **nicht lokal ausgeführt** | Android-SDK-Plattform 36 weiterhin nicht installiert, kein `sdkmanager`. Zwingendes GitHub-CI-Gate. |
-| **`npm run verify:android-release-manifest`** | **nicht lokal ausführbar** | scheitert fail-closed am fehlenden Android-Release-Output; hängt am vorigen Punkt |
-| **Kurzer iOS-Boot-/Auth-Smoke** | **nicht ausgeführt** | Der Simulator-Build brach mit `lipo: No space left on device` beim dSYM ab. Kein Codebefund: derselbe Quellstand hat den signaturfreien `iphoneos`-Release-Build erfolgreich erzeugt. |
-| **Vollständiger 15-Flow-Maestro-Lauf** | **nicht ausgeführt** | Docker auf diesem Rechner nicht ansprechbar, damit kein lokales Supabase; zusätzlich lief das Datenvolume an die Kapazitätsgrenze |
+| Android Unsigned Release Compile | grün in GitHub | CI `35083477999` auf dem PR sowie Post-Merge-CI `35102657829` bestanden; lokal weiterhin kein Android-SDK-36-Tooling |
+| `verify:android-release-manifest` | grün in GitHub | Bestandteil desselben fail-closed Android-Release-Gates |
+| Kurzer iOS-Boot-/Auth-Smoke | grün als Teil des vollständigen Versuchs | SDK-57-App bootete und die Auth-Pfade bestanden im seriellen Maestro-Lauf |
+| **Vollständiger 15-Flow-Maestro-Lauf** | **13/15 vor den letzten Fixes** | `13-inventory-persistence` und `15-pdf-export` wurden anschließend korrigiert; vollständiger 15/15-Rerun bleibt offen |
 | **Android-Smoke** | **nicht ausgeführt** | kein Emulator verfügbar |
 | Physische Geräte-Smokes | zurückgestellt | bleiben wie vereinbart ein späteres Produktions-Gate |
 
-Die fett markierten Zeilen sind **nicht** bestanden und dürfen nicht als bestanden gelesen werden.
+Die fett markierte Zeile ist **nicht** vollständig bestanden und darf nicht als 15/15-Nachweis
+gelesen werden.
 
 ## Verifikation der SDK-56-Stufe (historisch)
 
@@ -420,10 +437,11 @@ nun 0 Ausnahmen.
 
 ### P3 – Physischer Runtime-Nachweis bleibt offen
 
-Der Android-Release-Compile ist in GitHub grün. Die iOS-Simulator-Smokes decken Netzwerk-/WLAN-,
-Persistenz-, Auth-/Tenant- und PDF-Cache-Pfade nun über den vollständigen grünen 15/15-Lauf ab.
-Die vollständige physische iOS-/Android-Matrix
-bleibt wie vereinbart das spätere Produktions-Gate.
+Der Android-Release-Compile ist in GitHub grün. Auf SDK 57 belegt der letzte vollständige
+iOS-Simulatorlauf 13 von 15 Pfaden. Die danach gemergten Harness-Korrekturen für
+Inventarpersistenz und PDF-Export besitzen noch keinen dokumentierten vollständigen
+Wiederholungslauf. Die vollständige physische iOS-/Android-Matrix bleibt wie vereinbart das
+spätere Produktions-Gate.
 
 ### Technische Rückstände außerhalb dieses SDK-Schritts
 
@@ -432,34 +450,36 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. Die Review-Korrekturen in den bestehenden PR `#51` pushen und GitHub-CI sowie Secure SDLC
-   erneut vollständig grün prüfen. Entscheidend sind `android-release-compile` samt
-   `verify:android-release-manifest`, das Doctor-Gate mit 21/21 und das Dependency-Gate ohne aktive
-   Ausnahme.
-2. Den vollständigen seriellen 15-Flow-Maestro-Lauf nachholen, sobald Docker und Speicherplatz
-   verfügbar sind: `npm run e2e:env:up`, danach `npm run e2e:smoke`. Die vier zuletzt
-   empfindlichen Flows `01-registration`, `06-wlan-scan`, `08-report-generation-error` und
-   `13-inventory-persistence` sind dabei ausdrücklich zu kontrollieren, ebenso der PDF-Export
-   samt nativer Share-UI und Klartext-Cache-Bereinigung — Letzterer hat sich durch die
-   Dateisystem-Migration inhaltlich geändert und ist deshalb der wichtigste Runtime-Nachweis
-   dieser Stufe.
-3. Android-Smoke (`npm run e2e:smoke:android`) nachziehen, sobald ein Emulator verfügbar ist.
-4. Nach grünem Review und Merge: physische iOS-/Android-Gerätematrix als Produktions-Gate planen.
-   Damit endet die Migrationskette; SDK 57 ist die Zielstufe.
+1. **G-01 nach ausdrücklicher Owner-Freigabe schließen.** Die produktionswirksame Migration muss
+   `complete_privacy_deletion` um `inventory_items`, `inventory_known_devices`,
+   `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules` und
+   `monitoring_targets` erweitern. Eine pgTAP-Regression muss die vollständige Löschung und die
+   unveränderten Legal-Retention-Datensätze belegen. Danach den Drill erneut ausführen; Ziel 8/8.
+2. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
+   - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
+     die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
+     der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
+   - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
+   - `G-04` – welche Auth-Daten umfasst das Supabase-Backup, wie wird GoTrue rekonstruiert und wie
+     werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
+   - `G-01` – `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht (bereits ADR-001-Blocker).
+   - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
+3. Der Phase-B-Drill ist umgesetzt; nach dem G-01-Fix muss ein neuer Metadaten-only-Nachweis mit
+   8/8 grünen Prüfpunkten erzeugt werden. Die produktionsnahe Auth-/Provider-Wiederherstellung
+   bleibt an D-02 gebunden.
+4. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
+   `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
+   Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
+5. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 
 ## Bewusste Grenzen
 
 - **SDK 57 ist die Zielstufe, aber noch keine Produktionsfreigabe.** Die Hermes-v1-Regression ist
   geschlossen; ausstehend bleiben der vollständige Maestro-Lauf und die physische Gerätematrix.
-- Der **vollständige 15-Flow-Maestro-Lauf ist auf dieser Stufe nicht ausgeführt** und gilt nicht
-  als bestanden: Docker ist auf diesem Rechner nicht ansprechbar und das Datenvolume lief während
-  der Arbeit an die Kapazitätsgrenze. Besonders der PDF-Flow braucht diesen Nachweis, weil die
-  Dateisystem-Migration genau dort eingreift.
-- Auch der **kurze iOS-Boot-/Auth-Smoke ist nicht ausgeführt**: Der dafür nötige Simulator-Build
-  scheiterte an erschöpftem Speicherplatz (`lipo: No space left on device`). Der Laufzeitnachweis
-  dieser Stufe steht damit **vollständig** aus; die statischen Gates und der `iphoneos`-Release-
-  Build ersetzen ihn ausdrücklich nicht. Es gibt also **keinen** Runtime-Beleg dafür, dass die
-  migrierte SDK-57-App bootet — das ist die wichtigste offene Lücke dieser Stufe.
+- Der letzte vollständige SDK-57-Lauf belegt Boot, Auth und 13 weitere beziehungsweise insgesamt
+  13 bestandene Flows, aber noch keinen abschließenden 15/15-Nachweis nach den letzten zwei
+  Harness-Korrekturen. Besonders Inventarpersistenz und PDF-Cleanup müssen im Wiederholungslauf
+  erneut grün sein.
 - Der lokale **Android-Release-Compile konnte nicht ausgeführt werden**: Die Android-SDK-Plattform
   36 ist auf diesem Rechner nicht installiert und es gibt weder `sdkmanager` noch cmdline-tools,
   um sie ohne zusätzliche Werkzeuginstallation nachzuziehen. Der Beweis bleibt damit — wie schon
@@ -470,17 +490,38 @@ bleibt wie vereinbart das spätere Produktions-Gate.
 - Der Rechner lief während dieser Stufe an der Speichergrenze; regenerierbare Build-Caches
   (Gradle, Xcode DerivedData, CocoaPods, npm) wurden nach Rücksprache geleert. Kein Worktree und
   kein Quellcode wurde entfernt.
+- **SP3-02 Phase B ist nur lokal und synthetisch gemessen.** Der Drill hat eine isolierte lokale
+  Datenbank wiederhergestellt und ausschließlich den bekannten Testschlüssel verwendet. Er hat
+  keine Produktionsdaten, produktiven Backups, Cloudflare-/Supabase-Cloudkonfigurationen,
+  GitHub-Environments, KMS- oder Signing-Konfigurationen gelesen oder verändert.
+- **`WHEN_UNLOCKED_THIS_DEVICE_ONLY` ist kein Backup.** Auth-Session, lokaler Inventar-DEK und die
+  verschlüsselte SQLite-Persistenz sind bewusst nicht wiederherstellbar; Android schließt Cloud
+  Backup und Gerätetransfer vollständig aus. Diese Bestände dürfen in keinem Runbook als
+  wiederherstellbar dargestellt werden.
 
 ## Abnahmekriterium für den nächsten Schritt
 
-- `npm ci`, `npm run verify` und `npm run security:dependencies` grün;
-- Expo Doctor **21/21 ohne Befund**; `expectedFailedChecks` leer und `expectedOpenFinding` `null`;
-- Vendor-Härtung fail-closed grün für `@expo/plist@0.8.1` und `expo-modules-core@57.0.18`;
-- GitHub-CI und Secure SDLC grün, insbesondere `android-release-compile` samt Manifest-Prüfung;
-- vollständiger serieller 15-Flow-Maestro-Lauf grün;
-- Dependency-Gate, Clean Prebuild und Native-Config grün;
-- iOS- und Android-Produktionsbundle grün;
-- Android-Release-Compile in GitHub-CI grün;
-- iOS-Release-Build und vollständiger 15/15-Simulatorlauf unter Xcode 26 grün;
-- keine High-/Critical-Abhängigkeiten und keine aktive Dependency-Ausnahme;
-- unabhängiges Review ohne offenen P1-/P2-/P3-Codebefund.
+Die Phase-A-Kriterien sind erfüllt:
+
+- [x] Phase-A-Inventar deckt alle Daten-, Secret-, Signing- und Schlüsselpfade ab und kennzeichnet
+  jeden Nachweis als `measured`, `configured`, `documented` oder `unknown`
+  (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 5, zehn Bestandsgruppen A bis J);
+- [x] Gap-Liste enthält für jeden offenen Punkt Risiko, Owner, Priorität, Folgeschritt und ein
+  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 24 Einträge, davon 7 P1, 8 P2, 6 P3 und
+  3 P4);
+- [x] der Restore-Drill ist als Entwurf definiert – ausschließlich synthetische
+  Zwei-Mandanten-Daten, fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und
+  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde ausgeführt: 7/8;
+  P-06 blockiert wegen G-01.**
+- [x] RPO/RTO-Werte wurden **nicht** vorgeschlagen; D-01 bleibt offen bis Messung und Freigabe;
+- [x] keine produktive Mutation; keine Secrets und keine D2/D3-Payloads in Git, Logs oder
+  Artefakten.
+
+Offen für den Abschluss von SP3-02:
+
+- Owner-Entscheidungen D-01 bis D-10 aus `docs/SP3_02_DECISION_LOG.md` – derzeit **null** davon
+  `decided`;
+- ein wiederholter Restore-Drill mit 8/8 Prüfpunkten nach dem ausdrücklich freigegebenen G-01-Fix;
+- Schlüsselrotationsnachweis (Phase C) und Incident-Tabletop (Phase D);
+- bestehende CI-/Secure-SDLC-Gates bleiben grün;
+- der separate SDK-57-Runtime-Gate wird mit einem dokumentierten 15/15-Lauf geschlossen.

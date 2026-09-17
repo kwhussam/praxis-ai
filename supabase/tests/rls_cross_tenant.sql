@@ -359,9 +359,9 @@ select is((select count(*) from public.practice_access_audit where practice_id =
 select is((select count(*) from public.data_processing_agreements where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select AVV row for practice B even with matching user_id');
 select is((select count(*) from public.deletion_requests where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select deletion request for practice B even with matching user_id');
 select is((select count(*) from public.consent_log where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select consent log for practice B');
-select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own inventory item (DB-03)');
+select is((select count(*) from public.inventory_items where id = 'e0000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own inventory item (DB-03)');
 select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B inventory item (DB-03)');
-select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own monitoring target (DB-03)');
+select is((select count(*) from public.monitoring_targets where id = 'f0000000-0000-4000-8000-0000000000a1'), 1::bigint, 'owner A can select own monitoring target (DB-03)');
 select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000b1'), 0::bigint, 'owner A cannot select practice B monitoring target (DB-03)');
 
 -- B1a P1.1: practice_memberships are visible under RLS (permissive SELECT policy).
@@ -464,8 +464,8 @@ select ok((select count(*) from public.practice_memberships where user_id = '000
 select is((select count(*) from public.practice_memberships where practice_id = '20000000-0000-4000-8000-0000000000a1' and user_id <> '00000000-0000-4000-8000-0000000000c1'), 0::bigint, 'viewer member C cannot see other members of practice A');
 
 -- DB-03: partner C has only a 'viewer' grant on practice A - can read, cannot write.
-select is((select count(*) from public.inventory_items where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A inventory item (DB-03)');
-select is((select count(*) from public.monitoring_targets where practice_id = '20000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A monitoring target (DB-03)');
+select is((select count(*) from public.inventory_items where id = 'e0000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A inventory item (DB-03)');
+select is((select count(*) from public.monitoring_targets where id = 'f0000000-0000-4000-8000-0000000000a1'), 1::bigint, 'viewer partner can select granted practice A monitoring target (DB-03)');
 
 select throws_ok(
   $$insert into public.inventory_items (practice_id, type, name, criticality)
