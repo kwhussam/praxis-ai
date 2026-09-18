@@ -2897,7 +2897,7 @@ const readRoleGateCases: ReadRoleGateCase[] = [
 ];
 
 describe("GET /api/privacy/export (DB-01)", () => {
-  it("liefert wlan_scans, monitoring_snapshots und data_processing_agreements zusaetzlich zum bisherigen Export", async () => {
+  it("liefert alle vom Loeschpfad erfassten D2- und Legal-Retention-Bestaende mandantengebunden", async () => {
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];
 
@@ -2935,6 +2935,20 @@ describe("GET /api/privacy/export (DB-01)", () => {
       if (url.startsWith("https://example.supabase.co/rest/v1/data_processing_agreements")) {
         return Response.json([{ id: "avv-1", version: "2026-06-24", status: "accepted", accepted_at: "2026-06-24T00:00:00.000Z", document_url: null }]);
       }
+      const d2Collections = [
+        "inventory_items",
+        "inventory_known_devices",
+        "inventory_access_points",
+        "router_wifi_configurations",
+        "router_firewall_rules",
+        "monitoring_targets"
+      ];
+      const d2Collection = d2Collections.find((collection) =>
+        url.startsWith(`https://example.supabase.co/rest/v1/${collection}`)
+      );
+      if (d2Collection) {
+        return Response.json([{ id: `${d2Collection}-1` }]);
+      }
       if (url.startsWith("https://example.supabase.co/rest/v1/")) {
         return Response.json([]);
       }
@@ -2956,6 +2970,12 @@ describe("GET /api/privacy/export (DB-01)", () => {
           wlan_scans: Array<{ id: string }>;
           monitoring_snapshots: Array<{ id: string }>;
           data_processing_agreements: Array<{ id: string }>;
+          inventory_items: Array<{ id: string }>;
+          inventory_known_devices: Array<{ id: string }>;
+          inventory_access_points: Array<{ id: string }>;
+          router_wifi_configurations: Array<{ id: string }>;
+          router_firewall_rules: Array<{ id: string }>;
+          monitoring_targets: Array<{ id: string }>;
         };
       };
 
@@ -2964,6 +2984,24 @@ describe("GET /api/privacy/export (DB-01)", () => {
       ]);
       expect(body.data.monitoring_snapshots.map((snapshot) => snapshot.id)).toEqual(["snap-1"]);
       expect(body.data.data_processing_agreements.map((agreement) => agreement.id)).toEqual(["avv-1"]);
+      const exportedD2Collections = [
+        "inventory_items",
+        "inventory_known_devices",
+        "inventory_access_points",
+        "router_wifi_configurations",
+        "router_firewall_rules",
+        "monitoring_targets"
+      ] as const;
+      for (const collection of exportedD2Collections) {
+        expect(body.data[collection]).toEqual([{ id: `${collection}-1` }]);
+        expect(
+          requestedUrls.some(
+            (url) =>
+              url.startsWith(`https://example.supabase.co/rest/v1/${collection}`) &&
+              url.includes(`practice_id=eq.${roleGatePracticeId}`)
+          )
+        ).toBe(true);
+      }
 
       // Every added query stays scoped to the requesting practice, same as the
       // pre-existing security_checks/reports/consent_log queries above them.
@@ -3411,7 +3449,17 @@ function deletionReportFixture() {
     practice_id: roleGatePracticeId,
     requested_at: "2026-07-21T00:00:00.000Z",
     state: "completed",
-    immediate_deletions: ["personal_data", "wlan_scans"],
+    immediate_deletions: [
+      "personal_data",
+      "wlan_scans",
+      "assessment_manifests",
+      "inventory_items",
+      "inventory_known_devices",
+      "inventory_access_points",
+      "router_wifi_configurations",
+      "router_firewall_rules",
+      "monitoring_targets"
+    ],
     anonymizations: ["security_checks", "reports", "monitoring_events", "monitoring_snapshots"],
     retained_for_legal: ["practice_access_audit", "deletion_requests", "consent_log", "data_processing_agreements"],
     retention_until: "2032-07-21T00:00:00.000Z",
@@ -3517,7 +3565,13 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
       url.startsWith("https://example.supabase.co/rest/v1/assessment_manifests") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") ||
-      url.startsWith("https://example.supabase.co/rest/v1/consent_log")
+      url.startsWith("https://example.supabase.co/rest/v1/consent_log") ||
+      url.startsWith("https://example.supabase.co/rest/v1/inventory_items") ||
+      url.startsWith("https://example.supabase.co/rest/v1/inventory_known_devices") ||
+      url.startsWith("https://example.supabase.co/rest/v1/inventory_access_points") ||
+      url.startsWith("https://example.supabase.co/rest/v1/router_wifi_configurations") ||
+      url.startsWith("https://example.supabase.co/rest/v1/router_firewall_rules") ||
+      url.startsWith("https://example.supabase.co/rest/v1/monitoring_targets")
     ) {
       return method === "GET" ? Response.json([]) : new Response(null, { status: 204 });
     }

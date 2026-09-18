@@ -1,7 +1,7 @@
 # SP3-02 – Restore, Schlüsselrotation und Incident-Tabletop
 
 Stand: 2026-09-16  
-Status: `phase_b_measured_blocked_by_G-01`
+Status: `phase_b_technical_complete_release_blocked_by_owner_decisions`
 Branch: `codex/sp3-02-recovery-tabletop`
 
 ## Ziel
@@ -104,9 +104,10 @@ SP3-02 kann erst `released` werden, wenn:
 
 ## Aktueller Umsetzungsschritt
 
-Phase A ist abgeschlossen. Der lokale Phase-B-Drill ist implementiert und wurde ausgeführt:
-P-01 bis P-05 sowie P-07 und P-08 bestanden, P-06 bestätigte G-01. Als Nächstes ist nach
-ausdrücklicher Owner-Freigabe der Löschumfang von `complete_privacy_deletion` um die sechs
-D2-Tabellen zu ergänzen und durch eine pgTAP-Regression zu sichern. Erst ein anschließender
-8/8-Lauf schließt Phase B technisch ab. Produktionsübertragbarkeit, RPO/RTO-Claims und Phase C
-bleiben unabhängig davon durch die offenen Owner-Entscheidungen gesperrt.
+Phase A ist abgeschlossen. Der lokale Phase-B-Drill ist implementiert und bestand nach der
+freigegebenen G-01-Nachbesserung alle acht Prüfpunkte. Die neue pgTAP-Suite belegt vollständige
+Löschung der sechs D2-Sammlungen, Mandantenerhalt, Legal Retention, RPC-Grants und wiederholbare
+Ausführung; der Restore-Drill bestätigt denselben Zustand nach Wiederherstellung. Phase B ist
+damit technisch abgeschlossen. Produktionsübertragbarkeit, RPO/RTO-Claims sowie Phase C und D
+bleiben unabhängig davon durch D-01 bis D-10 beziehungsweise ihre jeweiligen Abhängigkeiten
+gesperrt. Der nächste Produktpfad ist SP3-03; er darf keine dieser Betriebsfreigaben vorwegnehmen.

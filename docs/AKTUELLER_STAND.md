@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-16 (SDK 57 gemergt, SP3-02 Phase A abgeschlossen)
+Stand: 2026-09-17 (SP3-02 Phase B technisch 8/8 abgeschlossen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -19,11 +19,12 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   gemergt. Die Post-Merge-Läufe CI `35102657829` und Secure SDLC `35102657678` sind vollständig
   grün. Expo SDK 57 ist die Zielstufe; der Hermes-v1-Rückstand und die High-Schwachstelle in
   `sharp` sind ohne Dependency-Ausnahme geschlossen.
-- **Aktuelles Arbeitspaket:** `SP3-02 – Restore-, Schlüsselrotations- und Incident-Tabletop`.
-  Der isolierte Branch `codex/sp3-02-recovery-tabletop` basiert direkt auf `origin/main` bei
-  `af8d579`.
-- **SP3-02 Phase A ist abgeschlossen; Phase B ist gemessen und durch G-01 blockiert.** Das
-  Arbeitspaket bleibt zusätzlich für Produktionsübertragbarkeit und Release auf
+- **SP3-02-Basis gemergt:** PR
+  [`#59`](https://github.com/kwhussam/praxis-ai/pull/59) liegt als Commit `715f3ab` auf `main`;
+  Post-Merge-CI `35268567425` und Secure SDLC `35268567392` sind grün. Die G-01-Nachbesserung
+  erfolgt isoliert auf `codex/sp3-02-g01-deletion`, direkt von diesem Stand.
+- **SP3-02 Phase A und der lokale Phase-B-Drill sind technisch abgeschlossen.** Das
+  Arbeitspaket bleibt für Produktionsübertragbarkeit, Schlüsselrotation, Incident-Tabletop und Release auf
   `blocked_by_owner_decisions`.
   `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert alle Daten-, Schlüssel-, Secret-, Signing- und
   Artefaktpfade am tatsächlichen Code und leitet daraus 24 priorisierte Lücken sowie den Entwurf des
@@ -31,11 +32,14 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   Entscheidungen (D-01 bis D-10) ohne erfundene Werte oder Owner.
 - **Neue Phase-B-Evidenz:** `npm run recovery:drill` erzeugt einen logischen Dump ausschließlich
   aus synthetischen Daten und stellt ihn in einer isolierten lokalen Datenbank wieder her. Der
-  Referenzlauf bestand 7/8 Prüfungen: Migrationen, 242 pgTAP-Assertions, RLS/Policies/Grants,
+  Referenzlauf vom 17. September bestand 8/8 Prüfungen: Migrationen, 266 pgTAP-Assertions,
+  RLS/Policies/Grants,
   kanonische Report-/PDF-Hashes, Consent/Audit, Tenant-Isolation/Auth und der fehlende
-  Testschlüssel waren grün. P-06 bestätigte G-01 (`completed_deletion_not_enforced`). Gemessen
-  wurden lokal 234 ms Backup- und 491 ms Restorezeit; das sind keine Produktionsclaims. RPO und
-  RTO bleiben ausdrücklich unbestimmt.
+  Testschlüssel waren grün. Die Migration `20260917120000_sp3_02_g01_privacy_deletion_scope.sql`
+  löscht die sechs D2-Sammlungen atomar, erhält die Rechtsnachweise und macht sie vor der Löschung
+  vollständig exportierbar. Der auf Commit `5705b69` wiederholte Lauf maß lokal 291 ms Backup-
+  und 443 ms Restorezeit; das sind
+  keine Produktionsclaims. RPO und RTO bleiben ausdrücklich unbestimmt.
 - **Wichtige Evidenzgrenze:** Der letzte vollständige SDK-57-Simulatorlauf bestand 13 von 15
   Flows; `13-inventory-persistence` und `15-pdf-export` wurden anschließend im Harness korrigiert,
   aber ein vollständiger 15/15-Wiederholungslauf nach diesen letzten Änderungen ist noch nicht
@@ -450,27 +454,26 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **G-01 nach ausdrücklicher Owner-Freigabe schließen.** Die produktionswirksame Migration muss
-   `complete_privacy_deletion` um `inventory_items`, `inventory_known_devices`,
-   `inventory_access_points`, `router_wifi_configurations`, `router_firewall_rules` und
-   `monitoring_targets` erweitern. Eine pgTAP-Regression muss die vollständige Löschung und die
-   unveränderten Legal-Retention-Datensätze belegen. Danach den Drill erneut ausführen; Ziel 8/8.
-2. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
+1. **G-01-Nachbesserung mergen.** Die technische Abnahme ist lokal grün: frischer DB-Reset,
+   266/266 pgTAP-Assertions, mandantenfester Datenschutzexport und Recovery-Drill 8/8. Nach CI und
+   Secure SDLC kann der Folge-PR gemergt werden.
+2. **SP3-03 – Assessment-Snapshot-Schema und API-Vertrag** auf einem neuen Branch direkt vom dann
+   aktuellen `origin/main` beginnen. Ziel sind ADR, additive Migration und freigegebene Contract
+   Fixtures; keine produktive Bestandsmigration ohne die ADR-001-Sign-offs.
+3. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
      der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
    - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
    - `G-04` – welche Auth-Daten umfasst das Supabase-Backup, wie wird GoTrue rekonstruiert und wie
      werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
-   - `G-01` – `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht (bereits ADR-001-Blocker).
    - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
-3. Der Phase-B-Drill ist umgesetzt; nach dem G-01-Fix muss ein neuer Metadaten-only-Nachweis mit
-   8/8 grünen Prüfpunkten erzeugt werden. Die produktionsnahe Auth-/Provider-Wiederherstellung
-   bleibt an D-02 gebunden.
-4. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
+4. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
+   Schlüsselrotation bleibt durch D-05/D-06/D-07 blockiert.
+5. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
-5. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
+6. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 
 ## Bewusste Grenzen
 
@@ -506,13 +509,13 @@ Die Phase-A-Kriterien sind erfüllt:
 - [x] Phase-A-Inventar deckt alle Daten-, Secret-, Signing- und Schlüsselpfade ab und kennzeichnet
   jeden Nachweis als `measured`, `configured`, `documented` oder `unknown`
   (`docs/SP3_02_RECOVERY_INVENTORY.md`, Abschnitt 5, zehn Bestandsgruppen A bis J);
-- [x] Gap-Liste enthält für jeden offenen Punkt Risiko, Owner, Priorität, Folgeschritt und ein
-  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 24 Einträge, davon 7 P1, 8 P2, 6 P3 und
-  3 P4);
+- [x] Gap-Liste enthält für jeden Punkt Risiko, Owner, Priorität, Folgeschritt und ein
+  überprüfbares Abnahmekriterium (ebenda, Abschnitt 7: 24 Einträge; G-01 ist technisch
+  geschlossen, die übrigen bleiben entsprechend ihrer Priorität offen);
 - [x] der Restore-Drill ist als Entwurf definiert – ausschließlich synthetische
   Zwei-Mandanten-Daten, fail-closed Integritäts-, RLS-/Grant-, Cross-Tenant-, Audit- und
-  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Er wurde ausgeführt: 7/8;
-  P-06 blockiert wegen G-01.**
+  Löschprüfungen (ebenda, Abschnitt 8, Prüfpunkte P-01 bis P-08). **Der Wiederholungslauf nach
+  der G-01-Migration bestand 8/8.**
 - [x] RPO/RTO-Werte wurden **nicht** vorgeschlagen; D-01 bleibt offen bis Messung und Freigabe;
 - [x] keine produktive Mutation; keine Secrets und keine D2/D3-Payloads in Git, Logs oder
   Artefakten.
@@ -521,7 +524,6 @@ Offen für den Abschluss von SP3-02:
 
 - Owner-Entscheidungen D-01 bis D-10 aus `docs/SP3_02_DECISION_LOG.md` – derzeit **null** davon
   `decided`;
-- ein wiederholter Restore-Drill mit 8/8 Prüfpunkten nach dem ausdrücklich freigegebenen G-01-Fix;
 - Schlüsselrotationsnachweis (Phase C) und Incident-Tabletop (Phase D);
-- bestehende CI-/Secure-SDLC-Gates bleiben grün;
+- Merge der G-01-Nachbesserung mit grünen CI-/Secure-SDLC-Gates;
 - der separate SDK-57-Runtime-Gate wird mit einem dokumentierten 15/15-Lauf geschlossen.

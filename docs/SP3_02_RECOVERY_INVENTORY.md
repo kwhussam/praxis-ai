@@ -213,16 +213,15 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 - **Abhängigkeiten:** `practices`. `monitoring_targets.value_normalized` ist
   `generated always as (lower(btrim(value))) stored` – eine generierte Spalte, die beim Restore
   **nicht literal eingespielt werden darf**.
-- **Retention/Löschung:** **Keine.** `complete_privacy_deletion`
-  (`20260811130000_sp2_04_assessment_manifest.sql`) berührt keine dieser sechs Tabellen. Nach einer
-  Praxislöschung bleiben MAC-Adressen, SSIDs, Hostnamen, Firewallregeln und Monitoringziele
-  bestehen; entfernt würden sie nur über das FK-Kaskadieren beim harten Löschen einer
-  Praxiszeile, das der Löschpfad gerade **nicht** ausführt.
-- **Nachweisstatus:** Schema `configured`; Löschabdeckung **fehlt**
-- **Risiko:** Doppelt. Erstens Klartext-D2 im Backup wie bei A-05. Zweitens ist der Löschzustand
-  nach einem Restore **nicht verifizierbar**, weil es keinen Löschpfad gibt, dessen Ergebnis man
-  prüfen könnte. ADR-001 Abschnitt 8 benennt dies bereits als bestätigten Blocker vor M5.
-  **Gap G-01.**
+- **Retention/Löschung:** Seit
+  `20260917120000_sp3_02_g01_privacy_deletion_scope.sql` löscht
+  `complete_privacy_deletion` alle sechs Sammlungen atomar vor dem Abschlussnachweis. Der
+  Datenschutzexport stellt dieselben Daten vor der Löschung mandantengebunden bereit.
+- **Nachweisstatus:** Schema `configured`; Löschabdeckung **verified** durch 24 eigene
+  pgTAP-Assertions und Restore-Prüfpunkt P-06.
+- **Restrisiko:** Klartext-D2 im Backup bleibt wie bei A-05 bestehen. Der ursprünglich bestätigte
+  Löschblocker **G-01 ist technisch geschlossen**; Provider-Backupfristen und
+  Post-Restore-Reconciliation aus G-03 bleiben eigenständig offen.
 
 #### A-07 `consent_log`
 
@@ -420,11 +419,11 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   sonst existiert ein Zeitfenster mit Daten ohne Mandantengrenze.
 - **Abhängigkeiten:** `public.current_user_can_access_practice`, `public.can_access_practice`,
   `public.current_user_platform_role` und weitere Hilfsfunktionen aus D-03.
-- **Nachweisstatus:** `configured`; Wirksamkeit durch 242 pgTAP-Assertions in 13 Suiten belegt
-  (`supabase/tests/*.sql`, `select plan(...)` aufsummiert), zuletzt `measured` im Kontext SP2-05,
-  **aber nie gegen ein wiederhergestelltes Backup**.
-- **Risiko:** RLS-Wirksamkeit nach Restore ist bisher **nicht** Gegenstand eines Tests. Genau das
-  ist Prüfpunkt P-02 des Phase-B-Drills.
+- **Nachweisstatus:** `configured`; Wirksamkeit durch 266 pgTAP-Assertions in 14 Suiten belegt
+  (`supabase/tests/*.sql`, `select plan(...)` aufsummiert) und durch P-02 gegen die isolierte
+  wiederhergestellte Datenbank `measured`.
+- **Restrisiko:** Der lokale Nachweis ersetzt keinen produktionsrepräsentativen Restore und keine
+  Providerkonfiguration; dies bleibt an D-02 gebunden.
 
 #### D-03 RPCs und Grants
 
@@ -818,7 +817,7 @@ Priorität: **P1** Datenverlust, Mandantenbruch oder Rechtsverstoß unmittelbar 
 |---|---|---|---|---|---|---|
 | **G-15** | P1 | Verlust von K-01 macht verschlüsselte Vollberichte, Snapshots und Checkpayloads aller Mandanten unlesbar und verhindert die kanonische PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben vorhanden, aber es existiert kein belegter Escrow- oder Wiederbeschaffungspfad | E-02 `DATA_ENCRYPTION_KEY` | Operations + Security | Verwahrung, Escrow und Zugriffsvierauge für K-01 entscheiden und dokumentieren (D-05) | Ein dokumentierter, mindestens einmal geprobter Beschaffungspfad existiert; der Drill weist nach, dass ein Restore **ohne** K-01 fail-closed abbricht statt leere Berichte zu liefern |
 | **G-16** | P1 | K-01 ist global, ohne Keyversion und ohne AAD; eine Rotation ist technisch nicht durchführbar, eine Kompromittierung trifft alle Mandanten gleichzeitig | E-02, F-01 | Security + Technical Owner | Versioniertes Envelope nach ADR-001 Abschnitt 6.3 **planen**, nicht implementieren, bis D-05/D-06 entschieden sind | Ein Entwurf bindet Keyversion und AAD an bestehende Envelopes und benennt den Lesepfad für Altdaten; Rotation bleibt bis dahin ausdrücklich als Blocker geführt |
-| **G-01** | P1 | `complete_privacy_deletion` erfasst sechs D2-Tabellen nicht; nach Praxislöschung bleiben MAC, SSID, Hostname, Firewallregeln und Monitoringziele erhalten | A-06 | Datenschutz + Technical Owner | Löschumfang erweitern (bereits ADR-001-Blocker vor M5) und Löschzustand prüfbar machen | pgTAP-Test weist nach, dass nach `complete_privacy_deletion` in allen sechs Tabellen **null Zeilen** der Praxis verbleiben |
+| **G-01 – geschlossen 2026-09-17** | P1 | Der frühere Löschpfad erfasste sechs D2-Tabellen nicht | A-06 | Umsetzung ausdrücklich freigegeben; formales Datenschutz-Release bleibt separat | Migration, vollständiger mandantengebundener Export, 24 pgTAP-Assertions und P-06 im Restore-Drill umgesetzt | Zielpraxis hat in allen sechs Tabellen null Zeilen, Fremdmandant und Legal-Retention-Daten bleiben unverändert; wiederholter Löschlauf und Restore-Drill 8/8 grün |
 | **G-19** | P1 | Release-Signing-Recovery ist vollständig unbelegt; ein verlorener App-Signing-Key kann Updates für bestehende Installationen dauerhaft verhindern | H-01, H-02 | Operations + Product | Klären und dokumentieren, ob Play App Signing aktiv ist und wie Apple-Accountrecovery abläuft (D-08) | Dokumentierter Wiederbeschaffungspfad je Plattform mit benanntem Kontoinhaber und Zweitzugang; ohne Nachweis bleibt SP3-02 `blocked_by_owner_decisions` |
 | **G-20** | P1 | Wenn ein Restore einen neuen Supabase-Host benötigt und kein stabiler Proxy-/Alias-/Failoverpfad existiert, erfordert die eingebettete URL einen Store-Release | H-03, B-01 | Operations + Product | RTO-Entscheidung D-01 muss diesen Pfad explizit enthalten und das Vorhandensein eines stabilen Endpoints klären | Die RTO-Entscheidung benennt getrennte Werte für „Restore am bestehenden Endpoint" und „Endpointwechsel mit erforderlichem App-Release" |
 | **G-02** | P1 | `wlan_scans.network_info` und `vulnerabilities` liegen im Klartext; ein Backupzugriff legt die vollständige Netztopologie offen | A-05 | Security + Datenschutz | SP2-02 beziehungsweise ADR-001 M1 bis M5 abwarten; bis dahin Backupzugriff wie Produktionsdatenzugriff behandeln | Backupzugriffsrechte sind dokumentiert und auf denselben Personenkreis begrenzt wie Produktionszugriff |
@@ -845,9 +844,9 @@ Priorität: **P1** Datenverlust, Mandantenbruch oder Rechtsverstoß unmittelbar 
 
 Dieser Abschnitt entstand in Phase A als Entwurf. Der daraus abgeleitete Drill ist inzwischen in
 `scripts/recovery/restore-drill.sh` implementiert und in
-`docs/SP3_02_PHASE_B_RUNBOOK.md` dokumentiert. Der Referenzlauf vom 16. September 2026 bestand
-P-01 bis P-05 sowie P-07 und P-08; P-06 bestätigte den Blocker G-01. Die folgenden Abschnitte
-bleiben als fachlicher Vertrag des Drills erhalten.
+`docs/SP3_02_PHASE_B_RUNBOOK.md` dokumentiert. Der Wiederholungslauf vom 17. September 2026
+bestand nach der G-01-Migration P-01 bis P-08. Die folgenden Abschnitte bleiben als fachlicher
+Vertrag des Drills erhalten.
 
 ### 8.1 Geltungsbereich und Grenzen
 
@@ -905,7 +904,7 @@ Der letzte Punkt ist der wichtigste: Er macht G-03 messbar, statt es nur zu besc
 | ID | Prüfung | Fail-closed-Bedingung |
 |---|---|---|
 | **P-01** | Schema und Migrationen: angewandte Migrationsliste gegen `supabase/migrations/` – nutzt den bereits vorhandenen Vergleich aus `scripts/e2e/env-up.sh` | jede Abweichung |
-| **P-02** | RLS und Mandantentrennung: die 13 pgTAP-Suiten (242 Assertions) laufen gegen den **wiederhergestellten** Stand | ein einziger fehlgeschlagener Test |
+| **P-02** | RLS und Mandantentrennung: die 14 pgTAP-Suiten (266 Assertions) laufen gegen den **wiederhergestellten** Stand | ein einziger fehlgeschlagener Test |
 | **P-03** | Grants und Policies: Snapshot vor und nach dem Restore, inklusive `force row level security` auf allen 34 Tabellen | jede Abweichung, insbesondere ein zusätzliches Recht |
 | **P-04** | Reports und Manifeste: `snapshot_sha256` und `manifest_sha256` werden aus dem entschlüsselten Artefakt **neu berechnet** und verglichen; anschließend ein PDF-Export, der byte-identisch zum Vorzustand ist | Hashabweichung, Entschlüsselungsfehler oder abweichende Bytes |
 | **P-05** | Consent und Audit: Ereigniszahl und `supersedes_id`-Kette je `(practice_id, type)` lückenlos; `data_processing_agreements.accepted_at` unverändert (deckt G-05 ab) | gebrochene Kette oder verschobener Zeitstempel |
@@ -936,11 +935,11 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
 ## 9. Zusammenfassung des Iststandes
 
 - **Verschlüsselung und Mandantentrennung im laufenden Betrieb sind belastbar gebaut:** 34 Tabellen
-  mit erzwungener RLS, 242 pgTAP-Assertions, append-only Consent-Registry, transaktionale
+  mit erzwungener RLS, 266 pgTAP-Assertions, append-only Consent-Registry, transaktionale
   Berichtserzeugung, fail-closed Providerstatus, vollständiger Ausschluss mobiler Daten aus
   Gerätebackups.
 - **Recovery bleibt produktiv unbelegt.** Phase B liefert inzwischen einen lokalen synthetischen
-  `measured`-Nachweis mit 7/8 Prüfpunkten. Ein produktives Backup, dessen Providerkonfiguration
+  `measured`-Nachweis mit 8/8 Prüfpunkten. Ein produktives Backup, dessen Providerkonfiguration
   und ein produktionsrepräsentativer Restore bleiben weiterhin `unknown`.
 - **Der Einzelpunkt mit dem größten Schadenspotenzial ist K-01.** Ein globaler, versionsloser,
   AAD-freier Schlüssel entscheidet über die Lesbarkeit aller verschlüsselten Vollberichte und
@@ -948,8 +947,10 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
 - **Die längste Wiederherstellungszeit kann außerhalb der Datenbank liegen**, insbesondere in
   H-03 und H-01/H-02: Benötigt ein Projektwechsel ohne stabilen Endpoint einen Store-Release, wird
   dessen Reviewdauer Teil des RTO; parallel ist der Signing-Recoverypfad unbelegt.
-- **Sechs D2-Tabellen sind vom Löschpfad nicht erfasst.** Dies ist bereits als ADR-001-Blocker
-  geführt und wird durch die Restorebetrachtung bestätigt, nicht neu entdeckt.
+- **Der Löschpfad für sechs D2-Tabellen ist technisch geschlossen.** Migration, Export,
+  Mandantengegenprobe, Legal Retention und Wiederherstellung sind geprüft. Das ersetzt nicht die
+  weiterhin nötige formale Datenschutzfreigabe und keine Entscheidung zu Backupfristen.
 
-SP3-02 bleibt damit auf `audit_completed` mit offenen Owner-Entscheidungen. Eine Freigabe als
-`released` ist ausgeschlossen, solange kein gemessener Restore und keine benannten Owner existieren.
+SP3-02 steht damit auf Phase A `audit_completed` und Phase B `technical_complete`. Eine Freigabe
+als `released` ist ausgeschlossen, solange die Produktions-, Schlüssel- und Incident-Entscheidungen
+D-01 bis D-10 offen sind.

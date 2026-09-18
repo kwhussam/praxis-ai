@@ -1,7 +1,7 @@
 # SP3-02 Phase B – lokaler Restore-Drill
 
 Stand: 2026-09-16  
-Status: `measured_blocked_by_G-01`
+Status: `technical_complete_8_of_8_release_blocked_by_owner_decisions`
 
 ## Zweck
 
@@ -66,13 +66,14 @@ Teil des späteren produktionsnäheren Drills nach D-02.
 
 ## Gemessener Stand
 
-Der Referenzlauf vom 16. September 2026 gegen Commit `86a9ae647192` stellte den logischen Dump in
-491 ms wieder her; die Dufferzeugung dauerte 234 ms. Diese Zeiten sind ausschließlich lokale
-Messwerte und kein RPO-/RTO-Claim. P-01 bis P-05 sowie P-07 und P-08 bestanden. P-02 führte alle
-13 pgTAP-Dateien mit 242 Assertions gegen den Restore aus.
+Der Referenzlauf vom 17. September 2026 gegen Commit `5705b6996482` stellte den logischen Dump in
+443 ms wieder her; die Dufferzeugung dauerte 291 ms. Diese Zeiten sind
+ausschließlich lokale Messwerte und kein RPO-/RTO-Claim. P-01 bis P-08 bestanden. P-02 führte alle
+14 pgTAP-Dateien mit 266 Assertions gegen den Restore aus.
 
-P-06 scheiterte wie erwartet mit `completed_deletion_not_enforced`: Die sechs Tabellen aus G-01
-enthielten trotz abgeschlossenem Löschlauf weiterhin die synthetischen D2-Canaries. Der Drill ist
-damit technisch reproduzierbar, Phase B bleibt aber fachlich blockiert. Eine Änderung von
-`complete_privacy_deletion` würde bei Migration dauerhaft Daten aus diesen sechs Sammlungen
-löschen und wird deshalb erst nach ausdrücklicher Owner-Freigabe umgesetzt.
+P-06 ist nach der ausdrücklich freigegebenen G-01-Migration grün: Die sechs D2-Sammlungen sind
+sowohl unmittelbar nach `complete_privacy_deletion` als auch im wiederhergestellten Stand leer.
+Die neue Regression belegt zugleich, dass der andere Mandant unverändert und
+`practice_access_audit`, `deletion_requests`, `consent_log` sowie
+`data_processing_agreements` erhalten bleiben. Phase B ist damit technisch abgeschlossen; die
+Produktionsübertragbarkeit bleibt durch D-01 bis D-10 blockiert.
