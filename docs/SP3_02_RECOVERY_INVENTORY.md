@@ -128,28 +128,33 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   Restore kann heute nicht maschinell unterscheiden, ob `{}` „nie verschlüsselt", „anonymisiert" oder
   „beim Restore verloren" bedeutet. **Gap G-07.**
 
-#### A-03 `reports` und `assessment_manifests`
+#### A-03 `assessment_snapshots`, `reports` und `assessment_manifests`
 
 - **Beleg:** `supabase/migrations/20260624150000_initial_schema.sql` (Basis),
-  `supabase/migrations/20260811130000_sp2_04_assessment_manifest.sql` (Manifest, RPC, RLS, Grants)
+  `supabase/migrations/20260811130000_sp2_04_assessment_manifest.sql` (Manifest, RPC, RLS, Grants),
+  `supabase/migrations/20260918120000_sp3_03_assessment_snapshot.sql` (autoritativer Snapshot,
+  Komponenten, Scoreerklärungen)
 - **Datenklasse:** D1 (Versionsfelder, Hashes) und D2 (`content`, `encrypted_content`,
-  `encrypted_snapshot`)
+  `encrypted_snapshot`, `assessment_snapshots.encrypted_payload`)
 - **Plattform:** `SB-DB` · **Technischer Owner:** `owner_required`
 - **Backupautorität / -stand:** `unknown`
 - **Verschlüsselung:** `encrypted_content` und `encrypted_snapshot` AES-256-GCM über `encryptJson`;
+  neue Assessment-Snapshots akzeptieren ausschließlich ein versioniertes v2-Envelope und werden
+  bis zur D-05/D-06/D-07-Freigabe noch nicht produktiv erzeugt;
   Integrität zusätzlich über `snapshot_sha256`, `manifest_sha256`, `report_manifest_sha256`
   (CHECK-Constraints `^[0-9a-f]{64}$`).
 - **Schlüsselabhängigkeit:** K-01. **Dies ist der kritischste Verlustpfad des Produkts:** Der
   kanonische PDF-Export rendert ausschließlich aus dem entschlüsselten Snapshot
   (`docs/ARCHITECTURE.md`, Abschnitt „Canonical report artifacts (SP2-04)"). Ohne K-01 ist jeder
   Bericht nach einem Restore zwar vorhanden, aber nicht mehr erzeugbar.
-- **Wiederherstellungsreihenfolge:** R5b
-- **Abhängigkeiten:** `practices`, `security_checks`; zusätzlich die zusammengesetzte
+- **Wiederherstellungsreihenfolge:** R5b (`assessment_snapshots` vor optional gebundenen
+  `assessment_manifests`, Komponenten/Scoreerklärungen per Snapshot-Cascade)
+- **Abhängigkeiten:** `practices`, `security_checks`; zusätzlich die zusammengesetzten
   Fremdschlüsselbindung `reports_assessment_manifest_practice_fkey (assessment_manifest_id,
   practice_id)` auf `assessment_manifests(id, practice_id)`. Ein Restore, der beide Tabellen
   unabhängig lädt, verletzt diese Bindung, wenn Reihenfolge oder Vollständigkeit nicht stimmen.
 - **Retention/Löschung:** `assessment_manifests` werden bei Praxislöschung **hart gelöscht**;
-  `reports` werden anonymisiert (`content`, `encrypted_content`, `report_manifest`,
+  `assessment_snapshots` und `assessment_manifests` werden hart gelöscht; `reports` werden anonymisiert (`content`, `encrypted_content`, `report_manifest`,
   `report_manifest_sha256` geleert).
 - **Nachweisstatus:** Schema, Hashes, Transaktionalität `configured`; Restore `unknown`
 - **Risiko:** Hash-Constraints erzwingen Format, **nicht Übereinstimmung**. Ein Restore, der
@@ -398,8 +403,8 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 #### D-01 Migrationskette
 
-- **Beleg:** 37 Dateien unter `supabase/migrations/`, von
-  `20260624150000_initial_schema.sql` bis `20260812150000_sp2_05_consent_registry.sql`.
+- **Beleg:** 39 Dateien unter `supabase/migrations/`, von
+  `20260624150000_initial_schema.sql` bis `20260918120000_sp3_03_assessment_snapshot.sql`.
 - **Reihenfolgeprüfung ist bereits implementiert:** `scripts/e2e/env-up.sh` vergleicht die
   Dateinamenspräfixe mit `supabase_migrations.schema_migrations` und bricht bei Abweichung mit
   `"The applied Supabase migrations do not match the repository."` ab. Das ist der
@@ -411,7 +416,7 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 #### D-02 RLS-Policies und `force row level security`
 
-- **Beleg:** alle 34 Anwendungstabellen tragen `enable row level security`, davon **alle 34**
+- **Beleg:** alle 37 Anwendungstabellen tragen `enable row level security`, davon **alle 37**
   zusätzlich `force row level security` (maschinell aus `supabase/migrations/*.sql` ausgezählt).
   Partnerrollenmodell in `docs/RLS_PARTNER_ROLE_MATRIX.md`.
 - **Datenklasse:** D0 (Regelwerk) · **Plattform:** `SB-DB`
@@ -794,10 +799,10 @@ statt eines stillen Teilzustands.
 |---|---|---|
 | **R0** | Schlüssel und Secrets beschaffen: K-01 `DATA_ENCRYPTION_KEY`, K-02 Service Role, K-04 Invite-HMAC | Ein Datenrestore liefert dauerhaft unlesbare Chiffrate (K-01) oder einen Worker ohne Schreibrecht (K-02) |
 | **R1** | Repository und Toolchain: Git-Stand, Supabase-CLI-Version, Migrationsliste | Kein reproduzierbares Schema |
-| **R2** | Schema: Extension `pgcrypto`, Migrationen in exakter Reihenfolge, RLS, `force RLS`, Grants, 54 öffentliche Funktionen einschließlich RPCs und Triggerfunktionen | Daten ohne Mandantengrenze; Grants fehlen still |
+| **R2** | Schema: Extension `pgcrypto`, Migrationen in exakter Reihenfolge, RLS, `force RLS`, Grants, 56 öffentliche Funktionen einschließlich RPCs und Triggerfunktionen | Daten ohne Mandantengrenze; Grants fehlen still |
 | **R3** | `auth.users`, `auth.identities`, MFA-Faktoren und erforderliche GoTrue-Konfiguration; JWT-Signaturschlüssel separat behandeln | ohne Auth-Daten brechen FKs und Anmeldepfade; ein geänderter Signaturschlüssel invalidiert bestehende Sessions und erzwingt eine Neuanmeldung |
 | **R4** | Mandantenkern A-01 und Backoffice-Autorisierung A-11 | Alle praxisgebundenen FKs verletzt |
-| **R5a–e** | Praxisdaten in FK-Reihenfolge: a `security_checks`, b `assessment_manifests` und `reports`, c `monitoring_*` und `wlan_scans`, d Inventar/Router/Targets, e `consent_log` **in Ereignisreihenfolge** | Zusammengesetzte FK `reports_assessment_manifest_practice_fkey` bricht; `consent_log`-Kette bricht an `on delete restrict` |
+| **R5a–e** | Praxisdaten in FK-Reihenfolge: a `security_checks`, b `assessment_snapshots` samt Komponenten/Scoreerklärungen, danach `assessment_manifests` und `reports`, c `monitoring_*` und `wlan_scans`, d Inventar/Router/Targets, e `consent_log` **in Ereignisreihenfolge** | Zusammengesetzte Snapshot-/Manifest-FKs brechen; `consent_log`-Kette bricht an `on delete restrict` |
 | **R6** | Audit- und Löschzustandsdaten A-08/A-09, Realtime-Publikation, danach **erst** Worker-Deployment und Cron-Trigger | Cron arbeitet auf halbem Datenstand; Monitoring-Tab ohne Livepfad |
 | **R7** | Quota-, Rate-Limit- und Idempotenzzustand A-10; K-05/K-06 Providerkeys | Coverage sinkt sichtbar (gewolltes Verhalten), keine Datenverluste |
 | **R8** | Unabhängiger Pfad: Release-Signing H-01/H-02, CI-Evidenz I-02/I-03 | Kein neuer Release möglich – blockiert H-03-abhängige Szenarien |
@@ -877,6 +882,7 @@ Verwechslung zwischen A und B im Ergebnis sofort sichtbar wird:
 |---|---|
 | `security_checks` | je ein Check mit bekanntem `score` und einem verschlüsselten Payload bekannter kanonischer Form |
 | `assessment_manifests` und `reports` | ein über `persist_assessment_report` erzeugtes Paar mit festgehaltenem `snapshot_sha256` und `manifest_sha256` |
+| `assessment_snapshots` | je ein über `persist_assessment_snapshot` erzeugter Snapshot mit Komponente und Scoreerklärung; Praxis A muss ihn wiederherstellen, Praxis B vor dem Backup löschen |
 | `wlan_scans` | ein Scan mit synthetischer, eindeutig mandantenspezifischer Topologie |
 | Inventar/Router/Targets | je eine Zeile pro der sechs Tabellen aus A-06 |
 | `consent_log` | eine Kette aus mindestens drei Ereignissen inklusive einem Widerruf, damit `supersedes_id` geprüft werden kann |
@@ -905,7 +911,7 @@ Der letzte Punkt ist der wichtigste: Er macht G-03 messbar, statt es nur zu besc
 |---|---|---|
 | **P-01** | Schema und Migrationen: angewandte Migrationsliste gegen `supabase/migrations/` – nutzt den bereits vorhandenen Vergleich aus `scripts/e2e/env-up.sh` | jede Abweichung |
 | **P-02** | RLS und Mandantentrennung: die 14 pgTAP-Suiten (266 Assertions) laufen gegen den **wiederhergestellten** Stand | ein einziger fehlgeschlagener Test |
-| **P-03** | Grants und Policies: Snapshot vor und nach dem Restore, inklusive `force row level security` auf allen 34 Tabellen | jede Abweichung, insbesondere ein zusätzliches Recht |
+| **P-03** | Grants und Policies: Snapshot vor und nach dem Restore, inklusive `force row level security` auf allen 37 Tabellen | jede Abweichung, insbesondere ein zusätzliches Recht |
 | **P-04** | Reports und Manifeste: `snapshot_sha256` und `manifest_sha256` werden aus dem entschlüsselten Artefakt **neu berechnet** und verglichen; anschließend ein PDF-Export, der byte-identisch zum Vorzustand ist | Hashabweichung, Entschlüsselungsfehler oder abweichende Bytes |
 | **P-05** | Consent und Audit: Ereigniszahl und `supersedes_id`-Kette je `(practice_id, type)` lückenlos; `data_processing_agreements.accepted_at` unverändert (deckt G-05 ab) | gebrochene Kette oder verschobener Zeitstempel |
 | **P-06** | Löschzustand: Für Praxis B, die vor dem Backup gelöscht wurde, gilt nach dem Restore derselbe Löschzustand; als `completed` geführte `deletion_requests` sind durchgesetzt | jede wiederauferstandene D2-Zeile |
@@ -934,7 +940,7 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
 
 ## 9. Zusammenfassung des Iststandes
 
-- **Verschlüsselung und Mandantentrennung im laufenden Betrieb sind belastbar gebaut:** 34 Tabellen
+- **Verschlüsselung und Mandantentrennung im laufenden Betrieb sind belastbar gebaut:** 37 Tabellen
   mit erzwungener RLS, 266 pgTAP-Assertions, append-only Consent-Registry, transaktionale
   Berichtserzeugung, fail-closed Providerstatus, vollständiger Ausschluss mobiler Daten aus
   Gerätebackups.

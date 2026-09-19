@@ -167,7 +167,7 @@ PUBLIC_TABLE_COUNT="$(target_psql -Atc "
   select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and c.relkind = 'r';
 ")"
-if cmp -s "$SOURCE_SECURITY" "$TARGET_SECURITY" && [[ "$FORCED_RLS_COUNT" == "34" && "$PUBLIC_TABLE_COUNT" == "34" ]]; then
+if cmp -s "$SOURCE_SECURITY" "$TARGET_SECURITY" && [[ "$FORCED_RLS_COUNT" == "37" && "$PUBLIC_TABLE_COUNT" == "37" ]]; then
   record P-03 pass
 else
   record P-03 fail security_state_mismatch
@@ -226,7 +226,19 @@ DELETION_OK="$(target_psql -Atc "
         and status = 'completed' and state = 'completed'
     )
     and not exists (select 1 from public.wlan_scans where practice_id = '20000000-0000-4000-8000-0000000000b1')
+    and not exists (select 1 from public.assessment_snapshots where practice_id = '20000000-0000-4000-8000-0000000000b1')
     and not exists (select 1 from public.assessment_manifests where practice_id = '20000000-0000-4000-8000-0000000000b1')
+    and exists (
+      select 1
+      from public.assessment_snapshots s
+      join public.assessment_snapshot_components c on c.snapshot_id = s.id and c.practice_id = s.practice_id
+      join public.assessment_snapshot_score_explanations e on e.snapshot_id = s.id and e.practice_id = s.practice_id
+      where s.id = 'c3300000-0000-4000-8000-0000000000a1'
+        and s.practice_id = '20000000-0000-4000-8000-0000000000a1'
+        and s.payload_sha256 = repeat('a', 64)
+        and c.payload_sha256 = repeat('1', 64)
+        and e.code = 'fixture.recovery'
+    )
     and not exists (
       select 1 from (
         select practice_id from public.inventory_items

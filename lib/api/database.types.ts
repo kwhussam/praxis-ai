@@ -76,6 +76,7 @@ export type Database = {
         Row: {
           anonymized_at: string | null
           assessment_profile: string
+          assessment_snapshot_id: string | null
           created_at: string
           encrypted_snapshot: Json
           facts_version: string
@@ -93,6 +94,7 @@ export type Database = {
         Insert: {
           anonymized_at?: string | null
           assessment_profile: string
+          assessment_snapshot_id?: string | null
           created_at: string
           encrypted_snapshot: Json
           facts_version: string
@@ -110,6 +112,7 @@ export type Database = {
         Update: {
           anonymized_at?: string | null
           assessment_profile?: string
+          assessment_snapshot_id?: string | null
           created_at?: string
           encrypted_snapshot?: Json
           facts_version?: string
@@ -133,10 +136,224 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "assessment_manifests_snapshot_practice_fkey"
+            columns: ["assessment_snapshot_id", "practice_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_snapshots"
+            referencedColumns: ["id", "practice_id"]
+          },
+          {
             foreignKeyName: "assessment_manifests_source_check_id_fkey"
             columns: ["source_check_id"]
             isOneToOne: false
             referencedRelation: "security_checks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assessment_snapshot_components: {
+        Row: {
+          collection_status: string
+          component_order: number
+          control_ids: string[]
+          created_at: string
+          expires_at: string | null
+          freshness: string
+          id: string
+          kind: string
+          observed_at: string
+          payload_sha256: string
+          practice_id: string
+          snapshot_id: string
+          source_id: string
+          source_version: string
+        }
+        Insert: {
+          collection_status: string
+          component_order: number
+          control_ids?: string[]
+          created_at?: string
+          expires_at?: string | null
+          freshness: string
+          id: string
+          kind: string
+          observed_at: string
+          payload_sha256: string
+          practice_id: string
+          snapshot_id: string
+          source_id: string
+          source_version: string
+        }
+        Update: {
+          collection_status?: string
+          component_order?: number
+          control_ids?: string[]
+          created_at?: string
+          expires_at?: string | null
+          freshness?: string
+          id?: string
+          kind?: string
+          observed_at?: string
+          payload_sha256?: string
+          practice_id?: string
+          snapshot_id?: string
+          source_id?: string
+          source_version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_snapshot_components_snapshot_fkey"
+            columns: ["snapshot_id", "practice_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_snapshots"
+            referencedColumns: ["id", "practice_id"]
+          },
+        ]
+      }
+      assessment_snapshot_score_explanations: {
+        Row: {
+          category: string | null
+          code: string
+          control_ids: string[]
+          created_at: string
+          effect: string
+          explanation_order: number
+          id: string
+          points_delta: number | null
+          practice_id: string
+          severity: string
+          snapshot_id: string
+        }
+        Insert: {
+          category?: string | null
+          code: string
+          control_ids?: string[]
+          created_at?: string
+          effect: string
+          explanation_order: number
+          id?: string
+          points_delta?: number | null
+          practice_id: string
+          severity: string
+          snapshot_id: string
+        }
+        Update: {
+          category?: string | null
+          code?: string
+          control_ids?: string[]
+          created_at?: string
+          effect?: string
+          explanation_order?: number
+          id?: string
+          points_delta?: number | null
+          practice_id?: string
+          severity?: string
+          snapshot_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_snapshot_explanations_snapshot_fkey"
+            columns: ["snapshot_id", "practice_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_snapshots"
+            referencedColumns: ["id", "practice_id"]
+          },
+        ]
+      }
+      assessment_snapshots: {
+        Row: {
+          assessment_profile: string
+          authenticity: string
+          captured_at: string
+          component_count: number
+          confidence_score: number
+          control_catalog_version: string
+          coverage_score: number
+          created_at: string
+          domain_scores: Json
+          encrypted_payload: Json
+          engine_version: string
+          facts_version: string
+          freshness: string
+          gating_reason_codes: string[]
+          id: string
+          idempotency_key: string
+          payload_sha256: string
+          policy_pack_version: string
+          posture: string
+          practice_id: string
+          review_status: string
+          schema_version: string
+          scoring_version: string
+          signature: string | null
+          signature_algorithm: string | null
+          signature_key_id: string | null
+          technical_score: number
+        }
+        Insert: {
+          assessment_profile: string
+          authenticity: string
+          captured_at: string
+          component_count: number
+          confidence_score: number
+          control_catalog_version: string
+          coverage_score: number
+          created_at?: string
+          domain_scores: Json
+          encrypted_payload: Json
+          engine_version: string
+          facts_version: string
+          freshness: string
+          gating_reason_codes?: string[]
+          id: string
+          idempotency_key: string
+          payload_sha256: string
+          policy_pack_version: string
+          posture: string
+          practice_id: string
+          review_status: string
+          schema_version: string
+          scoring_version: string
+          signature?: string | null
+          signature_algorithm?: string | null
+          signature_key_id?: string | null
+          technical_score: number
+        }
+        Update: {
+          assessment_profile?: string
+          authenticity?: string
+          captured_at?: string
+          component_count?: number
+          confidence_score?: number
+          control_catalog_version?: string
+          coverage_score?: number
+          created_at?: string
+          domain_scores?: Json
+          encrypted_payload?: Json
+          engine_version?: string
+          facts_version?: string
+          freshness?: string
+          gating_reason_codes?: string[]
+          id?: string
+          idempotency_key?: string
+          payload_sha256?: string
+          policy_pack_version?: string
+          posture?: string
+          practice_id?: string
+          review_status?: string
+          schema_version?: string
+          scoring_version?: string
+          signature?: string | null
+          signature_algorithm?: string | null
+          signature_key_id?: string | null
+          technical_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_snapshots_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
             referencedColumns: ["id"]
           },
         ]
@@ -1945,19 +2162,6 @@ export type Database = {
         Args: { p_practice_id: string; p_user_id: string }
         Returns: Json
       }
-      has_active_practice_consent: {
-        Args: {
-          p_at?: string
-          p_practice_id: string
-          p_type: string
-          p_version: string
-        }
-        Returns: boolean
-      }
-      list_practices_with_active_consent: {
-        Args: { p_at?: string; p_type: string; p_version: string }
-        Returns: { practice_id: string }[]
-      }
       consume_ai_report_quota: {
         Args: {
           p_limit: number
@@ -2009,6 +2213,21 @@ export type Database = {
         Returns: boolean
       }
       current_user_platform_role: { Args: never; Returns: string }
+      has_active_practice_consent: {
+        Args: {
+          p_at?: string
+          p_practice_id: string
+          p_type: string
+          p_version: string
+        }
+        Returns: boolean
+      }
+      list_practices_with_active_consent: {
+        Args: { p_at?: string; p_type: string; p_version: string }
+        Returns: {
+          practice_id: string
+        }[]
+      }
       partner_role_rank: { Args: { p_role: string }; Returns: number }
       password_reset_consume_rate_limit: {
         Args: {
@@ -2066,6 +2285,14 @@ export type Database = {
           p_scoring_version: string
           p_snapshot_sha256: string
           p_source_check_id: string
+        }
+        Returns: Json
+      }
+      persist_assessment_snapshot: {
+        Args: {
+          p_encrypted_payload: Json
+          p_idempotency_key: string
+          p_snapshot: Json
         }
         Returns: Json
       }
