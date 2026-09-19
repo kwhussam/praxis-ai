@@ -2976,6 +2976,9 @@ describe("GET /api/privacy/export (DB-01)", () => {
           router_wifi_configurations: Array<{ id: string }>;
           router_firewall_rules: Array<{ id: string }>;
           monitoring_targets: Array<{ id: string }>;
+          assessment_snapshots: Array<{ id: string }>;
+          assessment_snapshot_components: Array<{ id: string }>;
+          assessment_snapshot_score_explanations: Array<{ id: string }>;
         };
       };
 
@@ -2984,6 +2987,9 @@ describe("GET /api/privacy/export (DB-01)", () => {
       ]);
       expect(body.data.monitoring_snapshots.map((snapshot) => snapshot.id)).toEqual(["snap-1"]);
       expect(body.data.data_processing_agreements.map((agreement) => agreement.id)).toEqual(["avv-1"]);
+      expect(body.data.assessment_snapshots).toEqual([]);
+      expect(body.data.assessment_snapshot_components).toEqual([]);
+      expect(body.data.assessment_snapshot_score_explanations).toEqual([]);
       const exportedD2Collections = [
         "inventory_items",
         "inventory_known_devices",
@@ -3008,9 +3014,21 @@ describe("GET /api/privacy/export (DB-01)", () => {
       expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/wlan_scans") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
       expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
       expect(requestedUrls.some((url) => url.startsWith("https://example.supabase.co/rest/v1/data_processing_agreements") && url.includes(`practice_id=eq.${roleGatePracticeId}`))).toBe(true);
+      for (const collection of [
+        "assessment_snapshots",
+        "assessment_snapshot_components",
+        "assessment_snapshot_score_explanations"
+      ]) {
+        expect(
+          requestedUrls.some(
+            (url) => url.startsWith(`https://example.supabase.co/rest/v1/${collection}`) && url.includes(`practice_id=eq.${roleGatePracticeId}`)
+          )
+        ).toBe(true);
+      }
       // None of the added selects pull the encrypted payload columns.
       expect(requestedUrls.some((url) => url.includes("wlan_scans") && url.includes("encrypted_payload"))).toBe(false);
       expect(requestedUrls.some((url) => url.includes("monitoring_snapshots") && url.includes("encrypted_checks"))).toBe(false);
+      expect(requestedUrls.some((url) => url.includes("assessment_snapshots") && url.includes("encrypted_payload"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3452,6 +3470,7 @@ function deletionReportFixture() {
     immediate_deletions: [
       "personal_data",
       "wlan_scans",
+      "assessment_snapshots",
       "assessment_manifests",
       "inventory_items",
       "inventory_known_devices",
@@ -3563,6 +3582,9 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
       url.startsWith("https://example.supabase.co/rest/v1/security_checks") ||
       url.startsWith("https://example.supabase.co/rest/v1/reports") ||
       url.startsWith("https://example.supabase.co/rest/v1/assessment_manifests") ||
+      url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshots") ||
+      url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshot_components") ||
+      url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshot_score_explanations") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") ||
       url.startsWith("https://example.supabase.co/rest/v1/consent_log") ||

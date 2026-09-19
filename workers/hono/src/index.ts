@@ -2629,6 +2629,9 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     securityChecks,
     reports,
     assessmentManifests,
+    assessmentSnapshots,
+    assessmentSnapshotComponents,
+    assessmentSnapshotScoreExplanations,
     monitoringEvents,
     consentLog,
     wlanScans,
@@ -2654,6 +2657,21 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
       supabaseRest<unknown[]>(
         c.env,
         `/rest/v1/assessment_manifests?select=id,source_check_id,manifest_version,assessment_profile,facts_version,scoring_version,report_format_version,pdf_template_version,snapshot_sha256,manifest,manifest_sha256,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/assessment_snapshots?select=id,schema_version,assessment_profile,captured_at,facts_version,scoring_version,control_catalog_version,policy_pack_version,engine_version,posture,coverage_score,confidence_score,freshness,review_status,technical_score,domain_scores,gating_reason_codes,component_count,payload_sha256,authenticity,signature_algorithm,signature_key_id,signature,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/assessment_snapshot_components?select=id,snapshot_id,component_order,kind,source_id,source_version,collection_status,freshness,observed_at,expires_at,payload_sha256,control_ids,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/assessment_snapshot_score_explanations?select=id,snapshot_id,explanation_order,code,severity,effect,category,control_ids,points_delta,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
         { method: "GET" }
       ),
       supabaseRest<unknown[]>(
@@ -2733,6 +2751,9 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     security_checks: securityChecks,
     reports,
     assessment_manifests: assessmentManifests,
+    assessment_snapshots: assessmentSnapshots,
+    assessment_snapshot_components: assessmentSnapshotComponents,
+    assessment_snapshot_score_explanations: assessmentSnapshotScoreExplanations,
     monitoring_events: monitoringEvents,
     consent_log: consentLog,
     wlan_scans: wlanScans,

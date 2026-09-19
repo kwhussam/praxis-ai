@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-17 (SP3-02 Phase B technisch 8/8 abgeschlossen)
+Stand: 2026-09-19 (SP3-03 Assessment-Snapshot v1 lokal implementiert)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -19,10 +19,11 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   gemergt. Die Post-Merge-Läufe CI `35102657829` und Secure SDLC `35102657678` sind vollständig
   grün. Expo SDK 57 ist die Zielstufe; der Hermes-v1-Rückstand und die High-Schwachstelle in
   `sharp` sind ohne Dependency-Ausnahme geschlossen.
-- **SP3-02-Basis gemergt:** PR
+- **SP3-02 einschließlich G-01 gemergt:** PR
   [`#59`](https://github.com/kwhussam/praxis-ai/pull/59) liegt als Commit `715f3ab` auf `main`;
-  Post-Merge-CI `35268567425` und Secure SDLC `35268567392` sind grün. Die G-01-Nachbesserung
-  erfolgt isoliert auf `codex/sp3-02-g01-deletion`, direkt von diesem Stand.
+  die G-01-Nachbesserung wurde über PR
+  [`#60`](https://github.com/kwhussam/praxis-ai/pull/60) als Commit `2bfb82b` gemergt. Dessen
+  `quality`, `rls-pgtap`, Dependency Review, Dependency/SBOM und CodeQL SAST sind grün.
 - **SP3-02 Phase A und der lokale Phase-B-Drill sind technisch abgeschlossen.** Das
   Arbeitspaket bleibt für Produktionsübertragbarkeit, Schlüsselrotation, Incident-Tabletop und Release auf
   `blocked_by_owner_decisions`.
@@ -46,6 +47,43 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   dokumentiert. Die grünen GitHub-Gates ersetzen diesen Runtime-Nachweis nicht.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
+
+## SP3-03 – Assessment-Snapshot v1
+
+Auf `codex/sp3-03-assessment-snapshot`, direkt von `origin/main`/`2bfb82b`, ist der neue
+autoritative Snapshotvertrag additiv implementiert:
+
+- ADR-002 trennt den Mehrquellen-Assessment-Snapshot ausdrücklich vom bestehenden
+  reportgebundenen `assessment_manifests`-Artefakt.
+- Der strikte v1-Vertrag umfasst Komponenten, Kontrollstatus, Posture, Coverage, Confidence,
+  Freshness, Scoreerklärungen sowie Fakten-, Scoring-, Kontrollkatalog-, Policy- und
+  Engine-Versionen. Unbekannte Felder erfordern einen Versionssprung.
+- `assessment_snapshots`, `assessment_snapshot_components` und
+  `assessment_snapshot_score_explanations` sind mandantengebunden, `FORCE RLS`-geschützt und
+  nach Erstellung nicht änderbar. Direkte Writes sind auch für `service_role` entzogen; die
+  einzige Write-Grenze ist eine atomare, idempotente `SECURITY DEFINER`-RPC mit leerem
+  `search_path`.
+- Vollpayloads bleiben D2-verschlüsselt. Authentifizierte Clients besitzen nicht einmal
+  Spaltenzugriff auf `encrypted_payload`; Datenschutzexporte enthalten nur D1-Metadaten und
+  Hashes. Die Praxislöschung entfernt Snapshots und Kindzeilen atomar.
+- SHA-256 wird nur als Integritätsnachweis bezeichnet. `signed` ist ohne vollständige
+  Ed25519-Signatur und Schlüssel-ID unzulässig; bis zu den offenen SP3-02-Schlüsselentscheidungen
+  bleibt der ehrliche Zustand `hash_only`.
+- Bestehende Manifeste werden nicht umgedeutet oder backfilled. Eine nullable,
+  mandantenfeste Referenz ermöglicht später den kontrollierten Cutover.
+
+Lokale Nachweise: frischer Supabase-Reset erfolgreich; vollständige pgTAP-Suite mit **300/300**
+Assertions grün, davon 34 neue Snapshot-Prüfungen. Lint und TypeScript sind grün. Der Datenbanklint
+meldet nur die zwei vorbestehenden ungenutzten Parameter von `create_or_get_own_practice`, keinen
+neuen SP3-03-Befund. Die neue
+Contract-Suite prüft zwei Golden Fixtures, kanonische Hashes, Gate-Priorität, strikte
+Versionierung, Unknown-Semantik, Signaturwahrheit und historische Byte-Stabilität. Der gesamte
+Jest-Stand besitzt **512 bestandene Tests**, 6 bewusst übersprungene Tests und 2 bestandene
+Semantik-Snapshots. Der Metro-Listener-Test benötigt außerhalb der Dateisystem-Sandbox einen
+lokalen Loopback-Listener und ist dort grün; das ist kein Produktbefund.
+Der synthetische Zwei-Mandanten-Recovery-Drill wurde um Snapshot-Canaries erweitert und bestand
+erneut **8/8**: Praxis A wurde mit Snapshot, Komponente und Scoreerklärung wiederhergestellt,
+während der vor dem Backup gelöschte Snapshot von Praxis B gelöscht blieb.
 
 ## Was in der aktuellen SDK-57-Stufe gemacht wurde
 
@@ -454,13 +492,15 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **G-01-Nachbesserung mergen.** Die technische Abnahme ist lokal grün: frischer DB-Reset,
-   266/266 pgTAP-Assertions, mandantenfester Datenschutzexport und Recovery-Drill 8/8. Nach CI und
-   Secure SDLC kann der Folge-PR gemergt werden.
-2. **SP3-03 – Assessment-Snapshot-Schema und API-Vertrag** auf einem neuen Branch direkt vom dann
-   aktuellen `origin/main` beginnen. Ziel sind ADR, additive Migration und freigegebene Contract
-   Fixtures; keine produktive Bestandsmigration ohne die ADR-001-Sign-offs.
-3. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
+1. **SP3-03 committen, pushen und per PR prüfen.** Erforderliche GitHub-Gates sind `quality`,
+   `rls-pgtap`, Dependency Review, Dependency/SBOM und CodeQL SAST. Die Migration darf erst nach
+   grüner CI gemergt werden.
+2. **Nach Merge SP3-04 – SafeScan-Policy und Scan-Authorization-Schema beginnen.** Das baut auf
+   Snapshot-Komponenten und dem bestehenden Collection-Vertrag auf, aktiviert aber noch keinen
+   produktiven aktiven Scan.
+3. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
+   produktiver v2-verschlüsselter Snapshot erzeugt und an neue Reportmanifeste gebunden werden.
+4. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
      der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
@@ -468,12 +508,12 @@ spätere Produktions-Gate.
    - `G-04` – welche Auth-Daten umfasst das Supabase-Backup, wie wird GoTrue rekonstruiert und wie
      werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
    - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
-4. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
+5. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
    Schlüsselrotation bleibt durch D-05/D-06/D-07 blockiert.
-5. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
+6. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
-6. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
+7. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 
 ## Bewusste Grenzen
 
