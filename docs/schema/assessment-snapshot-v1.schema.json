@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api.praxisshield.de/schemas/assessment-snapshot-v1.json",
+  "title": "PraxisShield Assessment Snapshot v1",
+  "description": "Immutable, multi-source assessment result. The posture is authoritative; technical scores are subordinate explanatory values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "practice_id",
+    "captured_at",
+    "assessment_profile",
+    "versions",
+    "posture",
+    "evidence",
+    "technical_scores",
+    "components",
+    "controls",
+    "score_explanations",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "snapshot_id": { "$ref": "#/$defs/uuid" },
+    "practice_id": { "$ref": "#/$defs/uuid" },
+    "captured_at": { "type": "string", "format": "date-time" },
+    "assessment_profile": { "enum": ["general", "health"] },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["facts", "scoring", "control_catalog", "policy_pack", "engine"],
+      "properties": {
+        "facts": { "$ref": "#/$defs/version" },
+        "scoring": { "$ref": "#/$defs/version" },
+        "control_catalog": { "$ref": "#/$defs/version" },
+        "policy_pack": { "$ref": "#/$defs/version" },
+        "engine": { "$ref": "#/$defs/version" }
+      }
+    },
+    "posture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ampel", "gating_reason_codes"],
+      "properties": {
+        "ampel": { "enum": ["rot", "gelb", "grün"] },
+        "gating_reason_codes": { "$ref": "#/$defs/uniqueCodes" }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coverage_score", "confidence_score", "freshness", "review_status"],
+      "properties": {
+        "coverage_score": { "$ref": "#/$defs/percentage" },
+        "confidence_score": { "$ref": "#/$defs/percentage" },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "review_status": { "enum": ["ok", "review_required"] }
+      }
+    },
+    "technical_scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overall", "by_category"],
+      "properties": {
+        "overall": { "$ref": "#/$defs/percentage" },
+        "by_category": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["access_control", "backup", "email_security", "network", "dsgvo", "updates"],
+          "properties": {
+            "access_control": { "$ref": "#/$defs/percentage" },
+            "backup": { "$ref": "#/$defs/percentage" },
+            "email_security": { "$ref": "#/$defs/percentage" },
+            "network": { "$ref": "#/$defs/percentage" },
+            "dsgvo": { "$ref": "#/$defs/percentage" },
+            "updates": { "$ref": "#/$defs/percentage" }
+          }
+        }
+      }
+    },
+    "components": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/component" }
+    },
+    "controls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/control" }
+    },
+    "score_explanations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/scoreExplanation" }
+    },
+    "integrity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["payload_sha256", "authenticity", "signature"],
+          "properties": {
+            "payload_sha256": { "$ref": "#/$defs/sha256" },
+            "authenticity": { "const": "hash_only" },
+            "signature": { "type": "null" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["payload_sha256", "authenticity", "signature"],
+          "properties": {
+            "payload_sha256": { "$ref": "#/$defs/sha256" },
+            "authenticity": { "const": "signed" },
+            "signature": { "$ref": "#/$defs/signature" }
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "version": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._+\\-]{0,63}$" },
+    "code": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:\\-]{0,127}$" },
+    "uniqueCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/code" }
+    },
+    "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
+    "freshness": { "enum": ["fresh", "stale", "unknown"] },
+    "collectionStatus": {
+      "enum": ["collected", "not_checked", "unsupported", "permission_denied", "timeout", "error", "unavailable"]
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "kind", "source_id", "source_version", "collection_status", "freshness",
+        "observed_at", "expires_at", "payload_sha256", "control_ids"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "kind": { "enum": ["questionnaire", "external_monitoring", "wlan", "mobile", "desktop_agent", "router", "manual_attestation"] },
+        "source_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "source_version": { "$ref": "#/$defs/version" },
+        "collection_status": { "$ref": "#/$defs/collectionStatus" },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": ["string", "null"], "format": "date-time" },
+        "payload_sha256": { "$ref": "#/$defs/sha256" },
+        "control_ids": { "$ref": "#/$defs/uniqueCodes" }
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "category", "applicability", "status", "collection_status", "points_earned", "points_max"],
+      "properties": {
+        "rule_id": { "$ref": "#/$defs/code" },
+        "category": { "enum": ["access_control", "backup", "email_security", "network", "dsgvo", "updates"] },
+        "applicability": { "enum": ["applicable", "not_applicable", "conditional"] },
+        "status": { "enum": ["met", "partially_met", "not_met", "unknown", "not_applicable"] },
+        "collection_status": { "$ref": "#/$defs/collectionStatus" },
+        "points_earned": { "type": "number", "minimum": 0 },
+        "points_max": { "type": "number", "minimum": 0 }
+      }
+    },
+    "scoreExplanation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "effect", "category", "control_ids", "points_delta"],
+      "properties": {
+        "code": { "$ref": "#/$defs/code" },
+        "severity": { "enum": ["info", "warning", "critical"] },
+        "effect": { "enum": ["blocks_green", "reduces_score", "coverage_only", "informational"] },
+        "category": { "enum": ["access_control", "backup", "email_security", "network", "dsgvo", "updates", null] },
+        "control_ids": { "$ref": "#/$defs/uniqueCodes" },
+        "points_delta": { "type": ["number", "null"] }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "value"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "key_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "value": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    }
+  }
+}

@@ -110,6 +110,72 @@ values
    'domain', 'recovery-b.example.test', true, false, '{"fixture":"tenant-b"}',
    '2026-09-16T08:09:00Z', '2026-09-16T08:09:00Z');
 
+-- SP3-03 canaries prove that the authoritative snapshot, its ordered component
+-- and score explanation survive backup/restore for A and are erased for B.
+select public.persist_assessment_snapshot(
+  jsonb_build_object(
+    'schema_version', '1.0.0',
+    'snapshot_id', snapshot_id,
+    'practice_id', practice_id,
+    'captured_at', '2026-09-16T08:09:30Z',
+    'assessment_profile', 'health',
+    'versions', jsonb_build_object(
+      'facts', '1.0.0', 'scoring', '2.2.1', 'control_catalog', '2026.09',
+      'policy_pack', 'de-health-2026.09', 'engine', 'assessment-engine-1.0.0'
+    ),
+    'posture', jsonb_build_object('ampel', 'gelb', 'gating_reason_codes', jsonb_build_array('fixture.recovery')),
+    'evidence', jsonb_build_object(
+      'coverage_score', 50, 'confidence_score', 50, 'freshness', 'fresh', 'review_status', 'review_required'
+    ),
+    'technical_scores', jsonb_build_object(
+      'overall', 50,
+      'by_category', jsonb_build_object(
+        'access_control', 50, 'backup', 50, 'email_security', 50,
+        'network', 50, 'dsgvo', 50, 'updates', 50
+      )
+    ),
+    'components', jsonb_build_array(jsonb_build_object(
+      'id', component_id, 'kind', 'manual_attestation', 'source_id', 'recovery:' || suffix,
+      'source_version', 'fixture-1.0.0', 'collection_status', 'collected', 'freshness', 'fresh',
+      'observed_at', '2026-09-16T08:09:00Z', 'expires_at', '2026-12-15T08:09:00Z',
+      'payload_sha256', component_hash, 'control_ids', jsonb_build_array()
+    )),
+    'controls', jsonb_build_array(),
+    'score_explanations', jsonb_build_array(jsonb_build_object(
+      'code', 'fixture.recovery', 'severity', 'info', 'effect', 'informational',
+      'category', null, 'control_ids', jsonb_build_array(), 'points_delta', null
+    )),
+    'integrity', jsonb_build_object(
+      'payload_sha256', payload_hash, 'authenticity', 'hash_only', 'signature', null
+    )
+  ),
+  jsonb_build_object(
+    'envelope_version', '2', 'alg', 'AES-256-GCM', 'key_version', 'fixture',
+    'iv', 'synthetic-' || suffix, 'ciphertext', 'synthetic-' || suffix,
+    'aad_sha256', aad_hash
+  ),
+  'sp3-03-recovery-' || suffix
+)
+from (values
+  (
+    'a',
+    '20000000-0000-4000-8000-0000000000a1'::uuid,
+    'c3300000-0000-4000-8000-0000000000a1'::uuid,
+    'd3300000-0000-4000-8000-0000000000a1'::uuid,
+    repeat('1', 64), repeat('a', 64), repeat('c', 64)
+  ),
+  (
+    'b',
+    '20000000-0000-4000-8000-0000000000b1'::uuid,
+    'c3300000-0000-4000-8000-0000000000b1'::uuid,
+    'd3300000-0000-4000-8000-0000000000b1'::uuid,
+    repeat('2', 64), repeat('b', 64), repeat('d', 64)
+  )
+) as snapshot_fixture(
+  suffix, practice_id, snapshot_id, component_id,
+  component_hash, payload_hash, aad_hash
+);
+
 insert into public.consent_log (
   id, practice_id, user_id, type, version, accepted, accepted_at,
   scope, withdrawn_at, created_at
@@ -128,7 +194,7 @@ values
 
 -- The deletion is deliberately performed before the backup. P-06 then proves
 -- whether restore preserves the completed deletion state. At the current
--- baseline this exposes known gap G-01 for the six inventory/router tables.
+-- baseline this also proves the SP3-03 snapshot deletion contract.
 select public.complete_privacy_deletion(
   '20000000-0000-4000-8000-0000000000b1',
   '00000000-0000-4000-8000-0000000000b1'
