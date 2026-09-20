@@ -403,8 +403,8 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 #### D-01 Migrationskette
 
-- **Beleg:** 39 Dateien unter `supabase/migrations/`, von
-  `20260624150000_initial_schema.sql` bis `20260918120000_sp3_03_assessment_snapshot.sql`.
+- **Beleg:** 40 Dateien unter `supabase/migrations/`, von
+  `20260624150000_initial_schema.sql` bis `20260920120000_sp3_04_safescan_authorization.sql`.
 - **Reihenfolgeprüfung ist bereits implementiert:** `scripts/e2e/env-up.sh` vergleicht die
   Dateinamenspräfixe mit `supabase_migrations.schema_migrations` und bricht bei Abweichung mit
   `"The applied Supabase migrations do not match the repository."` ab. Das ist der
@@ -416,7 +416,7 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 #### D-02 RLS-Policies und `force row level security`
 
-- **Beleg:** alle 37 Anwendungstabellen tragen `enable row level security`, davon **alle 37**
+- **Beleg:** alle 40 Anwendungstabellen tragen `enable row level security`, davon **alle 40**
   zusätzlich `force row level security` (maschinell aus `supabase/migrations/*.sql` ausgezählt).
   Partnerrollenmodell in `docs/RLS_PARTNER_ROLE_MATRIX.md`.
 - **Datenklasse:** D0 (Regelwerk) · **Plattform:** `SB-DB`
@@ -424,7 +424,7 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
   sonst existiert ein Zeitfenster mit Daten ohne Mandantengrenze.
 - **Abhängigkeiten:** `public.current_user_can_access_practice`, `public.can_access_practice`,
   `public.current_user_platform_role` und weitere Hilfsfunktionen aus D-03.
-- **Nachweisstatus:** `configured`; Wirksamkeit durch 266 pgTAP-Assertions in 14 Suiten belegt
+- **Nachweisstatus:** `configured`; Wirksamkeit durch 348 pgTAP-Assertions in 16 Suiten belegt
   (`supabase/tests/*.sql`, `select plan(...)` aufsummiert) und durch P-02 gegen die isolierte
   wiederhergestellte Datenbank `measured`.
 - **Restrisiko:** Der lokale Nachweis ersetzt keinen produktionsrepräsentativen Restore und keine
@@ -432,7 +432,7 @@ Abschnitt 6), Abhängigkeiten, Retention-/Löschbezug, Nachweisstatus und erkenn
 
 #### D-03 RPCs und Grants
 
-- **Beleg:** 54 Funktionen unter `public.` (aus `supabase/migrations/*.sql` extrahiert), darunter
+- **Beleg:** 58 Funktionen unter `public.` (aus `supabase/migrations/*.sql` extrahiert), darunter
   die recoverykritischen `complete_privacy_deletion`, `persist_assessment_report`,
   `has_active_practice_consent`, `list_practices_with_active_consent`,
   `consume_external_check_quota`, `consume_ai_report_quota`,
@@ -883,6 +883,7 @@ Verwechslung zwischen A und B im Ergebnis sofort sichtbar wird:
 | `security_checks` | je ein Check mit bekanntem `score` und einem verschlüsselten Payload bekannter kanonischer Form |
 | `assessment_manifests` und `reports` | ein über `persist_assessment_report` erzeugtes Paar mit festgehaltenem `snapshot_sha256` und `manifest_sha256` |
 | `assessment_snapshots` | je ein über `persist_assessment_snapshot` erzeugter Snapshot mit Komponente und Scoreerklärung; Praxis A muss ihn wiederherstellen, Praxis B vor dem Backup löschen |
+| `scan_authorizations` | je eine über `persist_scan_authorization` erzeugte verschlüsselte Scope-Autorisierung; Praxis A muss Autorisierung, Grant-Ereignis und Kill-Switch-Grundzustand wiederherstellen, Praxis B vor dem Backup löschen |
 | `wlan_scans` | ein Scan mit synthetischer, eindeutig mandantenspezifischer Topologie |
 | Inventar/Router/Targets | je eine Zeile pro der sechs Tabellen aus A-06 |
 | `consent_log` | eine Kette aus mindestens drei Ereignissen inklusive einem Widerruf, damit `supersedes_id` geprüft werden kann |
@@ -941,7 +942,7 @@ Praxisidentifikatoren außerhalb der festen Fixture-UUIDs, E-Mail-Adressen auße
 ## 9. Zusammenfassung des Iststandes
 
 - **Verschlüsselung und Mandantentrennung im laufenden Betrieb sind belastbar gebaut:** 37 Tabellen
-  mit erzwungener RLS, 266 pgTAP-Assertions, append-only Consent-Registry, transaktionale
+  mit erzwungener RLS, 348 pgTAP-Assertions, append-only Consent- und SafeScan-Lifecycles, transaktionale
   Berichtserzeugung, fail-closed Providerstatus, vollständiger Ausschluss mobiler Daten aus
   Gerätebackups.
 - **Recovery bleibt produktiv unbelegt.** Phase B liefert inzwischen einen lokalen synthetischen

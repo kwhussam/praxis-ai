@@ -176,6 +176,63 @@ from (values
   component_hash, payload_hash, aad_hash
 );
 
+-- SP3-04 canaries prove that encrypted authorization scope and append-only
+-- lifecycle evidence survive for A, while B remains erased before backup.
+select public.persist_scan_authorization(
+  jsonb_build_object(
+    'schema_version', '1.0.0',
+    'authorization_id', authorization_id,
+    'practice_id', practice_id,
+    'site_ref', 'recovery-' || suffix,
+    'policy_version', 'de-health-safescan-1.0.0',
+    'actor', jsonb_build_object(
+      'user_id', actor_id, 'role', 'practice_owner', 'authorized_at', now() - interval '10 minutes'
+    ),
+    'valid_from', now() - interval '5 minutes',
+    'valid_until', now() + interval '1 day',
+    'max_safety_class', 1,
+    'maintenance_windows', jsonb_build_array(),
+    'scope', jsonb_build_object(
+      'targets', jsonb_build_array(jsonb_build_object(
+        'id', 'recovery-target-' || suffix, 'kind', 'asset',
+        'locator', 'synthetic:' || suffix, 'asset_class', 'standard',
+        'max_safety_class', 1, 'elevated_approval', null
+      )),
+      'exclusions', jsonb_build_array()
+    ),
+    'stop_conditions', jsonb_build_array(
+      'kill_switch', 'clinical_impact_reported', 'connectivity_degradation',
+      'unexpected_medical_device', 'error_threshold_exceeded', 'authorization_changed'
+    ),
+    'integrity', jsonb_build_object('scope_sha256', scope_hash)
+  ),
+  jsonb_build_object(
+    'envelope_version', '2', 'alg', 'AES-256-GCM', 'key_version', 'fixture',
+    'iv', 'synthetic-' || suffix, 'ciphertext', 'synthetic-' || suffix,
+    'aad_sha256', aad_hash
+  ),
+  'sp3-04-recovery-' || suffix
+)
+from (values
+  (
+    'a', '20000000-0000-4000-8000-0000000000a1'::uuid,
+    '00000000-0000-4000-8000-0000000000a1'::uuid,
+    'd4400000-0000-4000-8000-0000000000a1'::uuid, repeat('a', 64), repeat('c', 64)
+  ),
+  (
+    'b', '20000000-0000-4000-8000-0000000000b1'::uuid,
+    '00000000-0000-4000-8000-0000000000b1'::uuid,
+    'd4400000-0000-4000-8000-0000000000b1'::uuid, repeat('b', 64), repeat('d', 64)
+  )
+) as authorization_fixture(suffix, practice_id, actor_id, authorization_id, scope_hash, aad_hash);
+
+select public.set_scan_kill_switch(
+  '20000000-0000-4000-8000-0000000000a1',
+  '00000000-0000-4000-8000-0000000000a1',
+  false,
+  'recovery_fixture_initial_state'
+);
+
 insert into public.consent_log (
   id, practice_id, user_id, type, version, accepted, accepted_at,
   scope, withdrawn_at, created_at
@@ -194,7 +251,7 @@ values
 
 -- The deletion is deliberately performed before the backup. P-06 then proves
 -- whether restore preserves the completed deletion state. At the current
--- baseline this also proves the SP3-03 snapshot deletion contract.
+-- baseline this also proves the SP3-03 snapshot and SP3-04 authorization deletion contracts.
 select public.complete_privacy_deletion(
   '20000000-0000-4000-8000-0000000000b1',
   '00000000-0000-4000-8000-0000000000b1'

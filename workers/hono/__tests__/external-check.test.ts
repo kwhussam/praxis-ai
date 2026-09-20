@@ -2979,6 +2979,9 @@ describe("GET /api/privacy/export (DB-01)", () => {
           assessment_snapshots: Array<{ id: string }>;
           assessment_snapshot_components: Array<{ id: string }>;
           assessment_snapshot_score_explanations: Array<{ id: string }>;
+          scan_authorizations: Array<{ id: string }>;
+          scan_authorization_events: Array<{ id: string }>;
+          scan_kill_switch_events: Array<{ id: string }>;
         };
       };
 
@@ -2990,6 +2993,9 @@ describe("GET /api/privacy/export (DB-01)", () => {
       expect(body.data.assessment_snapshots).toEqual([]);
       expect(body.data.assessment_snapshot_components).toEqual([]);
       expect(body.data.assessment_snapshot_score_explanations).toEqual([]);
+      expect(body.data.scan_authorizations).toEqual([]);
+      expect(body.data.scan_authorization_events).toEqual([]);
+      expect(body.data.scan_kill_switch_events).toEqual([]);
       const exportedD2Collections = [
         "inventory_items",
         "inventory_known_devices",
@@ -3017,7 +3023,10 @@ describe("GET /api/privacy/export (DB-01)", () => {
       for (const collection of [
         "assessment_snapshots",
         "assessment_snapshot_components",
-        "assessment_snapshot_score_explanations"
+        "assessment_snapshot_score_explanations",
+        "scan_authorizations",
+        "scan_authorization_events",
+        "scan_kill_switch_events"
       ]) {
         expect(
           requestedUrls.some(
@@ -3029,6 +3038,7 @@ describe("GET /api/privacy/export (DB-01)", () => {
       expect(requestedUrls.some((url) => url.includes("wlan_scans") && url.includes("encrypted_payload"))).toBe(false);
       expect(requestedUrls.some((url) => url.includes("monitoring_snapshots") && url.includes("encrypted_checks"))).toBe(false);
       expect(requestedUrls.some((url) => url.includes("assessment_snapshots") && url.includes("encrypted_payload"))).toBe(false);
+      expect(requestedUrls.some((url) => url.includes("scan_authorizations") && url.includes("encrypted_scope"))).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3470,6 +3480,9 @@ function deletionReportFixture() {
     immediate_deletions: [
       "personal_data",
       "wlan_scans",
+      "scan_authorizations",
+      "scan_authorization_events",
+      "scan_kill_switch_events",
       "assessment_snapshots",
       "assessment_manifests",
       "inventory_items",
@@ -3585,6 +3598,9 @@ function installRoleGateFetch(role: PracticeRole, canAccess: boolean) {
       url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshots") ||
       url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshot_components") ||
       url.startsWith("https://example.supabase.co/rest/v1/assessment_snapshot_score_explanations") ||
+      url.startsWith("https://example.supabase.co/rest/v1/scan_authorizations") ||
+      url.startsWith("https://example.supabase.co/rest/v1/scan_authorization_events") ||
+      url.startsWith("https://example.supabase.co/rest/v1/scan_kill_switch_events") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_snapshots") ||
       url.startsWith("https://example.supabase.co/rest/v1/monitoring_events") ||
       url.startsWith("https://example.supabase.co/rest/v1/consent_log") ||

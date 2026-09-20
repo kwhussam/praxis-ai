@@ -2642,7 +2642,10 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     inventoryAccessPoints,
     routerWifiConfigurations,
     routerFirewallRules,
-    monitoringTargets
+    monitoringTargets,
+    scanAuthorizations,
+    scanAuthorizationEvents,
+    scanKillSwitchEvents
   ] = await Promise.all([
       supabaseRest<unknown[]>(
         c.env,
@@ -2741,6 +2744,23 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
         c.env,
         `/rest/v1/monitoring_targets?select=id,target_type,value,enabled,leak_scan_allowed,consent_accepted_at,metadata,created_at,updated_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
         { method: "GET" }
+      ),
+      // SP3-04: D1 lifecycle evidence is exportable. The encrypted D2 scope is
+      // deliberately omitted until a separately authorized decrypt/export path exists.
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/scan_authorizations?select=id,schema_version,policy_version,site_ref,actor_user_id,actor_role,authorized_at,valid_from,valid_until,max_safety_class,target_count,exclusion_count,scope_sha256,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/scan_authorization_events?select=id,authorization_id,event_type,actor_user_id,reason_code,occurred_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
+      ),
+      supabaseRest<unknown[]>(
+        c.env,
+        `/rest/v1/scan_kill_switch_events?select=id,enabled,actor_user_id,reason_code,occurred_at,created_at&practice_id=eq.${encodeURIComponent(access.practice.id)}`,
+        { method: "GET" }
       )
     ]);
 
@@ -2764,7 +2784,10 @@ async function handlePrivacyExport(c: Context<{ Bindings: Env }>) {
     inventory_access_points: inventoryAccessPoints,
     router_wifi_configurations: routerWifiConfigurations,
     router_firewall_rules: routerFirewallRules,
-    monitoring_targets: monitoringTargets
+    monitoring_targets: monitoringTargets,
+    scan_authorizations: scanAuthorizations,
+    scan_authorization_events: scanAuthorizationEvents,
+    scan_kill_switch_events: scanKillSwitchEvents
   };
   const signature = await sha256Json(exportData);
 
