@@ -558,14 +558,12 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **Expo-Patchkorrektur in PR #61 pushen und die GitHub-Gates erneut vollständig grün abwarten.**
-   Besonders `quality` muss Expo Doctor 21/21 und den Android-Release-Build gemeinsam bestätigen;
-   die Migration darf vorher nicht gemergt werden.
-2. **Danach unabhängiges Security-/Privacy-Review und Merge von PR #61.** Produktive
-   Snapshoterzeugung und Manifest-Cutover bleiben trotz Merge gesperrt.
-3. **Nach Merge SP3-04 – SafeScan-Policy und Scan-Authorization-Schema beginnen.** Das baut auf
-   Snapshot-Komponenten und dem bestehenden Collection-Vertrag auf, aktiviert aber noch keinen
-   produktiven aktiven Scan.
+1. **PR #63 vollständig prüfen:** `quality`, `rls-pgtap`, CodeQL sowie Dependency-/SBOM-Gates
+   müssen grün sein; anschließend unabhängiges Security-Review durchführen.
+2. **SP3-04 fachlich freigeben:** benannte medizinisch/fachliche, Datenschutz- und Rechtsreviews
+   dokumentieren. Der technische Merge aktiviert weiterhin weder Scanqueue noch aktive Probes.
+3. **Nach Merge SP3-05 beginnen:** §-390-Kontrollinventar und Redaktionsworkflow auf einem neuen
+   Branch direkt vom dann aktuellen `origin/main` implementieren.
 4. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
    produktiver v2-verschlüsselter Snapshot erzeugt und an neue Reportmanifeste gebunden werden.
 5. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
