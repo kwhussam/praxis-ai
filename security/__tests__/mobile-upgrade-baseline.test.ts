@@ -217,7 +217,7 @@ describe("SP3-01B mobile upgrade baseline", () => {
     expect(packageLock.packages["node_modules/react-server-dom-webpack"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-parcel"]).toBe(undefined);
     expect(packageLock.packages["node_modules/react-server-dom-turbopack"]).toBe(undefined);
-    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.21");
+    expect(packageLock.packages["node_modules/expo-router"].version).toBe("57.0.22");
     expect(packageLock.packages["node_modules/jest-expo"].version).toBe("57.0.5");
     expect(packageJson.devDependencies["babel-preset-expo"]).toBe("~57.0.0");
     expect(packageLock.packages["node_modules/babel-preset-expo"].version).toBe("57.0.12");
