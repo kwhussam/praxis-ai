@@ -96,7 +96,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@cloudflare/workers-types": "^5.20260830.1",
+    "@cloudflare/workers-types": "^5.20260918.1",
     "@types/react": "~19.2.10",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
@@ -108,7 +108,7 @@
     "jest-expo": "~57.0.5",
     "react-test-renderer": "19.2.3",
     "typescript": "~6.0.3",
-    "wrangler": "^4.132.0"
+    "wrangler": "^4.134.0"
   },
   "expo": {
     "install": {
