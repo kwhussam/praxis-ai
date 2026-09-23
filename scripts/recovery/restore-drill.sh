@@ -167,7 +167,7 @@ PUBLIC_TABLE_COUNT="$(target_psql -Atc "
   select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public' and c.relkind = 'r';
 ")"
-if cmp -s "$SOURCE_SECURITY" "$TARGET_SECURITY" && [[ "$FORCED_RLS_COUNT" == "37" && "$PUBLIC_TABLE_COUNT" == "37" ]]; then
+if cmp -s "$SOURCE_SECURITY" "$TARGET_SECURITY" && [[ "$FORCED_RLS_COUNT" == "40" && "$PUBLIC_TABLE_COUNT" == "40" ]]; then
   record P-03 pass
 else
   record P-03 fail security_state_mismatch
@@ -228,6 +228,8 @@ DELETION_OK="$(target_psql -Atc "
     and not exists (select 1 from public.wlan_scans where practice_id = '20000000-0000-4000-8000-0000000000b1')
     and not exists (select 1 from public.assessment_snapshots where practice_id = '20000000-0000-4000-8000-0000000000b1')
     and not exists (select 1 from public.assessment_manifests where practice_id = '20000000-0000-4000-8000-0000000000b1')
+    and not exists (select 1 from public.scan_authorizations where practice_id = '20000000-0000-4000-8000-0000000000b1')
+    and not exists (select 1 from public.scan_kill_switch_events where practice_id = '20000000-0000-4000-8000-0000000000b1')
     and exists (
       select 1
       from public.assessment_snapshots s
@@ -238,6 +240,22 @@ DELETION_OK="$(target_psql -Atc "
         and s.payload_sha256 = repeat('a', 64)
         and c.payload_sha256 = repeat('1', 64)
         and e.code = 'fixture.recovery'
+    )
+    and exists (
+      select 1
+      from public.scan_authorizations a
+      join public.scan_authorization_events e
+        on e.authorization_id = a.id and e.practice_id = a.practice_id
+      where a.id = 'd4400000-0000-4000-8000-0000000000a1'
+        and a.practice_id = '20000000-0000-4000-8000-0000000000a1'
+        and a.scope_sha256 = repeat('a', 64)
+        and a.encrypted_scope ->> 'alg' = 'AES-256-GCM'
+        and e.event_type = 'granted'
+    )
+    and exists (
+      select 1 from public.scan_kill_switch_events
+      where practice_id = '20000000-0000-4000-8000-0000000000a1'
+        and enabled = false and reason_code = 'recovery_fixture_initial_state'
     )
     and not exists (
       select 1 from (

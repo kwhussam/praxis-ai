@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://praxisshield.de/schema/safescan-authorization-v1.schema.json",
+  "title": "PraxisShield SafeScan Authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "authorization_id", "practice_id", "site_ref", "policy_version", "actor", "valid_from", "valid_until", "max_safety_class", "maintenance_windows", "scope", "stop_conditions", "integrity"],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "authorization_id": { "$ref": "#/$defs/uuid" },
+    "practice_id": { "$ref": "#/$defs/uuid" },
+    "site_ref": { "$ref": "#/$defs/code" },
+    "policy_version": { "const": "de-health-safescan-1.0.0" },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_id", "role", "authorized_at"],
+      "properties": {
+        "user_id": { "$ref": "#/$defs/uuid" },
+        "role": { "enum": ["practice_owner", "practice_manager"] },
+        "authorized_at": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "valid_from": { "$ref": "#/$defs/timestamp" },
+    "valid_until": { "$ref": "#/$defs/timestamp" },
+    "max_safety_class": { "enum": [0, 1, 2] },
+    "maintenance_windows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "starts_at", "ends_at"],
+        "properties": {
+          "id": { "$ref": "#/$defs/code" },
+          "starts_at": { "$ref": "#/$defs/timestamp" },
+          "ends_at": { "$ref": "#/$defs/timestamp" }
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets", "exclusions"],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "kind", "locator", "asset_class", "max_safety_class", "elevated_approval"],
+            "properties": {
+              "id": { "$ref": "#/$defs/code" },
+              "kind": { "enum": ["cidr", "host", "asset"] },
+              "locator": { "type": "string", "minLength": 1, "maxLength": 512 },
+              "asset_class": { "enum": ["standard", "medical_device", "unknown"] },
+              "max_safety_class": { "enum": [0, 1, 2] },
+              "elevated_approval": {
+                "oneOf": [
+                  { "type": "null" },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["approved_by_user_id", "approved_at", "expires_at", "reason_code", "clinical_owner_approved"],
+                    "properties": {
+                      "approved_by_user_id": { "$ref": "#/$defs/uuid" },
+                      "approved_at": { "$ref": "#/$defs/timestamp" },
+                      "expires_at": { "$ref": "#/$defs/timestamp" },
+                      "reason_code": { "$ref": "#/$defs/code" },
+                      "clinical_owner_approved": { "const": true }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["target_id", "reason_code"],
+            "properties": {
+              "target_id": { "$ref": "#/$defs/code" },
+              "reason_code": { "$ref": "#/$defs/code" }
+            }
+          }
+        }
+      }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "uniqueItems": true,
+      "allOf": [
+        { "contains": { "const": "kill_switch" } },
+        { "contains": { "const": "clinical_impact_reported" } },
+        { "contains": { "const": "connectivity_degradation" } },
+        { "contains": { "const": "unexpected_medical_device" } },
+        { "contains": { "const": "error_threshold_exceeded" } },
+        { "contains": { "const": "authorization_changed" } }
+      ],
+      "items": { "enum": ["kill_switch", "clinical_impact_reported", "connectivity_degradation", "unexpected_medical_device", "error_threshold_exceeded", "authorization_changed"] }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scope_sha256"],
+      "properties": { "scope_sha256": { "$ref": "#/$defs/sha256" } }
+    }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "code": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

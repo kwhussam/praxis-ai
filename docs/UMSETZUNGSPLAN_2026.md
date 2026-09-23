@@ -823,18 +823,19 @@ Die ursprüngliche Startfreigabe für Sprint 1 ist umgesetzt. Golden-Datensatz, 
 Faktenvertrag, serverautoritative Berichte, getrennte Praxis-/Techniksicht, Consent Registry,
 Secure SDLC, SDK-57-Zielplattform und der technische Snapshotvertrag sind vorhanden.
 
-SP3-03 wurde über PR #61 als Mergecommit `e0a49ea` nach `main` übernommen. Der nächste
-freigegebene Implementierungsschritt ist **SP3-04 – SafeScan-Policy und
-Scan-Authorization-Schema**, sobald die Post-Merge-CI von PR #61 grün abgeschlossen ist. Der neue
+SP3-03 wurde über PR #61 als Mergecommit `e0a49ea` nach `main` übernommen; seine Post-Merge-CI
+ist grün. **SP3-04 – SafeScan-Policy und Scan-Authorization-Schema** ist auf
+`codex/sp3-04-safescan-policy` technisch implementiert und befindet sich in Verifikation. Der neue
 Snapshotvertrag darf trotz Merge noch nicht produktiv beschrieben oder an neue Reportmanifeste
 gebunden werden. Dieser Cutover bleibt von ADR-001 sowie SP3-02 D-05/D-06/D-07 abhängig.
 
 Windows-Agent, FRITZ!Box-Connector und aktive Netzwerkscans beginnen weiterhin nicht vor dem
 SafeScan-Vertrag und der Phase-0-End-to-End-Abnahme. Damit bleibt der kritische Pfad:
 
-1. Post-Merge-CI von PR #61 vollständig grün bestätigen;
-2. SP3-04 auf einem neuen Branch von aktuellem `origin/main` beginnen und fachlich/rechtlich prüfen;
-3. SP3-05 §-390-Kontrollinventar und Redaktionsworkflow freigeben;
+1. SP3-04 per unabhängigem Security Review prüfen und die offenen medizinisch/fachlichen,
+   Datenschutz- und Rechtsfreigaben namentlich dokumentieren;
+2. PR-CI einschließlich pgTAP und Secure SDLC vollständig grün abschließen;
+3. SP3-05 §-390-Kontrollinventar und Redaktionsworkflow beginnen;
 4. SP3-06 Phase-0-End-to-End-Abnahme durchführen;
 5. erst danach Phase 2 mit Router-, Windows- und vertiefter Netzwerkmessung beginnen.
 
@@ -842,8 +843,8 @@ SafeScan-Vertrag und der Phase-0-End-to-End-Abnahme. Damit bleibt der kritische 
 
 ## 22. Umsetzungsstatus
 
-Stand: **2026-09-20**, PR #61 als `e0a49ea` gemergt; Secure SDLC nach Merge grün,
-Post-Merge-CI läuft; noch kein Produktionsrelease.
+Stand: **2026-09-20**, PR #61 und Plan-PR #62 gemergt; deren Post-Merge-CI und Secure SDLC sind
+grün. SP3-04 ist technisch implementiert und lokal verifiziert; noch kein Produktionsrelease.
 
 ### 22.0 Kurzstatus: geschlossen und offen
 
@@ -860,16 +861,19 @@ Schlüssel-/Betriebsentscheidungen oder reale Geräte-/Signing-Nachweise können
 | **Technisch geschlossen / Cutover gesperrt** | SP3-03 / PR #61 | Snapshotvertrag, ADR-002, Schema, Migration, RLS/Grants, RPC, Datenschutzexport/-löschung, Contract Fixtures und Recovery-Canaries; PR-CI `35503039909` und Secure SDLC `35503039933` vollständig grün; als `e0a49ea` gemergt | Post-Merge-CI abschließen; produktive Snapshoterzeugung bleibt durch ADR-001 und D-05/D-06/D-07 gesperrt |
 | **Implementiert, Release-Nachweise offen** | SP1-01 bis SP1-04, SP1-06, SP2-01A, SP2-04 bis SP2-06, SP3-01 | Fakten-/Collection-/Reportverträge, verschlüsselte lokale Inventarpersistenz, kanonischer PDF-Pfad, Consent Registry, native Permissions/Buildhärtung und Secure-SDLC-Pipeline | fachliche/Datenschutz-/Rechtsfreigaben, reale Geräte-Smokes, Branch-/Environment-Schutz sowie echter signierter AAB-/IPA-Nachweis gemäß Detailzeilen |
 | **Review-/Migrationsfreigabe offen** | SP1-07, SP2-02, SP2-01B | ADR-001 ist technisch entworfen und geprüft | benannte Owner-Sign-offs; erst danach WLAN-Bestandsmigration und Cloud-/Delta-Sync implementieren |
-| **Noch nicht begonnen** | SP3-04, SP3-05, SP3-06 sowie Phasen 2–6 | Scope, Abhängigkeiten und Abnahmekriterien sind im Masterplan definiert | Umsetzung in der Reihenfolge SP3-04 → SP3-05 → SP3-06; danach Phase 2 |
+| **Technisch implementiert / externe Freigaben offen** | SP3-04 | SafeScan-Policy, striktes Autorisierungsschema, verschlüsselte D2-Scopepersistenz, RLS/RPC-Lifecycle, Widerruf, Kill Switch und Safety-Fixtures | unabhängiges Security Review; benannte medizinisch/fachliche, Datenschutz- und Rechtsfreigabe; PR-/Post-Merge-Gates; keine aktiven Probes vor SP3-06 |
+| **Noch nicht begonnen** | SP3-05, SP3-06 sowie Phasen 2–6 | Scope, Abhängigkeiten und Abnahmekriterien sind im Masterplan definiert | Umsetzung in der Reihenfolge SP3-05 → SP3-06; danach Phase 2 |
 
 #### Unmittelbar nächste Arbeit
 
-1. Laufende Post-Merge-CI `35504767936` von PR #61 vollständig grün bestätigen; Secure SDLC
-   `35504767928` ist bereits grün.
-2. Danach auf einem neuen Branch direkt von aktuellem `origin/main` SP3-04 beginnen.
-3. Parallel keine produktive Snapshot-, WLAN-Migrations- oder Schlüsselrotationsfreigabe
+1. SP3-04 committen, pushen, per PR prüfen und CI/Secure SDLC einschließlich 348 pgTAP-
+   Assertions grün bestätigen.
+2. Unabhängiges Security Review und die ausdrücklich offenen Fach-/Rechts-/Datenschutzfreigaben
+   dokumentieren; bis dahin Status höchstens `technical_complete`.
+3. Danach SP3-05 auf einem neuen Branch direkt von aktuellem `origin/main` beginnen.
+4. Parallel keine produktive Snapshot-, WLAN-Migrations-, Scan- oder Schlüsselrotationsfreigabe
    vortäuschen: Diese Pfade bleiben fail-closed, bis die benannten Entscheidungen vorliegen.
-4. Den vollständigen seriellen 15/15-iOS-Simulatorlauf und später die physische iOS-/Android-Matrix
+5. Den vollständigen seriellen 15/15-iOS-Simulatorlauf und später die physische iOS-/Android-Matrix
    als eigene Nachweise nachholen; grüne Unit-/DB-/Android-CI ersetzt sie nicht.
 
 | Ticket | Status | Gelieferter Stand | Noch offen bis `released` |
@@ -889,7 +893,8 @@ Schlüssel-/Betriebsentscheidungen oder reale Geräte-/Signing-Nachweise können
 | SP3-01 | verification | Separate Secure-SDLC-Pipeline mit registry-aktuellem, GHSA-genauem Dependency-Gate, maximal 31 Tage gültigen Build-Toolchain-Ausnahmen, PR-Dependency-Review, CodeQL `security-extended` und eigenem SARIF-Gate; validierte CycloneDX-SBOM als CI-Evidenz; alle Actions per Commit-SHA gepinnt und Dependabot-Updates eingerichtet; Release-Temp-Pfade werden erst im Runner aufgelöst; geschützte Android-/iOS-Release-Jobs mit fail-closed Secretvollständigkeit, freigegebenem Zertifikatsfingerabdruck, Tag-/Main-Bindung, produktiver Endpoint-Konfiguration, Hashmanifest und GitHub/Sigstore-SBOM-Attestation; `xmldom` 0.9.11 bleibt mit reproduzierbarem Expo-Plist-Patch prebuild-kompatibel; CI `31794686220` und Secure SDLC `31794686209` vollständig grün; Patch-SLAs und vertrauliche Vulnerability Disclosure dokumentiert; der frühere Expo-Upgrade-/Allowlist-Rückstand ist geschlossen | GitHub Branch-/Tag-/Environment-Regeln; echte signierte AAB-/IPA-Releases und unabhängige Attestation-/Store-Identitätsprüfung; benannte Triage-Owner |
 | SP3-01B | merged / target-platform-complete | Expo SDK 52 bis 57 kontrolliert migriert; Zielstand SDK 57 / Expo 57.0.24 / RN 0.86.3 / React 19.2.3, Hermes-v1-Rückstand geschlossen, Expo Doctor 21/21, Dependency-Allowlist leer; Basis über PR #51 als `af8d579`, kompatibler Patchstand über PR #61 als `e0a49ea` gemergt | vollständiger 15/15-Simulator-Wiederholungslauf nach den letzten Harness-Fixes; physische iOS-/Android-Gerätematrix sowie echter Signing-/Store-Nachweis bleiben Produktions-Gates |
 | SP3-02 | Phase A `audit_completed`; Phase B `technical_complete_8_of_8`; Release `blocked_by_owner_decisions` | Basis über PR #59 als `715f3ab` und G-01 über PR #60 als `2bfb82b` gemergt; **Phase A vollständig durchgeführt**: `docs/SP3_02_RECOVERY_INVENTORY.md` inventarisiert am tatsächlichen Code zehn Bestandsgruppen und 24 priorisierte Lücken; `docs/SP3_02_DECISION_LOG.md` führt zehn offene Entscheidungen D-01 bis D-10. **Phase B ist reproduzierbar implementiert und lokal gemessen:** synthetischer Zwei-Mandanten-Dump, isolierte Restore-Datenbank und Metadaten-only-Evidenz. Nach der G-01-Migration löschen RPC und Restore alle sechs D2-Sammlungen mandantenfest; vollständiger Vorabexport, Legal Retention und Wiederholungslauf sind geprüft. Referenzlauf auf Commit `5705b69` 8/8 mit 266/266 pgTAP-Assertions, identischen RLS-/Policy-/Grant-Snapshots, identischen kanonischen Report-/PDF-Hashes und fail-closed Schlüsselprüfung. Lokale Messung: 291 ms Backup, 443 ms Restore; kein Produktionsclaim. PR #60 war vollständig grün; der spätere rote Post-Merge-CI-Lauf stammte ausschließlich aus nachträglichem Expo-Patchdrift, dessen Korrektur über PR #61 gemergt ist | null von zehn Owner-Entscheidungen sind `decided`, daher bleiben Produktionsübertragbarkeit und Freigabe gesperrt; Phase C benötigt D-05/D-06/D-07, Phase D D-08/D-09/D-10; RPO/RTO bleiben unbestimmt bis produktionsrepräsentativer Messung **und** Freigabe |
-| SP3-03 | released / productive cutover gated | ADR-002, strikter JSON-/Runtime-Vertrag und zwei Contract Fixtures; additive Tabellen für unveränderliche Snapshots, geordnete Komponenten und Scoreerklärungen; atomare/idempotente service-role-only RPC, `FORCE RLS`, entzogene Direktwrites und ausgeblendetes Ciphertextfeld; optionale echte Ed25519-Signatur statt falschem Hash-Claim; nullable tenantfeste Manifestbindung; Datenschutzexport und Praxislöschung erweitert. Frischer DB-Reset sowie 300/300 pgTAP-Assertions grün, davon 34 neue Snapshot-Prüfungen; Lint/TypeScript und 512 Jest-Tests grün; Recovery-Drill mit erhaltenem Praxis-A-Snapshot und gelöscht bleibendem Praxis-B-Snapshot 8/8. PR-CI `35503039909` und Secure SDLC `35503039933` vollständig grün; PR #61 als `e0a49ea` gemergt | Post-Merge-CI bestätigen. Produktive Snapshoterzeugung und Manifest-Cutover bleiben bis ADR-001 und D-05/D-06/D-07 gesperrt; danach SP3-04 auf neuem Branch vom aktuellen `main` |
+| SP3-03 | released / productive cutover gated | ADR-002, strikter JSON-/Runtime-Vertrag und zwei Contract Fixtures; additive Tabellen für unveränderliche Snapshots, geordnete Komponenten und Scoreerklärungen; atomare/idempotente service-role-only RPC, `FORCE RLS`, entzogene Direktwrites und ausgeblendetes Ciphertextfeld; optionale echte Ed25519-Signatur statt falschem Hash-Claim; nullable tenantfeste Manifestbindung; Datenschutzexport und Praxislöschung erweitert. Frischer DB-Reset sowie 300/300 pgTAP-Assertions grün, davon 34 neue Snapshot-Prüfungen; Lint/TypeScript und 512 Jest-Tests grün; Recovery-Drill mit erhaltenem Praxis-A-Snapshot und gelöscht bleibendem Praxis-B-Snapshot 8/8. PR-CI `35503039909`, Secure SDLC `35503039933` sowie Post-Merge-CI `35504767936`/Secure SDLC `35504767928` vollständig grün; PR #61 als `e0a49ea` gemergt | Produktive Snapshoterzeugung und Manifest-Cutover bleiben bis ADR-001 und D-05/D-06/D-07 gesperrt |
+| SP3-04 | technical_complete / external_review_required | ADR-003, JSON Schema und strikter Runtime-Parser für `de-health-safescan-1.0.0`; S0–S3 mit hartem S3-Verbot; medizinische/unbekannte Ziele ohne Zusatzfreigabe maximal S1; S2 nur im Wartungsfenster; explizite Ziele/Ausschlüsse und sechs Stopbedingungen. Additive, unveränderliche Autorisierungs-/Lifecycle-/Kill-Switch-Tabellen mit `FORCE RLS`, ausgeblendeter D2-Ciphertextspalte, service-role-only RPCs mit serverseitiger Actor- und Zeitprüfung, maximal 31 Tagen Gültigkeit sowie Datenschutzexport/-löschung. Frischer DB-Reset, 348/348 pgTAP-Assertions (48 neu), DB-Lint ohne neuen Befund und `npm run verify` mit 526 bestandenen Tests grün. Recovery-Drill mit wiederhergestellter Praxis-A-Autorisierung und gelöscht bleibender Praxis-B-Autorisierung 8/8 | unabhängiges Security Review; namentliche medizinisch/fachliche, Datenschutz- und Rechtsfreigabe; PR-/Post-Merge-Gates. Scanqueue/Runner/Probes bleiben deaktiviert; spätere Integration muss jeden Probe unmittelbar an Lifecycle- und entschlüsselten Scope-Preflight binden und den Kill-Switch-Abbruch nachweisen |
 
 Die folgenden Nachträge sind historische Zwischenstände einzelner Arbeitspakete. Ihre damaligen
 Testzahlen bleiben als Evidenz erhalten; für den aktuellen Gesamtstatus gelten die Kurzmatrix und

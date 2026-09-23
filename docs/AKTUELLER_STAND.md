@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-20 (SP3-03 Assessment-Snapshot v1 in PR #61; Expo-Patchdrift behoben)
+Stand: 2026-09-20 (SP3-04 SafeScan-Vertrag technisch implementiert; externe Freigaben offen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -13,6 +13,19 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 `docs/UMSETZUNGSPLAN_2026.md`. Diese Datei ersetzt den Umsetzungsplan nicht.
 
 ## Aktueller Arbeitskontext
+
+- **SP3-03 und Plan-Nachzug abgeschlossen:** PR #61 wurde als `e0a49ea` gemergt; die
+  Post-Merge-Läufe CI `35504767936` und Secure SDLC `35504767928` sind grün. PR #62 hat den
+  Umsetzungsplan als `6d1e5e3` nachgezogen; CI `35506568022` und Secure SDLC `35506568095` sind
+  ebenfalls grün. Der aktuelle SP3-04-Branch basiert direkt auf diesem `origin/main`-Stand.
+- **SP3-04 technisch implementiert, nicht produktiv freigegeben:** ADR-003, JSON Schema und
+  Runtime-Vertrag definieren S0–S3, wobei S3 in v1 nicht autorisierbar ist. Medizinische und
+  unbekannte Geräte bleiben ohne zielgebundene Zusatzfreigabe auf S1. S2 benötigt ein aktives
+  Wartungsfenster. Ausschlüsse, sechs verpflichtende Stopbedingungen, Widerruf und Praxis-Kill-
+  Switch wirken fail-closed.
+- **Noch keine aktiven Scans:** SP3-04 liefert ausschließlich Vertrag, verschlüsselte
+  Autorisierungspersistenz und Preflight. Scanqueue, Scheduler und Netzwerkprobes bleiben bis zur
+  namentlichen Security-/Fach-/Rechts-/Datenschutzfreigabe und SP3-06 deaktiviert.
 
 - **SDK-57-Migrationskette abgeschlossen und gemergt:** PR
   [`#51`](https://github.com/kwhussam/praxis-ai/pull/51) wurde als Commit `af8d579` nach `main`
@@ -51,6 +64,46 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   dokumentiert. Die grünen GitHub-Gates ersetzen diesen Runtime-Nachweis nicht.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
+
+## SP3-04 – SafeScan-Policy und Scan-Autorisierung v1
+
+Auf `codex/sp3-04-safescan-policy`, direkt von `origin/main`/`6d1e5e3`, ist der technische
+SafeScan-Vertrag additiv implementiert:
+
+- `de-health-safescan-1.0.0` klassifiziert S0 passiv/lokal, S1 minimal read-only, S2 begrenzt
+  aktiv im Wartungsfenster und S3 potenziell disruptiv. S3 wird in v1 immer abgelehnt.
+- Der strikte Parser und das JSON Schema binden Praxis, opaken Standort, Actor, Version,
+  maximal 31 Tage Gültigkeit, Ziele, Ausschlüsse, gerätespezifische Obergrenzen,
+  Wartungsfenster, Stopbedingungen und Scope-Hash. Unbekannte Felder erfordern einen
+  Versionssprung.
+- `scan_authorizations`, `scan_authorization_events` und `scan_kill_switch_events` sind
+  mandantengebunden, `FORCE RLS`-geschützt und unveränderlich. Direkte Writes sind auch für
+  `service_role` entzogen. Nur RPCs mit leerem `search_path` dürfen atomar anlegen, widerrufen,
+  den Kill Switch schalten oder den Lifecycle prüfen.
+- Zielnetze, Hostnamen und Assets bleiben ausschließlich im AES-256-GCM-Envelope. Die
+  authentifizierte Tabellenoberfläche enthält nur D1-Metadaten und blendet `encrypted_scope`
+  vollständig aus. Der Datenschutzexport enthält nur D1-Lifecycle-Evidenz; die Praxislöschung
+  entfernt Scope, Autorisierung und Ereignisse atomar.
+- Der Actor wird serverseitig aus direkter aktiver Praxis-Owner-/Manager-Mitgliedschaft
+  abgeleitet. White-Label-Zugriff genügt nicht. Lifecycle, Widerruf und Kill Switch verwenden
+  ausschließlich Serverzeit, sodass ein interner Aufrufer keine Ereignisse zurückdatieren kann.
+
+Lokale Nachweise: frischer Supabase-Reset erfolgreich; vollständige pgTAP-Suite mit **348/348**
+Assertions grün, davon **48 neue SafeScan-Prüfungen**. Der DB-Lint meldet nur die zwei bekannten
+ungenutzten Parameter von `create_or_get_own_practice`, keinen neuen SP3-04-Befund.
+`npm run verify` ist außerhalb der Loopback-Sandbox vollständig grün: Lint, TypeScript,
+**526 bestandene Tests**, 6 bewusst übersprungene Tests und 2 bestandene Snapshots. Die neue
+Safety-Suite umfasst 14 Tests für S3-Verbot, sensible Geräte, Zusatzfreigabe, Wartungsfenster,
+Scope/Ausschlüsse, Gültigkeit, Kill Switch, Mandantenbindung, malformed Requests und strikte Versionierung.
+Der synthetische Zwei-Mandanten-Recovery-Drill wurde um SafeScan-Canaries erweitert und bestand
+erneut **8/8**. Praxis A stellte verschlüsselten Scope, Grant-Ereignis und Kill-Switch-Grundzustand
+wieder her; die vor dem Backup gelöschten Praxis-B-Daten blieben gelöscht. Der finale lokale Lauf
+`20260920T195748Z-6d1e5e3c8930` maß 227 ms Backup und 432 ms Restore; dies ist ausdrücklich kein
+Produktions-RPO/-RTO-Claim.
+
+Offen bis `released`: unabhängiges Security Review, benannte medizinisch/fachliche Prüfung,
+Datenschutz- und Rechtsfreigabe sowie die spätere Runner-Integration mit Kill-Switch-Abbruchtest.
+Diese externen Gates sind ausdrücklich keine durch Unit- oder Datenbanktests ersetzbaren Claims.
 
 ## SP3-03 – Assessment-Snapshot v1
 
@@ -505,14 +558,12 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **Expo-Patchkorrektur in PR #61 pushen und die GitHub-Gates erneut vollständig grün abwarten.**
-   Besonders `quality` muss Expo Doctor 21/21 und den Android-Release-Build gemeinsam bestätigen;
-   die Migration darf vorher nicht gemergt werden.
-2. **Danach unabhängiges Security-/Privacy-Review und Merge von PR #61.** Produktive
-   Snapshoterzeugung und Manifest-Cutover bleiben trotz Merge gesperrt.
-3. **Nach Merge SP3-04 – SafeScan-Policy und Scan-Authorization-Schema beginnen.** Das baut auf
-   Snapshot-Komponenten und dem bestehenden Collection-Vertrag auf, aktiviert aber noch keinen
-   produktiven aktiven Scan.
+1. **PR #63 vollständig prüfen:** `quality`, `rls-pgtap`, CodeQL sowie Dependency-/SBOM-Gates
+   müssen grün sein; anschließend unabhängiges Security-Review durchführen.
+2. **SP3-04 fachlich freigeben:** benannte medizinisch/fachliche, Datenschutz- und Rechtsreviews
+   dokumentieren. Der technische Merge aktiviert weiterhin weder Scanqueue noch aktive Probes.
+3. **Nach Merge SP3-05 beginnen:** §-390-Kontrollinventar und Redaktionsworkflow auf einem neuen
+   Branch direkt vom dann aktuellen `origin/main` implementieren.
 4. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
    produktiver v2-verschlüsselter Snapshot erzeugt und an neue Reportmanifeste gebunden werden.
 5. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:

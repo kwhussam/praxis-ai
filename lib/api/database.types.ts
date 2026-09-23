@@ -1742,6 +1742,153 @@ export type Database = {
           },
         ]
       }
+      scan_authorization_events: {
+        Row: {
+          actor_user_id: string
+          authorization_id: string
+          created_at: string
+          event_type: string
+          id: string
+          occurred_at: string
+          practice_id: string
+          reason_code: string
+        }
+        Insert: {
+          actor_user_id: string
+          authorization_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          occurred_at: string
+          practice_id: string
+          reason_code: string
+        }
+        Update: {
+          actor_user_id?: string
+          authorization_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          practice_id?: string
+          reason_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_authorization_events_authorization_fkey"
+            columns: ["authorization_id", "practice_id"]
+            isOneToOne: false
+            referencedRelation: "scan_authorizations"
+            referencedColumns: ["id", "practice_id"]
+          },
+        ]
+      }
+      scan_authorizations: {
+        Row: {
+          actor_role: string
+          actor_user_id: string
+          authorized_at: string
+          created_at: string
+          encrypted_scope: Json
+          exclusion_count: number
+          id: string
+          idempotency_key: string
+          max_safety_class: number
+          policy_version: string
+          practice_id: string
+          schema_version: string
+          scope_sha256: string
+          site_ref: string
+          target_count: number
+          valid_from: string
+          valid_until: string
+        }
+        Insert: {
+          actor_role: string
+          actor_user_id: string
+          authorized_at: string
+          created_at?: string
+          encrypted_scope: Json
+          exclusion_count: number
+          id: string
+          idempotency_key: string
+          max_safety_class: number
+          policy_version: string
+          practice_id: string
+          schema_version: string
+          scope_sha256: string
+          site_ref: string
+          target_count: number
+          valid_from: string
+          valid_until: string
+        }
+        Update: {
+          actor_role?: string
+          actor_user_id?: string
+          authorized_at?: string
+          created_at?: string
+          encrypted_scope?: Json
+          exclusion_count?: number
+          id?: string
+          idempotency_key?: string
+          max_safety_class?: number
+          policy_version?: string
+          practice_id?: string
+          schema_version?: string
+          scope_sha256?: string
+          site_ref?: string
+          target_count?: number
+          valid_from?: string
+          valid_until?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_authorizations_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scan_kill_switch_events: {
+        Row: {
+          actor_user_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          occurred_at: string
+          practice_id: string
+          reason_code: string
+        }
+        Insert: {
+          actor_user_id: string
+          created_at?: string
+          enabled: boolean
+          id?: string
+          occurred_at: string
+          practice_id: string
+          reason_code: string
+        }
+        Update: {
+          actor_user_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          occurred_at?: string
+          practice_id?: string
+          reason_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_kill_switch_events_practice_id_fkey"
+            columns: ["practice_id"]
+            isOneToOne: false
+            referencedRelation: "practices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       security_checks: {
         Row: {
           anonymized_at: string | null
@@ -2154,6 +2301,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      check_scan_authorization_lifecycle: {
+        Args: {
+          p_authorization_id: string
+          p_policy_version: string
+          p_practice_id: string
+          p_requested_safety_class: number
+        }
+        Returns: Json
+      }
       cleanup_email_outbox: {
         Args: { retention_days?: number }
         Returns: number
@@ -2296,6 +2452,14 @@ export type Database = {
         }
         Returns: Json
       }
+      persist_scan_authorization: {
+        Args: {
+          p_authorization: Json
+          p_encrypted_scope: Json
+          p_idempotency_key: string
+        }
+        Returns: Json
+      }
       practice_member_role_rank: { Args: { p_role: string }; Returns: number }
       redeem_practice_invitation: {
         Args: {
@@ -2327,6 +2491,24 @@ export type Database = {
           p_postal_code: string
           p_practice_kind: string
           p_street: string
+        }
+        Returns: Json
+      }
+      revoke_scan_authorization: {
+        Args: {
+          p_actor_user_id: string
+          p_authorization_id: string
+          p_practice_id: string
+          p_reason_code: string
+        }
+        Returns: Json
+      }
+      set_scan_kill_switch: {
+        Args: {
+          p_actor_user_id: string
+          p_enabled: boolean
+          p_practice_id: string
+          p_reason_code: string
         }
         Returns: Json
       }
