@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-20 (SP3-04 SafeScan-Vertrag technisch implementiert; externe Freigaben offen)
+Stand: 2026-09-27 (SP3-05 §-390-Kontrollinventar technisch implementiert; externe Freigaben offen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -13,6 +13,18 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 `docs/UMSETZUNGSPLAN_2026.md`. Diese Datei ersetzt den Umsetzungsplan nicht.
 
 ## Aktueller Arbeitskontext
+
+- **SP3-04 gemergt und Post-Merge-Gates grün:** PR #63 wurde am 23.09.2026 als `5337310`
+  übernommen. CI `35880415574` und Secure SDLC `35880415466` sind vollständig grün. Aktive
+  Scans bleiben dennoch bis zu den dokumentierten externen Freigaben und SP3-06 deaktiviert.
+- **SP3-05 technisch implementiert:** Der Branch `codex/sp3-05-390-control-inventory` basiert
+  direkt auf `origin/main`/`5337310`. Alle 92 Anforderungen der geltenden KBV-Richtlinie sind
+  mit stabiler ID, Anlage, Nummer, Quellseite, Zielobjekt, Geltungsbereich und Inkrafttretedatum
+  erfasst. Alle Einträge stehen bewusst nur auf `mapped`.
+- **Redaktionsfreigabe bleibt fail-closed:** `reviewed` verlangt voneinander getrennte Reviews
+  aus Healthcare Compliance, Security Architecture und Privacy/Legal; `released` verlangt
+  zusätzlich einen unabhängigen Product Owner und denselben Inhalts-Hash. Ungeprüfte Einträge
+  können weder Score noch Bericht oder Complianceclaim speisen.
 
 - **SP3-03 und Plan-Nachzug abgeschlossen:** PR #61 wurde als `e0a49ea` gemergt; die
   Post-Merge-Läufe CI `35504767936` und Secure SDLC `35504767928` sind grün. PR #62 hat den
@@ -64,6 +76,30 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   dokumentiert. Die grünen GitHub-Gates ersetzen diesen Runtime-Nachweis nicht.
 - Die Umsetzung liegt in einem separaten Git-Worktree. Die parallele UI-Redesign-Arbeit im
   Hauptbaum bleibt unberührt.
+
+## SP3-05 – §-390-Kontrollinventar und Redaktionsworkflow
+
+Der Katalog `kbv-itsrl-390-2025-04-01` bildet die 92 Anforderungen der offiziellen, am
+31.03.2025 veröffentlichten KBV-Richtlinie ab: Anlage 1 = 50, Anlage 2 = 10, Anlage 3 = 17,
+Anlage 4 = 6 und Anlage 5 = 9. Die geprüfte 19-seitige Quelle ist über URL und SHA-256 gebunden.
+Die abweichend erst zum 01.10.2025 geltenden 29 Anforderungen sind explizit markiert.
+
+Die Architektur ist Content-as-Code: Git-Historie, Pull Request und CI bilden das globale
+Redaktionsjournal; es entstehen keine mandantenbezogenen oder personenbezogenen Daten. Die
+Anwendbarkeitslogik berücksichtigt Praxisgröße, medizinische Großgeräte, TI-Komponenten und die
+Nutzung des jeweiligen Zielobjekts. Fehlender Kontext bleibt `conditional` und wird nie als
+`not_applicable`, erfüllt oder konform interpretiert.
+
+ADR-004 definiert die Statusfolge `mapped → reviewed → released`, Hashbindung, Vier-Augen-
+Trennung und den Versionswechsel bei einer neuen KBV-Fassung. Der Modus `assessment_eligible`
+verlangt vor Release mindestens eine Evidenzanforderung und eine Produkt-Control-ID. Die
+bestehende MVP-ID `KBV-ITS-ANLAGE4-6` bleibt als Legacy-Alias von `KBV-390-A4-006` erhalten.
+
+Die vollständige Projektverifikation ist grün: Lint, TypeScript, **534 bestandene Tests**, sechs
+bewusst übersprungene Tests und zwei bestandene Snapshots; darin enthalten sind acht neue
+Katalog-/Workflowtests. Offen bleiben PR-/Post-Merge-Gates und vor allem die
+namentlichen fachlichen, Security-, Datenschutz-/Rechts- und Product-Owner-Freigaben. Bis dahin
+liefert `getReleasedKbv390Controls` absichtlich keine Kontrolle.
 
 ## SP3-04 – SafeScan-Policy und Scan-Autorisierung v1
 
@@ -558,15 +594,18 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **PR #63 vollständig prüfen:** `quality`, `rls-pgtap`, CodeQL sowie Dependency-/SBOM-Gates
-   müssen grün sein; anschließend unabhängiges Security-Review durchführen.
-2. **SP3-04 fachlich freigeben:** benannte medizinisch/fachliche, Datenschutz- und Rechtsreviews
-   dokumentieren. Der technische Merge aktiviert weiterhin weder Scanqueue noch aktive Probes.
-3. **Nach Merge SP3-05 beginnen:** §-390-Kontrollinventar und Redaktionsworkflow auf einem neuen
-   Branch direkt vom dann aktuellen `origin/main` implementieren.
-4. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
+1. **SP3-05 committen, pushen und per PR prüfen:** CI, Secure SDLC und unabhängiges
+   Security-/Content-Review müssen grün sein; der lokale Gesamt-`verify` ist bereits grün.
+2. **Die 92 Zuordnungen fachlich bearbeiten:** Evidenz, Anwendbarkeit und Claims einzeln durch
+   Healthcare Compliance, Security Architecture und Privacy/Legal prüfen. Erst danach darf ein
+   unabhängiger Product Owner einzelne Kontrollen auf `released` setzen.
+3. **Nach Merge SP3-06 beginnen:** Phase-0-End-to-End-Abnahme mit allen noch offenen Exit-Gates
+   dokumentieren; technische Teilnachweise nicht als Produktionsfreigabe darstellen.
+4. **SP3-04-Fachfreigaben bleiben separat offen:** Der technische Merge aktiviert weiterhin weder
+   Scanqueue noch aktive Probes.
+5. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
    produktiver v2-verschlüsselter Snapshot erzeugt und an neue Reportmanifeste gebunden werden.
-5. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
+6. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
      der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
@@ -574,12 +613,12 @@ spätere Produktions-Gate.
    - `G-04` – welche Auth-Daten umfasst das Supabase-Backup, wie wird GoTrue rekonstruiert und wie
      werden Signaturschlüssel beziehungsweise die erwartete Invalidierung alter Sessions behandelt?
    - `D-03` – der AVV schreibt `EU / Frankfurt` fest ein, ohne technischen Beleg im Repository.
-6. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
+7. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
    Schlüsselrotation bleibt durch D-05/D-06/D-07 blockiert.
-7. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
+8. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
    `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
-8. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
+9. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 
 ## Bewusste Grenzen
 
