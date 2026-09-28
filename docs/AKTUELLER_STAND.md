@@ -186,11 +186,17 @@ während der vor dem Backup gelöschte Snapshot von Praxis B gelöscht blieb.
 
 Der erste PR-Lauf bestätigte `rls-pgtap` mit allen 300 Assertions sowie sämtliche Secure-SDLC-
 Gates. `quality` schlug erst nach erfolgreichem Android-Release-Build am fail-closed Expo-Doctor-
-Gate an: Expo verlangt inzwischen sieben neuere SDK-57-Patchstände. PR #61 zieht deshalb `expo`
+Gate an: Expo verlangte damals sieben neuere SDK-57-Patchstände. PR #61 zog deshalb `expo`
 57.0.24, `expo-router` 57.0.22 und die fünf dazugehörigen Expo-Module samt Lockfile und geprüfter
-Upgrade-Baseline nach. Lokal sind danach Expo Doctor **21/21**, Dependency-Gate **0 Ausnahmen**
-und `npm run verify` mit **512 bestandenen Tests** grün. Der erneute GitHub-Nachweis folgt nach
-Push dieses Korrekturcommits.
+Upgrade-Baseline nach. Am 28.09.2026 meldete der fail-closed Doctor erneut Patchdrift; der
+SP3-05-Folgecommit aktualisiert die sechs nun verlangten Pakete auf den unten dokumentierten
+Stand. Der Patchstand zog `expo-modules-core` transitiv von 57.0.18 auf **57.0.19**; die
+fail-closed Vendor-Härtung brach daraufhin korrekt ab, statt stillschweigend nicht zu greifen.
+Die unsichere Form `requestedPermissions!!.contains(permission)` wurde im neuen Upstream-Quellstand
+erneut bestätigt (`PermissionsService.kt:212`), erst danach wurde der Pin in
+`scripts/apply-vendor-hardening.mjs` nachgezogen. Es wurde nichts entfernt und keine Prüfung
+gelockert. Lokal sind Expo Doctor **21/21**, Dependency-Gate **0 Ausnahmen** und `npm run verify`
+mit **537 bestandenen Tests** grün.
 
 ## Was in der aktuellen SDK-57-Stufe gemacht wurde
 
@@ -199,10 +205,10 @@ anschließend „Dependencies are up to date":
 
 | Paket | SDK 56 | SDK 57 |
 |---|---|---|
-| `expo` | 56.0.21 | **57.0.24** |
+| `expo` | 56.0.21 | **57.0.25** |
 | `react-native` | 0.85.3 | **0.86.3** |
 | `react` / `react-dom` | 19.2.3 | 19.2.3 (unverändert) |
-| `expo-router` | 56.2.20 | **57.0.22** |
+| `expo-router` | 56.2.20 | **57.0.23** |
 | `react-native-reanimated` | 4.3.1 | 4.5.1 |
 | `react-native-worklets` | 0.8.3 | 0.10.1 |
 | `react-native-gesture-handler` | 2.31.2 | 2.32.0 |
@@ -210,7 +216,7 @@ anschließend „Dependencies are up to date":
 | `react-native-svg` | 15.15.4 | 15.15.4 (unverändert) |
 | `expo-file-system` | 56.0.11 | 57.0.7 |
 | `jest-expo` | 56.0.5 | 57.0.5 |
-| `babel-preset-expo` | 56.0.20 | 57.0.12 |
+| `babel-preset-expo` | 56.0.20 | 57.0.13 |
 | `typescript` | 6.0.3 | 6.0.3 (unverändert) |
 
 **Plattform unverändert:** SDK 57 verlangt iOS 16.4 und Android 7/API 24. Das Projekt liegt mit
@@ -242,7 +248,7 @@ aus dem dann kohärenten Manifest neu aufgelöst.
 - `@expo/plist` 0.7.0 → **0.8.1** ruft `parseFromString` weiterhin einargumentig auf. Der
   ungepatchte Aufruf **wirft** unter dem erzwungenen xmldom 0.9.12 nachweislich; die Härtung ist
   also weiterhin Voraussetzung für funktionierendes Plist-Parsing.
-- `expo-modules-core` 56.0.25 → **57.0.18** wertet weiterhin `requestedPermissions!!` aus.
+- `expo-modules-core` 56.0.25 → **57.0.19** wertet weiterhin `requestedPermissions!!` aus.
 - Der **`@xmldom/xmldom`-Override bleibt nötig**, weil `@expo/plist` selbst noch `^0.8.8`
   deklariert. Der Test prüft jetzt die Sicherheitsuntergrenze (0.9-Linie, `>= 0.9.11`) statt eines
   exakten Patches, der der Caret-Range widersprach.

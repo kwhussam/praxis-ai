@@ -304,7 +304,7 @@ für den noch offenen App-Boot-, Navigations- und Animations-Smoke auf SDK 57.
 
 Die beiden Vendor-Härtungen wurden gegen die installierten SDK-57-Quellen neu bewertet und bleiben
 erforderlich: `@expo/plist` 0.8.1 ruft `parseFromString` weiterhin einargumentig auf und
-`expo-modules-core` 57.0.18 wertet `requestedPermissions` weiterhin mit erzwungener
+`expo-modules-core` 57.0.19 wertet `requestedPermissions` weiterhin mit erzwungener
 Nicht-null-Auswertung aus. Der `@xmldom/xmldom`-Override bleibt zwingend, weil `@expo/plist` selbst
 noch `^0.8.8` deklariert; der ungepatchte Aufruf wirft unter dem erzwungenen xmldom 0.9.12
 nachweislich. Der zugehörige Test prüft nun die Sicherheitsuntergrenze der 0.9-Linie statt eines
@@ -325,8 +325,20 @@ vollständige 15-Flow-Maestro-Lauf.
 Am 16. September 2026 wurden die inzwischen veröffentlichten kompatiblen SDK-57-Patchstände
 nachgezogen. Expo Doctor läuft damit weiterhin 21/21. Wrangler 4.132.0 aktualisiert den
 Build-Werkzeugpfad auf Sharp 0.35.4 und schließt `GHSA-rgj7-g3m4-5g8c` ohne Allowlist-Ausnahme.
-Die Vendor-Härtung für `expo-modules-core` bleibt auch auf 57.0.18 erforderlich und ist an diesen
+Die Vendor-Härtung für `expo-modules-core` blieb auch auf 57.0.18 erforderlich und war an diesen
 Quellstand fail-closed gebunden.
+
+Am 28. September 2026 meldete der Doctor erneut Patchdrift. Nachgezogen wurden `expo` 57.0.25,
+`expo-build-properties` 57.0.22, `expo-linking` 57.0.11, `expo-notifications` 57.0.21,
+`expo-router` 57.0.23 und `expo-sharing` 57.0.22 — alle innerhalb desselben Expo-Majors, keine
+SDK-Migration. Der Patchstand zog `expo-modules-core` transitiv auf **57.0.19**. Genau dafür ist
+die fail-closed Versionsbindung gebaut: Der Postinstall-Schritt brach ab, statt den Patch
+stillschweigend nicht anzuwenden, und der Regressionstest schlug entsprechend fehl. Die unsichere
+Form `requestedPermissions!!.contains(permission)` wurde im neuen Upstream-Quellstand erneut
+bestätigt (`PermissionsService.kt:212`); **upstream hat nichts behoben**, die Härtung bleibt
+erforderlich. Erst nach dieser Bestätigung wurde der Pin in `scripts/apply-vendor-hardening.mjs`
+auf 57.0.19 gehoben. `@expo/plist` bleibt unverändert auf dem bereits bewerteten Stand 0.8.1.
+Es wurde keine Prüfung entfernt, gelockert oder mit einer Ausnahme versehen.
 
 ## Primärquellen
 
