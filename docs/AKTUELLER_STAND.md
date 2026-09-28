@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-27 (SP3-05 §-390-Kontrollinventar technisch implementiert; externe Freigaben offen)
+Stand: 2026-09-28 (SP3-05 §-390-Kontrollinventar technisch implementiert; externe Freigaben offen)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -20,10 +20,12 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **SP3-05 technisch implementiert:** Der Branch `codex/sp3-05-390-control-inventory` basiert
   direkt auf `origin/main`/`5337310`. Alle 92 Anforderungen der geltenden KBV-Richtlinie sind
   mit stabiler ID, Anlage, Nummer, Quellseite, Zielobjekt, Geltungsbereich und Inkrafttretedatum
-  erfasst. Alle Einträge stehen bewusst nur auf `mapped`.
+  erfasst. Der Quellkatalog ist statusfrei; derzeit existiert kein freigegebener
+  Redaktionsdatensatz.
 - **Redaktionsfreigabe bleibt fail-closed:** `reviewed` verlangt voneinander getrennte Reviews
   aus Healthcare Compliance, Security Architecture und Privacy/Legal; `released` verlangt
-  zusätzlich einen unabhängigen Product Owner und denselben Inhalts-Hash. Ungeprüfte Einträge
+  zusätzlich einen unabhängigen Product Owner. Der Inhalts-Hash wird aus kanonischem Kontroll-
+  und Mappinginhalt abgeleitet und bei jedem Übergang neu geprüft. Ungeprüfte Einträge
   können weder Score noch Bericht oder Complianceclaim speisen.
 
 - **SP3-03 und Plan-Nachzug abgeschlossen:** PR #61 wurde als `e0a49ea` gemergt; die
@@ -81,22 +83,25 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 Der Katalog `kbv-itsrl-390-2025-04-01` bildet die 92 Anforderungen der offiziellen, am
 31.03.2025 veröffentlichten KBV-Richtlinie ab: Anlage 1 = 50, Anlage 2 = 10, Anlage 3 = 17,
-Anlage 4 = 6 und Anlage 5 = 9. Die geprüfte 19-seitige Quelle ist über URL und SHA-256 gebunden.
+Anlage 4 = 6 und Anlage 5 = 9. URL und der am 23.09.2026 manuell verifizierte SHA-256 der
+19-seitigen Quelle sind versioniert; die CI lädt oder hasht die externe PDF nicht automatisch.
 Die abweichend erst zum 01.10.2025 geltenden 29 Anforderungen sind explizit markiert.
 
 Die Architektur ist Content-as-Code: Git-Historie, Pull Request und CI bilden das globale
 Redaktionsjournal; es entstehen keine mandantenbezogenen oder personenbezogenen Daten. Die
 Anwendbarkeitslogik berücksichtigt Praxisgröße, medizinische Großgeräte, TI-Komponenten und die
-Nutzung des jeweiligen Zielobjekts. Fehlender Kontext bleibt `conditional` und wird nie als
+Nutzung kanonischer Zielobjekt-IDs. Unbekannte Praxisgröße, fehlender Kontext und ungültige
+Zielobjektinventare bleiben `conditional` und werden nie als
 `not_applicable`, erfüllt oder konform interpretiert.
 
-ADR-004 definiert die Statusfolge `mapped → reviewed → released`, Hashbindung, Vier-Augen-
+ADR-004 definiert die Statusfolge `mapped → reviewed → released`, inhaltlich abgeleitete
+Hashbindung, tiefe Runtime-Immutability, eine Zwei-Minuten-Zeitstempeltoleranz, Vier-Augen-
 Trennung und den Versionswechsel bei einer neuen KBV-Fassung. Der Modus `assessment_eligible`
 verlangt vor Release mindestens eine Evidenzanforderung und eine Produkt-Control-ID. Die
 bestehende MVP-ID `KBV-ITS-ANLAGE4-6` bleibt als Legacy-Alias von `KBV-390-A4-006` erhalten.
 
-Die vollständige Projektverifikation ist grün: Lint, TypeScript, **534 bestandene Tests**, sechs
-bewusst übersprungene Tests und zwei bestandene Snapshots; darin enthalten sind acht neue
+Die vollständige Projektverifikation ist grün: Lint, TypeScript, **537 bestandene Tests**, sechs
+bewusst übersprungene Tests und zwei bestandene Snapshots; darin enthalten sind elf neue
 Katalog-/Workflowtests. Offen bleiben PR-/Post-Merge-Gates und vor allem die
 namentlichen fachlichen, Security-, Datenschutz-/Rechts- und Product-Owner-Freigaben. Bis dahin
 liefert `getReleasedKbv390Controls` absichtlich keine Kontrolle.

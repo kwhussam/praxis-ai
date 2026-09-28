@@ -5,7 +5,7 @@
 - Arbeitspaket: SP3-05
 - Rechtsgrundlage: § 390 SGB V
 - Richtlinienquelle: KBV, „Richtlinie nach § 390 SGB V über die Anforderungen zur Gewährleistung der IT-Sicherheit“, veröffentlicht am 31.03.2025, in Kraft seit 01.04.2025
-- Quell-SHA-256: `04a4b7a28b7806a4d9f518dff82f849b92076016762860df87ae50795dd7f96d`
+- Manuell verifizierter Quell-SHA-256: `04a4b7a28b7806a4d9f518dff82f849b92076016762860df87ae50795dd7f96d`
 
 ## Entscheidung
 
@@ -30,11 +30,11 @@ Seitenfortsetzungen und keine zusätzlichen Anforderungen.
 
 ## Quellenbindung
 
-Der technische Import bindet sich an:
+Der technische Import dokumentiert:
 
 - die kanonische HTTPS-URL der KBV;
 - Veröffentlichungs- und Inkrafttretedatum;
-- SHA-256 des geprüften 19-seitigen PDF;
+- den am 23.09.2026 manuell verifizierten SHA-256 des 19-seitigen PDF;
 - Anlage, laufende Nummer und PDF-Seite je Kontrolle;
 - offizielles Zielobjekt und den Titel der Spalte „Anforderung“.
 
@@ -42,6 +42,11 @@ Die Erläuterungstexte werden nicht dupliziert. Die Quellseite bleibt der normat
 verhindert unbemerkte lokale Textabweichungen und reduziert die urheberrechtlich unnötige
 Vervielfältigung. Eine neue KBV-Fassung erhält eine neue Katalog-ID und muss als vollständiger
 Diff geprüft werden; bestehende Releases werden nicht überschrieben.
+
+Die CI lädt die externe PDF bewusst nicht und hasht sie nicht automatisch: Ein Remote-Abruf wäre
+als Buildvoraussetzung nicht reproduzierbar. Der automatisierte Katalogtest prüft deshalb nur das
+Format des hinterlegten Hashs. Schritt 1 des Änderungsprozesses ist die ausdrücklich manuelle
+Beschaffung und Hashprüfung einer neuen KBV-Fassung; erst das geprüfte Ergebnis wird versioniert.
 
 ## Inkrafttreten
 
@@ -60,8 +65,14 @@ Anwendbarkeit wird niemals allein aus dem Vorhandensein einer Katalogzeile abgel
   erheblichem Umfang;
 - Anlage 4 gilt bei Nutzung medizinischer Großgeräte;
 - Anlage 5 gilt für vorhandene dezentrale TI-Komponenten;
-- unbekannte Geräte-, TI- oder Zielobjektnutzung ergibt `conditional`, niemals automatisch
+- unbekannte Praxisgröße sowie unbekannte Geräte-, TI- oder Zielobjektnutzung ergibt
+  `conditional`, niemals automatisch
   `not_applicable` oder `met`.
+
+Zielobjekte werden technisch über kanonische, sprachunabhängige IDs referenziert. Die deutschen
+Bezeichnungen bleiben reine Quelllabels. Unbekannte oder doppelte IDs machen das Inventar
+ungültig und führen zu `conditional`; ein Schreibfehler kann daher nicht still
+`not_applicable` erzeugen.
 
 Die vorhandene MVP-Kontrolle `KBV-ITS-ANLAGE4-6` bleibt als Legacy-Alias an
 `KBV-390-A4-006` gebunden. Diese technische Zuordnung ändert weder Scoring noch Claims.
@@ -74,10 +85,17 @@ Jede Kontrolle durchläuft ausschließlich folgende Vorwärtsfolge:
 2. `reviewed`: alle drei voneinander getrennten Reviews sind dokumentiert;
 3. `released`: ein unabhängiger Product Owner gibt genau den geprüften Inhalts-Hash frei.
 
-Der Quellkatalog selbst bleibt unveränderlich auf seinem Importstatus `mapped`. Fortschritt wird
-in einem separaten, quell- und hashgebundenen Redaktionsdatensatz geführt. Die Released-Auswahl
+Der Quellkatalog selbst trägt keinen Redaktionsstatus und wird zur Laufzeit tief eingefroren.
+Fortschritt wird in einem separaten, quell- und hashgebundenen Redaktionsdatensatz geführt; ein
+neu erzeugter Datensatz beginnt auf `mapped`. Die Released-Auswahl
 verknüpft beide Ebenen erst nach vollständiger Runtime-Validierung. Damit existiert kein zweiter,
 direkt im Katalog umschaltbarer Freigabeschalter.
+
+Der Inhalts-Hash wird nicht vom Aufrufer geliefert. Die Workflow-Implementierung bildet ihn als
+SHA-256 aus einer fest strukturierten, kanonisierten Projektion aller freigaberelevanten
+Quellfelder und des vollständigen Mappings. Jeder Review-, Release- und Auswahlvorgang berechnet
+ihn erneut gegen die kanonische Kontrolle. Inhaltsdrift scheitert geschlossen. Zur Laufzeit
+zurückgegebene Kontroll- und Redaktionsobjekte sind tief eingefroren.
 
 Pflichtreviews:
 
@@ -89,9 +107,12 @@ Mapper dürfen ihre eigene Zuordnung nicht reviewen. Ein Reviewer darf nicht als
 freigeben. Statussprünge, doppelte Reviewdomänen, geänderte Inhalts-Hashes und Änderungen an
 bereits freigegebenen Datensätzen scheitern geschlossen.
 
+Zeitstempel dürfen höchstens zwei Minuten vor der auswertenden Systemuhr liegen; weiter in der
+Zukunft liegende Aktionen werden abgewiesen.
+
 ## Produktgrenze
 
-Alle 92 importierten Anforderungen stehen zunächst ausschließlich auf `mapped`.
+Für die 92 importierten Anforderungen existiert zunächst kein freigegebener Redaktionsdatensatz.
 `getReleasedKbv390Controls` liefert deshalb aktuell eine leere Liste. Weder Score, Ampel,
 Complianceaussage noch Kundenbericht darf aus `mapped` oder `reviewed` gespeist werden.
 
@@ -102,7 +123,8 @@ Konformitätsbehauptung.
 
 ## Änderungsprozess
 
-1. KBV-Quelle und Veröffentlichungsmetadaten erneut laden und Hash bilden.
+1. KBV-Quelle und Veröffentlichungsmetadaten manuell aus der offiziellen Quelle laden, Hash
+   bilden und die Prüfung mit Datum dokumentieren.
 2. Neuen Katalog anlegen; bestehende Katalogversion niemals mutieren.
 3. 92er-Zählung beziehungsweise neue offizielle Sollzahl, Anlagenfolgen und Seitenbezüge prüfen.
 4. Geänderte Anforderungen erneut auf `mapped` setzen.
@@ -113,8 +135,11 @@ Konformitätsbehauptung.
 
 ## Verifikation und offene Gates
 
-Automatisierte Tests prüfen Anzahl, Anlagenzählung, stabile IDs, fehlendes Release ungeprüfter
-Kontrollen, Anwendbarkeitsgrenzen, Vier-Augen-Trennung, Hashbindung und Releasevoraussetzungen.
+Automatisierte Tests prüfen Anzahl, Anlagenzählung, stabile IDs, tiefe Runtime-Immutability,
+fehlendes Release ungeprüfter Kontrollen, unbekannte Praxisgröße, kanonische Zielobjekt-IDs,
+Anwendbarkeitsgrenzen, Vier-Augen-Trennung, abgeleiteten Inhalts-Hash, Driftabwehr,
+Zeitstempelgrenze und Releasevoraussetzungen. Sie bestätigen nicht automatisch die Bytes der
+extern gehosteten PDF.
 
 Offen bis `released`:
 

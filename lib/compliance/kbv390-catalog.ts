@@ -9,20 +9,53 @@ export type Kbv390EditorialStatus = "mapped" | "reviewed" | "released";
 export type PracticeSize = "practice" | "medium" | "large";
 export type ApplicabilityStatus = "applicable" | "conditional" | "not_applicable";
 
+type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+export type Kbv390ControlId = `KBV-390-A${Kbv390Appendix}-${Digit}${Digit}${Digit}`;
+
+const TARGET_OBJECT_IDS = {
+  "Personal": "personnel",
+  "Sensibilisierung und Schulung zur Informationssicherheit": "security_awareness",
+  "Netzwerksicherheit": "network_security",
+  "Patch- und Änderungsmanagement": "patch_change_management",
+  "Endgeräte": "endpoints",
+  "Endgeräte mit dem Betriebssystem Windows": "windows_endpoints",
+  "Smartphone und Tablet": "smartphones_tablets",
+  "Mobiltelefon": "mobile_phones",
+  "Wechseldatenträger / Speichermedien": "removable_media",
+  "E-Mail-Client und -Server": "email_clients_servers",
+  "Mobile Anwendungen (Apps)": "mobile_apps",
+  "Internet-Anwendungen - Anbieter": "internet_apps_provider",
+  "Internet-Anwendungen - Anwender": "internet_apps_user",
+  "Cloud-Anwendungen - Anbieter": "cloud_apps_provider",
+  "Mobile Device Management (MDM)": "mobile_device_management",
+  "Medizinische Großgeräte": "medical_large_devices",
+  "Dezentrale Komponenten der TI": "decentral_ti_components",
+  "Konnektor": "ti_connector",
+  "Gehosteter Konnektor": "hosted_ti_connector",
+  "TI-Gateway": "ti_gateway",
+  "Primärsysteme": "primary_systems"
+} as const;
+
+type Kbv390TargetObjectName = keyof typeof TARGET_OBJECT_IDS;
+export type Kbv390TargetObjectId = (typeof TARGET_OBJECT_IDS)[Kbv390TargetObjectName];
+export const KBV390_TARGET_OBJECT_IDS: readonly Kbv390TargetObjectId[] = Object.freeze(
+  [...new Set(Object.values(TARGET_OBJECT_IDS))]
+);
+
 export type Kbv390Control = Readonly<{
-  id: `KBV-390-A${Kbv390Appendix}-${string}`;
+  id: Kbv390ControlId;
   appendix: Kbv390Appendix;
   number: number;
   source_page: number;
-  target_object: string;
+  target_object_id: Kbv390TargetObjectId;
+  target_object: Kbv390TargetObjectName;
   official_title: string;
   effective_from: "2025-04-01" | "2025-10-01";
   practice_scope: "all" | "medium_and_large" | "large_only" | "medical_large_devices" | "ti_components";
-  editorial_status: Kbv390EditorialStatus;
   legacy_control_ids: readonly string[];
 }>;
 
-type RawControl = readonly [number: number, page: number, targetObject: string, officialTitle: string];
+type RawControl = readonly [number: number, page: number, targetObject: Kbv390TargetObjectName, officialTitle: string];
 
 const A1 = [
   [1, 4, "Personal", "Geregelte Einarbeitung neuer Mitarbeitender"],
@@ -144,41 +177,43 @@ const RAW_BY_APPENDIX: Readonly<Record<Kbv390Appendix, readonly RawControl[]>> =
   5: A5
 };
 
-export const KBV390_CONTROLS: readonly Kbv390Control[] = Object.entries(RAW_BY_APPENDIX).flatMap(
+export const KBV390_CONTROLS: readonly Kbv390Control[] = deepFreeze(Object.entries(RAW_BY_APPENDIX).flatMap(
   ([appendixValue, controls]) => {
     const appendix = Number(appendixValue) as Kbv390Appendix;
     return controls.map(([number, page, targetObject, officialTitle]) => ({
-      id: `KBV-390-A${appendix}-${String(number).padStart(3, "0")}` as const,
+      id: `KBV-390-A${appendix}-${String(number).padStart(3, "0")}` as Kbv390ControlId,
       appendix,
       number,
       source_page: page,
+      target_object_id: TARGET_OBJECT_IDS[targetObject],
       target_object: targetObject,
       official_title: officialTitle,
       effective_from: DELAYED_CONTROLS.has(`${appendix}:${number}`) ? "2025-10-01" : "2025-04-01",
       practice_scope: scopeForAppendix(appendix),
-      editorial_status: "mapped" as const,
       legacy_control_ids: appendix === 4 && number === 6 ? ["KBV-ITS-ANLAGE4-6"] : []
     }));
   }
-);
+));
 
 export type Kbv390PracticeContext = Readonly<{
-  practice_size: PracticeSize;
+  practice_size: PracticeSize | null;
   uses_medical_large_devices: boolean | null;
   uses_ti_components: boolean | null;
-  used_target_objects?: readonly string[];
+  used_target_object_ids?: readonly Kbv390TargetObjectId[];
 }>;
 
 export type Kbv390Applicability = Readonly<{
   status: ApplicabilityStatus;
   reason_code:
     | "practice_size"
+    | "practice_size_unknown"
     | "medical_large_devices_absent"
     | "medical_large_devices_unknown"
     | "ti_components_absent"
     | "ti_components_unknown"
     | "target_not_used"
     | "target_usage_unknown"
+    | "target_inventory_invalid"
     | "applicable";
 }>;
 
@@ -186,11 +221,17 @@ export function determineKbv390Applicability(
   control: Kbv390Control,
   context: Kbv390PracticeContext
 ): Kbv390Applicability {
-  if (control.practice_scope === "medium_and_large" && context.practice_size === "practice") {
-    return { status: "not_applicable", reason_code: "practice_size" };
+  if (control.practice_scope === "medium_and_large") {
+    if (!isPracticeSize(context.practice_size)) {
+      return { status: "conditional", reason_code: "practice_size_unknown" };
+    }
+    if (context.practice_size === "practice") return { status: "not_applicable", reason_code: "practice_size" };
   }
-  if (control.practice_scope === "large_only" && context.practice_size !== "large") {
-    return { status: "not_applicable", reason_code: "practice_size" };
+  if (control.practice_scope === "large_only") {
+    if (!isPracticeSize(context.practice_size)) {
+      return { status: "conditional", reason_code: "practice_size_unknown" };
+    }
+    if (context.practice_size !== "large") return { status: "not_applicable", reason_code: "practice_size" };
   }
   if (control.practice_scope === "medical_large_devices") {
     if (context.uses_medical_large_devices === null) {
@@ -204,8 +245,15 @@ export function determineKbv390Applicability(
     if (context.uses_ti_components === null) return { status: "conditional", reason_code: "ti_components_unknown" };
     if (!context.uses_ti_components) return { status: "not_applicable", reason_code: "ti_components_absent" };
   }
-  if (!context.used_target_objects) return { status: "conditional", reason_code: "target_usage_unknown" };
-  if (!context.used_target_objects.includes(control.target_object)) {
+  if (!context.used_target_object_ids) return { status: "conditional", reason_code: "target_usage_unknown" };
+  const targetIds = context.used_target_object_ids as readonly string[];
+  if (
+    new Set(targetIds).size !== targetIds.length ||
+    targetIds.some((targetId) => !(KBV390_TARGET_OBJECT_IDS as readonly string[]).includes(targetId))
+  ) {
+    return { status: "conditional", reason_code: "target_inventory_invalid" };
+  }
+  if (!context.used_target_object_ids.includes(control.target_object_id)) {
     return { status: "not_applicable", reason_code: "target_not_used" };
   }
   return { status: "applicable", reason_code: "applicable" };
@@ -224,7 +272,9 @@ export function assertKbv390Catalog(controls: readonly Kbv390Control[] = KBV390_
     appendixControls.forEach((control, index) => {
       if (control.number !== index + 1) throw new Error(`kbv390_catalog:appendix_${appendix}_sequence`);
       if (!control.official_title.trim() || !control.target_object.trim()) throw new Error(`kbv390_catalog:blank_control:${control.id}`);
-      if (control.editorial_status !== "mapped") throw new Error(`kbv390_catalog:unreviewed_source_must_be_mapped:${control.id}`);
+      if (TARGET_OBJECT_IDS[control.target_object] !== control.target_object_id) {
+        throw new Error(`kbv390_catalog:invalid_target_object:${control.id}`);
+      }
     });
   }
 }
@@ -237,8 +287,20 @@ function scopeForAppendix(appendix: Kbv390Appendix): Kbv390Control["practice_sco
   return "all";
 }
 
+function isPracticeSize(value: unknown): value is PracticeSize {
+  return value === "practice" || value === "medium" || value === "large";
+}
+
 function range(appendix: Kbv390Appendix, from: number, to: number): string[] {
   return Array.from({ length: to - from + 1 }, (_, index) => `${appendix}:${from + index}`);
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.values(value as Record<string, unknown>).forEach((nested) => deepFreeze(nested));
+    Object.freeze(value);
+  }
+  return value;
 }
 
 assertKbv390Catalog();

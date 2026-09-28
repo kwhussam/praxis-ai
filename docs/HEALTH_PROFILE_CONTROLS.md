@@ -49,7 +49,8 @@ Fachliche Grundlage:
 - [KBV: IT-Sicherheit – Anlagen und Praxisgrößen](https://www.kbv.de/praxis/digitalisierung/it-sicherheit)
 - [KBV PraxisWissen IT-Sicherheit, Stand Mai 2025](https://www.kbv.de/documents/infothek/publikationen/praxiswissen/praxiswissen-it-sicherheit.pdf)
 
-Der vollständige SP3-05-Katalog führt diese technische Zuordnung zunächst im Status `mapped`.
+Der statusfreie SP3-05-Quellkatalog führt diese technische Zuordnung. Ein separater
+Redaktionsdatensatz beginnt bei Bearbeitung im Status `mapped`.
 Die bereits dokumentierte MVP-Freigabe bleibt auf genau diese eine Kontrolle begrenzt; sie gibt
 weder die übrigen 91 Katalogzeilen noch neue Compliance-Claims frei.
 
