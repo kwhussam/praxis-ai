@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-28 (SP3-05 §-390-Kontrollinventar technisch implementiert; externe Freigaben offen)
+Stand: 2026-09-28 (PR #69 gemergt; SP3-06-Evidenzsammlung begonnen, Phase 0 nicht freigegeben)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -17,11 +17,16 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 - **SP3-04 gemergt und Post-Merge-Gates grün:** PR #63 wurde am 23.09.2026 als `5337310`
   übernommen. CI `35880415574` und Secure SDLC `35880415466` sind vollständig grün. Aktive
   Scans bleiben dennoch bis zu den dokumentierten externen Freigaben und SP3-06 deaktiviert.
-- **SP3-05 technisch implementiert:** Der Branch `codex/sp3-05-390-control-inventory` basiert
-  direkt auf `origin/main`/`5337310`. Alle 92 Anforderungen der geltenden KBV-Richtlinie sind
-  mit stabiler ID, Anlage, Nummer, Quellseite, Zielobjekt, Geltungsbereich und Inkrafttretedatum
-  erfasst. Der Quellkatalog ist statusfrei; derzeit existiert kein freigegebener
-  Redaktionsdatensatz.
+- **SP3-05 gemergt, fachlich nicht freigegeben:** PR
+  [`#69`](https://github.com/kwhussam/praxis-ai/pull/69) liegt als `452dab0` auf `main`.
+  PR-Checks und die Post-Merge-Läufe CI `36429034850` und Secure SDLC `36429035010` sind grün.
+  Alle 92 KBV-Anforderungen sind erfasst; derzeit existiert kein freigegebener
+  Redaktionsdatensatz und kein zulässiger neuer Complianceclaim.
+- **SP3-06 begonnen:** `docs/SP3_06_PHASE0_E2E_ABNAHME.md` trennt fünf Phase-0-Exit-Gates,
+  vorhandene Teilnachweise und echte Blocker. Der vollständige lokale `verify` ist grün
+  (540 Tests, 2 Snapshots); der serielle 15/15-Smoke und die physische Gerätematrix sind offen.
+  Ein 14/14-Gesamtlauf kann nicht mehr still als Erfolg gelten; die PDF-Cache-Prüfung läuft
+  jetzt auch in der Full Suite.
 - **Redaktionsfreigabe bleibt fail-closed:** `reviewed` verlangt voneinander getrennte Reviews
   aus Healthcare Compliance, Security Architecture und Privacy/Legal; `released` verlangt
   zusätzlich einen unabhängigen Product Owner. Der Inhalts-Hash wird aus kanonischem Kontroll-
@@ -100,11 +105,11 @@ Trennung und den Versionswechsel bei einer neuen KBV-Fassung. Der Modus `assessm
 verlangt vor Release mindestens eine Evidenzanforderung und eine Produkt-Control-ID. Die
 bestehende MVP-ID `KBV-ITS-ANLAGE4-6` bleibt als Legacy-Alias von `KBV-390-A4-006` erhalten.
 
-Die vollständige Projektverifikation ist grün: Lint, TypeScript, **537 bestandene Tests**, sechs
-bewusst übersprungene Tests und zwei bestandene Snapshots; darin enthalten sind elf neue
-Katalog-/Workflowtests. Offen bleiben PR-/Post-Merge-Gates und vor allem die
-namentlichen fachlichen, Security-, Datenschutz-/Rechts- und Product-Owner-Freigaben. Bis dahin
-liefert `getReleasedKbv390Controls` absichtlich keine Kontrolle.
+Der SP3-05-PR und seine Post-Merge-Gates sind grün. Auf dem SP3-06-Branch sind Lint,
+TypeScript, **540 bestandene Tests**, sechs bewusst übersprungene Tests und zwei Snapshots
+grün. Offen bleiben vor allem die namentlichen fachlichen, Security-, Datenschutz-/Rechts-
+und Product-Owner-Freigaben. Bis dahin liefert `getReleasedKbv390Controls` absichtlich keine
+Kontrolle.
 
 ## SP3-04 – SafeScan-Policy und Scan-Autorisierung v1
 
@@ -605,19 +610,25 @@ spätere Produktions-Gate.
 
 ## Als Nächstes
 
-1. **SP3-05 committen, pushen und per PR prüfen:** CI, Secure SDLC und unabhängiges
-   Security-/Content-Review müssen grün sein; der lokale Gesamt-`verify` ist bereits grün.
+1. **SP3-06-Evidenzsammlung fortsetzen:** Die fünf Phase-0-Gates und fehlenden Beweise stehen in
+   `docs/SP3_06_PHASE0_E2E_ABNAHME.md`. Vollständigen 15/15-iOS-Simulatorlauf, Android-Lauf,
+   Querschnittstest für App/API/Bericht/PDF und physische Gerätematrix nachholen. Am 28.09.2026
+   waren Docker nicht erreichbar und kein Simulator gebootet; daher wurde kein Runtime-Erfolg
+   behauptet.
 2. **Die 92 Zuordnungen fachlich bearbeiten:** Evidenz, Anwendbarkeit und Claims einzeln durch
    Healthcare Compliance, Security Architecture und Privacy/Legal prüfen. Erst danach darf ein
    unabhängiger Product Owner einzelne Kontrollen auf `released` setzen.
-3. **Nach Merge SP3-06 beginnen:** Phase-0-End-to-End-Abnahme mit allen noch offenen Exit-Gates
-   dokumentieren; technische Teilnachweise nicht als Produktionsfreigabe darstellen.
+3. **SP3-06 bleibt bis zur vollständigen Gate-Evidenz offen:** Technische Teilnachweise und grüne
+   CI dürfen nicht als Phase-0- oder Produktionsfreigabe dargestellt werden.
 4. **SP3-04-Fachfreigaben bleiben separat offen:** Der technische Merge aktiviert weiterhin weder
    Scanqueue noch aktive Probes.
 5. **Engine-Cutover bleibt separat:** Erst nach ADR-001- sowie D-05/D-06/D-07-Freigabe darf ein
    produktiver v2-verschlüsselter Snapshot erzeugt und an neue Reportmanifeste gebunden werden.
 6. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
-   - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Sein Verlust bedeutet
+   - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Nach Owner-Auskunft
+     existieren noch keine produktiven verschlüsselten Daten; dies ist nicht unabhängig geprüft.
+     Die Schlüsselanlage darf nur bis vor den ersten produktiven verschlüsselten Datensatz
+     aufgeschoben werden. Sein Verlust bedeutet später
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
      der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
    - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
@@ -627,7 +638,8 @@ spätere Produktions-Gate.
 7. Die produktionsnahe Auth-/Provider-Wiederherstellung bleibt an D-02 gebunden; Phase C der
    Schlüsselrotation bleibt durch D-05/D-06/D-07 blockiert.
 8. Parallel als separaten Runtime-Nachweis den seriellen SDK-57-Maestro-Lauf wiederholen:
-   `npm run e2e:env:up`, danach `npm run e2e:smoke`; erwartet werden 15/15 einschließlich
+   nach installiertem Development-Build `npm run e2e:smoke` ausführen; der Runner startet
+   `e2e:env:up` selbst. Erwartet werden 15/15 einschließlich
    Inventarpersistenz, PDF-Share-UI und Klartext-Cache-Bereinigung.
 9. Android-Smoke und physische iOS-/Android-Gerätematrix bleiben separate Produktions-Gates.
 

@@ -28,14 +28,15 @@ function runReport(xml?: string) {
   return result;
 }
 
-function runReports(xmlDocuments: string[]) {
+function runReports(xmlDocuments: string[], expectedCount?: number) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "praxis-maestro-gate-multi-"));
   const reports = xmlDocuments.map((xml, index) => {
     const report = path.join(directory, `results-${index}.xml`);
     fs.writeFileSync(report, xml);
     return report;
   });
-  const result = childProcess.spawnSync(nodeProcess.execPath, [gate, ...reports], { encoding: "utf8" });
+  const args = expectedCount === undefined ? [gate, ...reports] : [gate, `--expected=${expectedCount}`, ...reports];
+  const result = childProcess.spawnSync(nodeProcess.execPath, args, { encoding: "utf8" });
   fs.rmSync(directory, { recursive: true, force: true });
   return result;
 }
@@ -75,6 +76,29 @@ describe("Maestro JUnit smoke gate", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("1 of 2 flows did not pass");
     expect(result.stderr).toContain("questionnaire");
+  });
+
+  it("rejects a green partial suite instead of reporting it as full coverage", () => {
+    const report = junit({ tests: 1, failures: 0, body: '<testcase name="login"/>' });
+    const result = runReports([report], 15);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Expected 15 Maestro reports, received 1");
+  });
+
+  it("rejects an unexpected testcase count even when every report exists", () => {
+    const result = runReports([
+      junit({ tests: 2, failures: 0, body: '<testcase name="login"/><testcase name="login-again"/>' }),
+      junit({ tests: 1, failures: 0, body: '<testcase name="questionnaire"/>' })
+    ], 2);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("executed 3 of 2 expected flows");
+  });
+
+  it("rejects a report that claims zero executed flows in an expected suite", () => {
+    const report = junit({ tests: 0, failures: 0, body: "" });
+    const result = runReports([report], 1);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("executed 0 flows");
   });
 
   const invalidReports: Array<[string, string | undefined, string]> = [

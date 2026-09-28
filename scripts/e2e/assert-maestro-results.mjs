@@ -1,7 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
 
-const reportPaths = process.argv.slice(2);
+const args = process.argv.slice(2);
+const expectedArgument = args[0]?.startsWith("--expected=") ? args.shift() : undefined;
+const expectedCount = expectedArgument === undefined
+  ? undefined
+  : Number(expectedArgument.slice("--expected=".length));
+if (expectedArgument !== undefined && (!Number.isSafeInteger(expectedCount) || expectedCount < 1)) {
+  throw new Error("--expected must be a positive integer.");
+}
+
+const reportPaths = args;
 if (reportPaths.length === 0) throw new Error("Usage: assert-maestro-results.mjs <results.xml> [...]");
+if (expectedCount !== undefined && reportPaths.length !== expectedCount) {
+  throw new Error(`Expected ${expectedCount} Maestro reports, received ${reportPaths.length}.`);
+}
 
 function counter(attributes, name) {
   const raw = attributes.match(new RegExp(`\\b${name}="(\\d+)"`))?.[1];
@@ -60,6 +72,11 @@ const { tests, failures, failedFlows } = totals;
 
 if (tests === 0) {
   console.error("Maestro executed 0 flows. The suite did not run - check flow discovery.");
+  process.exit(1);
+}
+
+if (expectedCount !== undefined && tests !== expectedCount) {
+  console.error(`Maestro executed ${tests} of ${expectedCount} expected flows.`);
   process.exit(1);
 }
 

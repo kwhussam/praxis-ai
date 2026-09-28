@@ -184,7 +184,10 @@ override fun getPackages(): List<ReactPackage> =
     expect(smokeRunner).toContain('for MAESTRO_TARGET in "${MAESTRO_TARGETS[@]}"');
     expect(smokeRunner).not.toContain('MAESTRO_TARGET="."');
     expect(smokeRunner).toContain("No Maestro flows found");
-    expect(smokeRunner).toContain('assert-maestro-results.mjs" "${RESULT_FILES[@]}"');
+    expect(smokeRunner).toContain("assert-maestro-results.mjs");
+    expect(smokeRunner).toContain('"--expected=${EXPECTED_FLOWS}" "${RESULT_FILES[@]}"');
+    expect(smokeRunner).toContain('EXPECTED_FLOWS=15');
+    expect(smokeRunner).toContain('"$SUITE" == "pdf" || "$SUITE" == "all"');
     expect(smokeRunner).toContain("node scripts/e2e/seed-canonical-report.mjs");
     expect(smokeRunner).not.toContain('if [[ "$SUITE" == "pdf" ]]; then\n  node scripts/e2e/seed-canonical-report.mjs');
     expect(maestroConfig).toContain('flows:\n  - "flows/*.yaml"');
