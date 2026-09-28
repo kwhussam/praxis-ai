@@ -28,7 +28,7 @@ dass die in der jeweiligen Kontrolle genannte Evidenz erhoben wurde.
 | Feld | Wert |
 |---|---|
 | Rule-ID | `HEALTH_MEDICAL_DEVICE_SEGMENTATION` |
-| Control-ID | `KBV-ITS-ANLAGE4-6` |
+| Control-ID | `KBV-390-A4-006` (Legacy-Alias `KBV-ITS-ANLAGE4-6`) |
 | Profil | `health` |
 | Bedingung | Medizinische Großgeräte werden eingesetzt |
 | Evidenz im MVP | Geführte Selbstauskunft |
@@ -48,6 +48,11 @@ Fachliche Grundlage:
 - [KBV: Anlage 4 – zusätzliche Anforderungen für medizinische Großgeräte](https://hub.kbv.de/pages/viewpage.action?pageId=63537352)
 - [KBV: IT-Sicherheit – Anlagen und Praxisgrößen](https://www.kbv.de/praxis/digitalisierung/it-sicherheit)
 - [KBV PraxisWissen IT-Sicherheit, Stand Mai 2025](https://www.kbv.de/documents/infothek/publikationen/praxiswissen/praxiswissen-it-sicherheit.pdf)
+
+Der statusfreie SP3-05-Quellkatalog führt diese technische Zuordnung. Ein separater
+Redaktionsdatensatz beginnt bei Bearbeitung im Status `mapped`.
+Die bereits dokumentierte MVP-Freigabe bleibt auf genau diese eine Kontrolle begrenzt; sie gibt
+weder die übrigen 91 Katalogzeilen noch neue Compliance-Claims frei.
 
 ## Noch nicht als Scoring-Kontrolle freigegeben
 
