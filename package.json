@@ -96,11 +96,11 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@cloudflare/workers-types": "^5.20260830.1",
+    "@cloudflare/workers-types": "^5.20260925.1",
     "@types/react": "~19.2.10",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
-    "babel-preset-expo": "~57.0.0",
+    "babel-preset-expo": "~57.0.13",
     "eslint": "^8.57.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -108,7 +108,7 @@
     "jest-expo": "~57.0.5",
     "react-test-renderer": "19.2.3",
     "typescript": "~6.0.3",
-    "wrangler": "^4.132.0"
+    "wrangler": "^4.139.0"
   },
   "expo": {
     "install": {
