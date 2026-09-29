@@ -35,6 +35,11 @@ if curl --fail --silent --max-time 2 "$HOST_METRO_URL/status" >/dev/null; then
   exit 1
 fi
 
+# Fail before resetting the local test database if a flow is missing, renamed,
+# duplicated, or declares an identity other than the checked-in baseline.
+FLOW_MANIFEST="$ROOT_DIR/.maestro/phase0-flow-manifest.json"
+EXPECTED_ALL_FLOWS="$(node "$ROOT_DIR/scripts/e2e/verify-maestro-flow-set.mjs" "$FLOW_MANIFEST" "$ROOT_DIR/.maestro/flows")"
+
 bash scripts/e2e/env-up.sh
 
 set -a
@@ -113,6 +118,16 @@ if [[ "${#MAESTRO_TARGETS[@]}" -eq 0 ]]; then
   exit 1
 fi
 
+# The full-suite count comes from the already validated, checked-in manifest.
+EXPECTED_FLOWS=1
+if [[ "$SUITE" == "all" ]]; then
+  EXPECTED_FLOWS="$EXPECTED_ALL_FLOWS"
+fi
+if [[ "${#MAESTRO_TARGETS[@]}" -ne "$EXPECTED_FLOWS" ]]; then
+  echo "Expected ${EXPECTED_FLOWS} Maestro flows for suite ${SUITE}, found ${#MAESTRO_TARGETS[@]}." >&2
+  exit 1
+fi
+
 mkdir -p "$RESULT_DIR"
 RESULT_FILES=()
 MAESTRO_COMMAND_FAILED=false
@@ -145,19 +160,20 @@ done
 
 # Maestro exit codes are not sufficient when workspace continue-on-failure is
 # used elsewhere. The complete set of fail-closed JUnit reports is authoritative.
-node "$ROOT_DIR/scripts/e2e/assert-maestro-results.mjs" "${RESULT_FILES[@]}"
+node "$ROOT_DIR/scripts/e2e/assert-maestro-results.mjs" \
+  "--expected=${EXPECTED_FLOWS}" "--manifest=$FLOW_MANIFEST" "${RESULT_FILES[@]}"
 if [[ "$MAESTRO_COMMAND_FAILED" == "true" ]]; then
   echo "At least one Maestro command failed despite a successful JUnit gate." >&2
   exit 1
 fi
 
-if [[ "$SUITE" == "pdf" && "$PLATFORM" == "ios" ]]; then
+if [[ ( "$SUITE" == "pdf" || "$SUITE" == "all" ) && "$PLATFORM" == "ios" ]]; then
   APP_DATA_CONTAINER="$(xcrun simctl get_app_container booted ai.praxisshield.app data)"
   if find "$APP_DATA_CONTAINER/Library/Caches" -name 'PraxisShield-Bericht-*.pdf' -print | grep -q .; then
     echo "Plaintext PDF remained in the iOS cache after the native share dialog closed." >&2
     exit 1
   fi
-elif [[ "$SUITE" == "pdf" ]]; then
+elif [[ "$SUITE" == "pdf" || "$SUITE" == "all" ]]; then
   ANDROID_CACHE_FILES="$(adb shell run-as ai.praxisshield.app find cache -name 'PraxisShield-Bericht-*.pdf' -print 2>/dev/null || true)"
   if [[ -n "$ANDROID_CACHE_FILES" ]]; then
     echo "Plaintext PDF remained in the Android cache after the native share dialog closed." >&2
