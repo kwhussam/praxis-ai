@@ -1,7 +1,20 @@
 import { existsSync, readFileSync } from "node:fs";
+import { basename } from "node:path";
+import { loadFlowManifest } from "./maestro-flow-manifest.mjs";
 
 const args = process.argv.slice(2);
-const expectedArgument = args[0]?.startsWith("--expected=") ? args.shift() : undefined;
+let expectedArgument;
+let manifestArgument;
+while (args[0]?.startsWith("--")) {
+  const option = args.shift();
+  if (option.startsWith("--expected=") && expectedArgument === undefined) {
+    expectedArgument = option;
+  } else if (option.startsWith("--manifest=") && manifestArgument === undefined) {
+    manifestArgument = option;
+  } else {
+    throw new Error("Unknown or repeated Maestro gate option: " + option);
+  }
+}
 const expectedCount = expectedArgument === undefined
   ? undefined
   : Number(expectedArgument.slice("--expected=".length));
@@ -13,6 +26,21 @@ const reportPaths = args;
 if (reportPaths.length === 0) throw new Error("Usage: assert-maestro-results.mjs <results.xml> [...]");
 if (expectedCount !== undefined && reportPaths.length !== expectedCount) {
   throw new Error(`Expected ${expectedCount} Maestro reports, received ${reportPaths.length}.`);
+}
+
+const manifestNames = manifestArgument === undefined
+  ? undefined
+  : loadFlowManifest(manifestArgument.slice("--manifest=".length));
+const reportNames = reportPaths.map((reportPath) => basename(reportPath, ".xml"));
+if (manifestNames !== undefined) {
+  if (new Set(reportNames).size !== reportNames.length ||
+      reportNames.some((name) => !manifestNames.includes(name))) {
+    throw new Error("Maestro JUnit report names do not match the checked-in flow manifest.");
+  }
+  if (expectedCount === manifestNames.length &&
+      reportNames.some((name, index) => name !== manifestNames[index])) {
+    throw new Error("The full Maestro JUnit suite is not in manifest order.");
+  }
 }
 
 function counter(attributes, name) {
@@ -44,9 +72,18 @@ function analyzeReport(reportPath) {
     failures += counter(attributes, "failures") + Number(attributes.match(/\berrors="(\d+)"/)?.[1] ?? 0);
   }
 
-  const testCases = [...report.matchAll(/<testcase\b/g)].length;
+  const testCaseOpenings = [...report.matchAll(/<testcase\b([^>]*)>/g)];
+  const testCases = testCaseOpenings.length;
   if (testCases !== tests) {
     throw new Error(`${reportPath} counters are inconsistent: tests=${tests}, testcase elements=${testCases}.`);
+  }
+
+  if (manifestNames !== undefined) {
+    const expectedName = basename(reportPath, ".xml");
+    const actualName = testCaseOpenings[0]?.[1].match(/\bname="([^"]+)"/)?.[1];
+    if (tests !== 1 || actualName !== expectedName) {
+      throw new Error(reportPath + " did not execute exactly its expected flow " + expectedName + ".");
+    }
   }
 
   const failureElements = [...report.matchAll(/<(failure|error)\b/g)].length;

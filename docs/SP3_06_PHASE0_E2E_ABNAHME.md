@@ -8,15 +8,31 @@ Stand: 2026-09-28 · Basis: `origin/main` / PR #69 (`452dab0`)
 Unit-Test, eine grüne PR-CI oder ein synthetischer Restore ersetzt keinen gerätebasierten
 End-to-End-Nachweis und keine benannte fachliche oder betriebliche Entscheidung. Ein Gate ist
 nur `passed`, wenn Ausführung, Ergebnis, Revision, Umgebung und verantwortliche Person
-nachvollziehbar dokumentiert sind. `not_run`, `partial` und `blocked` zählen nicht als Erfolg.
+nachvollziehbar dokumentiert sind. `technical_passed` bedeutet ausschließlich: Der
+automatisierte technische Teilnachweis ist grün; fachliche und betriebliche Voraussetzungen
+fehlen noch. `technical_passed`, `not_run`, `partial` und `blocked` zählen **nicht** als
+erfolgreicher Phase-0-Exit.
 
 Der Product Owner hat am 28.09.2026 mitgeteilt, dass **noch keine produktiven verschlüsselten
 Daten** existieren. Das ist eine Owner-Auskunft, keine Prüfung der Cloud-Konfiguration oder
-Produktionsdatenbank. Deshalb darf die Beschaffung eines neuen Produktionsschlüssels vorläufig
-verschoben werden. D-05 ist **nicht erlassen**: Vor dem ersten produktiven verschlüsselten
+Produktionsdatenbank. Synthetische Entwicklungs- und Testarbeit darf weiterlaufen; D-05 bleibt
+für Produktion vollständig offen. D-05 ist **nicht erlassen**: Vor dem ersten produktiven verschlüsselten
 Datensatz müssen Schlüssel, unabhängige Verwahrung, Zugriffsregel und Wiederherstellung
-nachgewiesen sein. Vorher keine produktive Snapshoterzeugung, kein Manifest-Cutover und keine
-Schlüsselrotation. D-06/D-07 und die ADR-001-Freigaben bleiben eigenständige Blocker.
+nachgewiesen sein. Die Aussage „noch keine produktiven Daten“ ist **kein Release-Gate** und
+rechtfertigt keine Produktionsfreigabe. Bis ein überprüfbarer technischer Auslöser und eine
+benannte Owner-Freigabe existieren, bleiben produktive Verschlüsselungswrites, Snapshoterzeugung,
+Manifest-Cutover und Schlüsselrotation für SP3-06 **blockiert**. D-06/D-07 und die
+ADR-001-Freigaben bleiben eigenständige Blocker.
+
+**P3-1 – Produktions-Auslöser noch nicht instrumentiert:** Vor jeder Produktionsfreigabe muss
+ein benannter Operations-Owner zusammen mit Security einen unmittelbar aktuellen,
+schreibgeschützten Nachweis über nicht-leere verschlüsselte Bestände in
+`security_checks`, `reports`, `assessment_manifests` und `monitoring_snapshots` liefern.
+Zusätzlich ist die unabhängige Verwahrung des dann verwendeten Schlüssels zu testen. Der
+technische Pre-Release-Check, der namentliche Owner und ein Prüftermin sind derzeit **offen**;
+die Owner-Auskunft allein ersetzt keinen dieser Beweise. Bis der Check implementiert und
+ausgeführt ist, ist die D-05-Verschiebung nur eine Entwicklungspriorisierung, keine Ausnahme vom
+Produktions-Gate.
 
 Alle lokalen Seeds verwenden ausschließlich synthetische Praxen und den expliziten lokalen
 Testschlüssel. Dieses Dokument enthält weder Produktions-Secrets noch Patientendaten.
@@ -41,16 +57,17 @@ und keine Freigabe für Phase 2 erklären, solange E1, E4 und E5 offen sind.
 | Prüfung | Kommando / Quelle | Evidenzgrenze | Ergebnis dieser Revision |
 |---|---|---|---|
 | PR #69 | GitHub PR-Gates und Post-Merge-Läufe auf `452dab0` | Quellcode-/CI-Nachweis, keine App-Runtime | PR-CI und Secure SDLC grün; Post-Merge-CI `36429034850` und Secure SDLC `36429035010` grün |
-| Projektqualität | `npm run verify` mit Node 22.17.1 | Lint, Typen, Jest; keine native Runtime | grün: 57 Suites, 540 Tests, 2 Snapshots; 6 Tests bewusst übersprungen |
-| Full-Suite-Vollständigkeit | `npm test -- --runInBand --runTestsByPath security/__tests__/maestro-results-gate.test.ts security/__tests__/native-release-config.test.ts` | Beweist Fail-Closed-Harness, nicht 15 native App-Flows | grün: 25/25 Tests außerhalb der Loopback-Sandbox; ein erster Sandboxlauf scheiterte nur am blockierten lokalen Listener |
+| Projektqualität | `npm run verify` mit Node 22.17.1 | Lint, Typen, Jest; keine native Runtime | grün: 58 Suites, 545 Tests, 2 Snapshots; 6 Tests bewusst übersprungen |
+| Full-Suite-Vollständigkeit | `npm test -- --runInBand --runTestsByPath security/__tests__/maestro-flow-manifest.test.ts security/__tests__/maestro-results-gate.test.ts security/__tests__/native-release-config.test.ts` | Beweist Fail-Closed-Harness, nicht 15 native App-Flows | grün: 30/30 Tests außerhalb der Loopback-Sandbox; ein erster Sandboxlauf scheiterte nur am blockierten lokalen Listener |
 | Lokaler Recovery-Drill | `npm run recovery:drill` | Setzt den repository-lokalen Supabase-Stack zurück; ausschließlich synthetisch | Referenz 8/8 vor PR #69; Wiederholung auf dieser Revision offen |
 | iOS-Simulator | `npm run e2e:app:ios`, dann `npm run e2e:smoke` | Erfordert gestarteten Simulator und Docker; `e2e:smoke` startet/verwaltet den lokalen Teststack selbst | `not_run`: Xcode 26.6 vorhanden, aber kein Simulator gebootet und Docker-Daemon am 28.09.2026 nicht erreichbar; letzter dokumentierter vollständiger Lauf 13/15 vor Harness-Fixes |
 | Android/physische Geräte | `npm run e2e:app:android`, `npm run e2e:smoke:android`; echte Gerätematrix separat | Emulator ist kein Beweis für alle realen OS-/Netzwerk-Capabilities | offen |
 | Externe Freigaben | SP3-04 SafeScan, SP3-05 KBV-Mapping, ADR-001, SP3-02 D-01…D-10 | Keine technische Simulation ersetzt benannte Owner-Entscheidungen | offen |
 
-Der Full-Suite-Smoke muss genau **15 JUnit-Berichte und 15 ausgeführte Flows** liefern. Ein
-stillschweigendes 14/14 ist ein Fehler. Die Klartext-PDF-Cache-Prüfung ist auch im vollständigen
-Smoke verpflichtend, nicht nur im PDF-Einzellauf.
+Der Full-Suite-Smoke muss genau die **15 namentlich im Manifest festgelegten Flow-Dateien und
+JUnit-Testcases** liefern. Entfernte, ersetzte, doppelte oder umbenannte Flows sind Fehler,
+auch wenn weiterhin 15 Tests gezählt werden. Die Klartext-PDF-Cache-Prüfung ist auch im
+vollständigen Smoke verpflichtend, nicht nur im PDF-Einzellauf.
 
 ## Sichere Durchführung der noch offenen lokalen Läufe
 

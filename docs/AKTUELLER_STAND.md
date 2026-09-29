@@ -24,8 +24,8 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
   Redaktionsdatensatz und kein zulässiger neuer Complianceclaim.
 - **SP3-06 begonnen:** `docs/SP3_06_PHASE0_E2E_ABNAHME.md` trennt fünf Phase-0-Exit-Gates,
   vorhandene Teilnachweise und echte Blocker. Der vollständige lokale `verify` ist grün
-  (540 Tests, 2 Snapshots); der serielle 15/15-Smoke und die physische Gerätematrix sind offen.
-  Ein 14/14-Gesamtlauf kann nicht mehr still als Erfolg gelten; die PDF-Cache-Prüfung läuft
+  (545 Tests, 2 Snapshots); der serielle 15/15-Smoke und die physische Gerätematrix sind offen.
+  Ein 14/14-Gesamtlauf oder ein ersetzter Flow kann nicht mehr still als Erfolg gelten; die PDF-Cache-Prüfung läuft
   jetzt auch in der Full Suite.
 - **Redaktionsfreigabe bleibt fail-closed:** `reviewed` verlangt voneinander getrennte Reviews
   aus Healthcare Compliance, Security Architecture und Privacy/Legal; `released` verlangt
@@ -106,7 +106,7 @@ verlangt vor Release mindestens eine Evidenzanforderung und eine Produkt-Control
 bestehende MVP-ID `KBV-ITS-ANLAGE4-6` bleibt als Legacy-Alias von `KBV-390-A4-006` erhalten.
 
 Der SP3-05-PR und seine Post-Merge-Gates sind grün. Auf dem SP3-06-Branch sind Lint,
-TypeScript, **540 bestandene Tests**, sechs bewusst übersprungene Tests und zwei Snapshots
+TypeScript, **545 bestandene Tests**, sechs bewusst übersprungene Tests und zwei Snapshots
 grün. Offen bleiben vor allem die namentlichen fachlichen, Security-, Datenschutz-/Rechts-
 und Product-Owner-Freigaben. Bis dahin liefert `getReleasedKbv390Controls` absichtlich keine
 Kontrolle.
@@ -627,8 +627,8 @@ spätere Produktions-Gate.
 6. **Dringendste inhaltliche Klärungen**, unabhängig von der Phasenfolge:
    - `G-15` – wo liegt `DATA_ENCRYPTION_KEY` außer in der Cloudflare-Bindung? Nach Owner-Auskunft
      existieren noch keine produktiven verschlüsselten Daten; dies ist nicht unabhängig geprüft.
-     Die Schlüsselanlage darf nur bis vor den ersten produktiven verschlüsselten Datensatz
-     aufgeschoben werden. Sein Verlust bedeutet später
+     Ohne instrumentierte Bestandsprüfung, benannten Owner und getestete unabhängige Verwahrung
+     bleibt jede Produktionsfreigabe blockiert. Sein Verlust bedeutet später
      die dauerhafte Unlesbarkeit aller verschlüsselten Vollberichte und Snapshots sowie den Verlust
      der kanonischen PDF-Reproduktion; Datenbankzeilen und Klartextzusammenfassungen bleiben.
    - `G-19` – ist Google Play App Signing aktiv? Davon hängt ab, ob ein Keyverlust behebbar ist.
