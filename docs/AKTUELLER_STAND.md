@@ -1,6 +1,6 @@
 # PraxisShield – Aktueller Stand
 
-Stand: 2026-09-28 (PR #69 gemergt; SP3-06-Evidenzsammlung begonnen, Phase 0 nicht freigegeben)
+Stand: 2026-09-30 (PR #78 gemergt; CI-/SDLC-Folgefix in Prüfung, Phase 0 nicht freigegeben)
 
 Diese Datei ist die kompakte operative Übergabe. Sie beantwortet nach jedem Arbeitspaket:
 
@@ -14,6 +14,18 @@ Der normative Umfang und die langfristige Reihenfolge bleiben in
 
 ## Aktueller Arbeitskontext
 
+- **PR #78 gemergt, Post-Merge-Gates rot:** Auf `main` (`2cd8030`) sind Android-Release-Compile,
+  RLS/pgTAP und CodeQL grün. CI blockt an Expo Doctor, weil drei neue SDK-57-Patchstände
+  erwartet werden; Secure SDLC blockt zwei neu erfasste High-Advisories in `undici` 7.29.0
+  aus dem Wrangler/Miniflare-Buildwerkzeugpfad. Der separate Folgebranch zieht `expo` 57.0.26,
+  `expo-constants` 57.0.20, `expo-router` 57.0.24 und Wrangler 4.143.1 mit `undici` 7.29.1
+  nach. Das Vendor-Hardening wurde gegen `expo-modules-core` 57.0.20 erneut geprüft und bleibt
+  aktiv. Lokal sind `npm ci`, Expo Doctor 21/21, das Dependency-Gate ohne Ausnahmen und
+  `npm run verify` mit 545 Tests grün; GitHub-Gates und ein nativer Smoke auf diesem
+  Folgecommit stehen noch aus.
+- **Simulator-Evidenzgrenze:** Die lokal vorhandenen 15 grünen JUnit-Dateien stammen aus dem
+  Worktree auf `452dab0`, also vor dem Merge von PR #78 und vor diesem Dependency-Fix.
+  Sie sind ein nützlicher Teilnachweis, aber keine Abnahme des endgültigen Folgecommits.
 - **SP3-04 gemergt und Post-Merge-Gates grün:** PR #63 wurde am 23.09.2026 als `5337310`
   übernommen. CI `35880415574` und Secure SDLC `35880415466` sind vollständig grün. Aktive
   Scans bleiben dennoch bis zu den dokumentierten externen Freigaben und SP3-06 deaktiviert.

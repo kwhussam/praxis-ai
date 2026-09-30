@@ -7,9 +7,9 @@ const packageLock = JSON.parse(
   readFileSync(resolve(repositoryRoot, "package-lock.json"), "utf8")
 );
 
-// SDK 57 re-evaluation (2026-09-28), verified against the installed upstream sources.
-// The expo-modules-core pin moved 57.0.18 -> 57.0.19 with the SDK 57 patch refresh; the
-// unsafe form was re-confirmed in the new upstream source before the pin was advanced.
+// SDK 57 re-evaluation (2026-09-30), verified against the installed upstream sources.
+// The expo-modules-core pin moved 57.0.19 -> 57.0.20 with the Expo 57.0.26 patch refresh;
+// the unsafe form was re-confirmed in PermissionsService.kt before the pin was advanced.
 // @expo/plist stays on the already-evaluated 0.8.1.
 //
 // @expo/plist@0.8.1 still calls parseFromString(xml) with a single argument. The
@@ -18,7 +18,7 @@ const packageLock = JSON.parse(
 // ("the provided mimeType \"undefined\" is not valid"), so this hardening is what makes
 // plist parsing work at all while the override keeps the parser on the patched line.
 //
-// expo-modules-core@57.0.19 still evaluates requestedPermissions!!.contains(permission).
+// expo-modules-core@57.0.20 still evaluates requestedPermissions!!.contains(permission).
 // A package without requested permissions makes the forced non-null assertion throw
 // inside the manifest permission check.
 //
@@ -36,7 +36,7 @@ const hardenings = [
   },
   {
     packageName: "expo-modules-core",
-    expectedVersion: "57.0.19",
+    expectedVersion: "57.0.20",
     relativeFile:
       "android/src/main/java/expo/modules/adapters/react/permissions/PermissionsService.kt",
     vulnerable: "return requestedPermissions!!.contains(permission)",

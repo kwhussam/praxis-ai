@@ -340,6 +340,19 @@ erforderlich. Erst nach dieser Bestätigung wurde der Pin in `scripts/apply-vend
 auf 57.0.19 gehoben. `@expo/plist` bleibt unverändert auf dem bereits bewerteten Stand 0.8.1.
 Es wurde keine Prüfung entfernt, gelockert oder mit einer Ausnahme versehen.
 
+Am 30. September 2026 blockierten die Post-Merge-Gates von PR #78 erneut durch
+Upstream-Drift. Expo Doctor verlangte `expo` 57.0.26, `expo-constants` 57.0.20 und
+`expo-router` 57.0.24. Parallel meldete das Dependency-Gate die neu erfassten
+`undici`-Advisories `GHSA-rfgv-xxqx-mfg5` und `GHSA-w293-vg96-wgc3` für die im
+Wrangler/Miniflare-Buildwerkzeug gelockte Version 7.29.0. Wrangler 4.143.1 zieht
+Miniflare 5.20260926.1-alpha mit der gepatchten Version 7.29.1; eine Allowlist-
+Ausnahme ist nicht erforderlich. Der Expo-Patch hebt `expo-modules-core` transitiv
+auf 57.0.20. In dessen installierter `PermissionsService.kt:212` blieb die
+unsichere `requestedPermissions!!`-Form unverändert; der versionsgebundene
+Postinstall-Patch wurde erst nach dieser Quellenprüfung auf 57.0.20 gehoben.
+Lokal sind `npm ci`, Doctor 21/21, Dependency-Gate ohne Ausnahmen und 545 Jest-Tests
+grün; native CI und Simulator-Smoke auf diesem Folgecommit sind noch offen.
+
 ## Primärquellen
 
 - Expo SDK 55: <https://expo.dev/changelog/sdk-55>
